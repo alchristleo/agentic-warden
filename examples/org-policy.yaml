@@ -1,0 +1,44 @@
+# An organization's policy. Rules apply in order, and a later rule overrides an
+# earlier one per key, so precedence is the order you write them in.
+#
+# Apply it with:  awd apply examples/org-policy.yaml
+version: "2026-09-20.1"
+
+rules:
+  # Applies to everyone: no match block means no constraint.
+  - name: baseline
+    agents:
+      claude:
+        managed:
+          permissions:
+            deny:
+              - Read(./.env)
+              - Read(./secrets/*)
+          # Permission rules come from managed settings alone; a user or
+          # project file cannot widen them.
+          allowManagedPermissionRulesOnly: true
+        env:
+          CLAUDE_CODE_ENABLE_TELEMETRY: "1"
+        # Organization values replace what a developer already exports.
+        forceEnv: true
+
+  # Group membership comes from identity-provider claims and compares exactly.
+  - name: platform-team
+    match:
+      groups: [platform]
+    agents:
+      claude:
+        managed:
+          model: opus
+
+  # Repository patterns are globs, and '*' crosses path separators.
+  # Permission lists union across rules rather than replacing one another.
+  - name: payments-repos
+    match:
+      repos: ["github.com/acme/payments*"]
+    agents:
+      claude:
+        managed:
+          permissions:
+            deny:
+              - Bash(curl *)

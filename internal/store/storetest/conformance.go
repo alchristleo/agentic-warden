@@ -1,0 +1,246 @@
+// Package storetest holds the behavior every store.Store must exhibit.
+//
+// It lives outside the store package so any implementation, in this module or
+// another, can run the same suite and prove it behaves identically.
+package storetest
+
+import (
+	"context"
+	"errors"
+	"testing"
+	"time"
+
+	"github.com/acme/agent-wrapper/internal/model"
+	"github.com/acme/agent-wrapper/internal/policy"
+	"github.com/acme/agent-wrapper/internal/store"
+)
+
+// Factory builds a fresh, empty store for one test.
+type Factory func(t *testing.T) store.Store
+
+// Run executes the conformance suite against the store the factory builds.
+func Run(t *testing.T, newStore Factory) {
+	t.Helper()
+	tests := []struct {
+		name string
+		fn   func(t *testing.T, s store.Store)
+	}{
+		{"current rule set on an empty store reports not found", currentOnEmpty},
+		{"a stored rule set can be read back", putThenCurrent},
+		{"the newest revision is the current one", newestWins},
+		{"storing the same version twice is a conflict", duplicateVersion},
+		{"a revision without a version is rejected", versionRequired},
+		{"revisions list newest first", listNewestFirst},
+		{"listing is limited", listLimit},
+		{"listing an empty store yields an empty slice", listEmpty},
+		{"revisions stored in the same instant keep their applied order", sameInstantOrder},
+		{"the store assigns an increasing sequence number", sequenceAssigned},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			tc.fn(t, newStore(t))
+		})
+	}
+}
+
+func revision(version string, at time.Time) model.Revision {
+	return model.Revision{
+		Version:   version,
+		CreatedAt: at,
+		CreatedBy: "tester",
+		RuleSet: policy.RuleSet{
+			Version: version,
+			Rules: []policy.Rule{{
+				Name:   "baseline",
+				Agents: map[string]policy.AgentConfig{"claude": {Managed: map[string]any{"model": "sonnet"}}},
+			}},
+		},
+	}
+}
+
+var epoch = time.Date(2026, 9, 20, 12, 0, 0, 0, time.UTC)
+
+func currentOnEmpty(t *testing.T, s store.Store) {
+	_, err := s.CurrentRuleSet(context.Background())
+	if !errors.Is(err, model.ErrNotFound) {
+		t.Errorf("CurrentRuleSet() error = %v, want ErrNotFound", err)
+	}
+}
+
+func putThenCurrent(t *testing.T, s store.Store) {
+	ctx := context.Background()
+	want := revision("v1", epoch)
+	if err := s.PutRuleSet(ctx, want); err != nil {
+		t.Fatalf("PutRuleSet: %v", err)
+	}
+
+	got, err := s.CurrentRuleSet(ctx)
+	if err != nil {
+		t.Fatalf("CurrentRuleSet: %v", err)
+	}
+	if got.Version != want.Version {
+		t.Errorf("Version = %q, want %q", got.Version, want.Version)
+	}
+	if len(got.RuleSet.Rules) != 1 || got.RuleSet.Rules[0].Name != "baseline" {
+		t.Errorf("RuleSet = %+v, want the stored rules", got.RuleSet)
+	}
+	if got.CreatedBy != "tester" {
+		t.Errorf("CreatedBy = %q, want %q", got.CreatedBy, "tester")
+	}
+}
+
+func newestWins(t *testing.T, s store.Store) {
+	ctx := context.Background()
+	if err := s.PutRuleSet(ctx, revision("v1", epoch)); err != nil {
+		t.Fatalf("PutRuleSet v1: %v", err)
+	}
+	if err := s.PutRuleSet(ctx, revision("v2", epoch.Add(time.Hour))); err != nil {
+		t.Fatalf("PutRuleSet v2: %v", err)
+	}
+
+	got, err := s.CurrentRuleSet(ctx)
+	if err != nil {
+		t.Fatalf("CurrentRuleSet: %v", err)
+	}
+	if got.Version != "v2" {
+		t.Errorf("Version = %q, want the newest revision", got.Version)
+	}
+}
+
+func duplicateVersion(t *testing.T, s store.Store) {
+	ctx := context.Background()
+	if err := s.PutRuleSet(ctx, revision("v1", epoch)); err != nil {
+		t.Fatalf("PutRuleSet: %v", err)
+	}
+
+	err := s.PutRuleSet(ctx, revision("v1", epoch.Add(time.Hour)))
+
+	if !errors.Is(err, model.ErrConflict) {
+		t.Errorf("PutRuleSet() error = %v, want ErrConflict", err)
+	}
+}
+
+func versionRequired(t *testing.T, s store.Store) {
+	err := s.PutRuleSet(context.Background(), revision("", epoch))
+
+	if !errors.Is(err, model.ErrBadInput) {
+		t.Errorf("PutRuleSet() error = %v, want ErrBadInput", err)
+	}
+}
+
+func listNewestFirst(t *testing.T, s store.Store) {
+	ctx := context.Background()
+	for i, version := range []string{"v1", "v2", "v3"} {
+		if err := s.PutRuleSet(ctx, revision(version, epoch.Add(time.Duration(i)*time.Hour))); err != nil {
+			t.Fatalf("PutRuleSet %s: %v", version, err)
+		}
+	}
+
+	got, err := s.Revisions(ctx, 10)
+	if err != nil {
+		t.Fatalf("Revisions: %v", err)
+	}
+
+	if len(got) != 3 {
+		t.Fatalf("got %d revisions, want 3", len(got))
+	}
+	for i, want := range []string{"v3", "v2", "v1"} {
+		if got[i].Version != want {
+			t.Errorf("revision %d = %q, want %q", i, got[i].Version, want)
+		}
+	}
+}
+
+func listLimit(t *testing.T, s store.Store) {
+	ctx := context.Background()
+	for i, version := range []string{"v1", "v2", "v3"} {
+		if err := s.PutRuleSet(ctx, revision(version, epoch.Add(time.Duration(i)*time.Hour))); err != nil {
+			t.Fatalf("PutRuleSet %s: %v", version, err)
+		}
+	}
+
+	got, err := s.Revisions(ctx, 2)
+	if err != nil {
+		t.Fatalf("Revisions: %v", err)
+	}
+
+	if len(got) != 2 || got[0].Version != "v3" {
+		t.Errorf("Revisions(2) = %v, want the two newest", versions(got))
+	}
+}
+
+// sameInstantOrder pins the tiebreak. A timestamp alone cannot order two
+// revisions applied within the same clock tick, and getting this wrong means
+// a rollback serves the revision it was rolling back from.
+func sameInstantOrder(t *testing.T, s store.Store) {
+	ctx := context.Background()
+	for _, version := range []string{"v1", "v2", "v3"} {
+		if err := s.PutRuleSet(ctx, revision(version, epoch)); err != nil {
+			t.Fatalf("PutRuleSet %s: %v", version, err)
+		}
+	}
+
+	got, err := s.Revisions(ctx, 10)
+	if err != nil {
+		t.Fatalf("Revisions: %v", err)
+	}
+
+	if len(got) != 3 {
+		t.Fatalf("got %d revisions, want 3", len(got))
+	}
+	for i, want := range []string{"v3", "v2", "v1"} {
+		if got[i].Version != want {
+			t.Errorf("revision %d = %q, want %q (order = %v)", i, got[i].Version, want, versions(got))
+		}
+	}
+
+	current, err := s.CurrentRuleSet(ctx)
+	if err != nil {
+		t.Fatalf("CurrentRuleSet: %v", err)
+	}
+	if current.Version != "v3" {
+		t.Errorf("CurrentRuleSet() = %q, want the last one applied", current.Version)
+	}
+}
+
+func sequenceAssigned(t *testing.T, s store.Store) {
+	ctx := context.Background()
+	for _, version := range []string{"v1", "v2"} {
+		if err := s.PutRuleSet(ctx, revision(version, epoch)); err != nil {
+			t.Fatalf("PutRuleSet %s: %v", version, err)
+		}
+	}
+
+	got, err := s.Revisions(ctx, 10)
+	if err != nil {
+		t.Fatalf("Revisions: %v", err)
+	}
+
+	if got[0].Seq <= got[1].Seq {
+		t.Errorf("sequences = %d, %d; want the newer revision to carry the higher one", got[0].Seq, got[1].Seq)
+	}
+	if got[1].Seq == 0 {
+		t.Error("the store left Seq unassigned")
+	}
+}
+
+func listEmpty(t *testing.T, s store.Store) {
+	got, err := s.Revisions(context.Background(), 10)
+	if err != nil {
+		t.Fatalf("Revisions: %v", err)
+	}
+	if got == nil {
+		t.Error("Revisions() = nil, want an empty slice")
+	}
+	if len(got) != 0 {
+		t.Errorf("Revisions() = %v, want none", versions(got))
+	}
+}
+
+func versions(revisions []model.Revision) []string {
+	out := make([]string, 0, len(revisions))
+	for _, r := range revisions {
+		out = append(out, r.Version)
+	}
+	return out
+}

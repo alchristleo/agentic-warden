@@ -1,0 +1,9 @@
+# Built binaries
+/aw
+/awd
+/aw-policy
+/aw-cred
+
+# Go build and test output
+*.test
+*.out
