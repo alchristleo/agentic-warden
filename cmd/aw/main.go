@@ -160,7 +160,9 @@ type report struct {
 	// Sync is aw-sync's own status, read as the developer from its state
 	// directory: enrollment, last cycle, drift. Nil when that directory
 	// could not be read, with SyncError saying why.
-	Sync      *sync.Report  `json:"sync,omitempty"`
+	Sync *sync.Report `json:"sync,omitempty"`
+	// SyncError is why aw-sync's state could not be read; empty when Sync
+	// is populated.
 	SyncError string        `json:"syncError,omitempty"`
 	Agents    []agentStatus `json:"agents"`
 }
@@ -271,7 +273,7 @@ func printReport(r report) {
 	fmt.Printf("sync:    %s\n", r.SyncStateDir)
 	switch {
 	case r.SyncError != "":
-		fmt.Printf("  error:  %s\n", r.SyncError)
+		fmt.Printf("  error:   %s\n", r.SyncError)
 	case !r.Sync.Enrolled:
 		fmt.Println("  not enrolled: aw-sync has not run on this machine")
 	default:
