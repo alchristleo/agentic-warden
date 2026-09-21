@@ -17,11 +17,14 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"runtime"
 	"strings"
+	"time"
 
 	"github.com/acme/agent-wrapper/internal/agent"
 	"github.com/acme/agent-wrapper/internal/agent/claude"
 	"github.com/acme/agent-wrapper/internal/policy"
+	"github.com/acme/agent-wrapper/internal/sync"
 )
 
 const usage = `aw launches a coding agent with your organization's configuration applied.
@@ -34,6 +37,9 @@ Usage:
 
 Flags:
   --policy PATH   policy document to apply (default: $AW_POLICY)
+
+doctor also reads aw-sync's state directory ($AW_SYNC_STATE_DIR overrides
+the OS default) and reports the last sync, its version, errors and drift.
 
 Everything after the agent name is passed to the agent untouched.
 `
@@ -147,9 +153,16 @@ func launch(registry *agent.Registry, opts options, agentName string, args []str
 
 // report is the machine-readable shape of doctor's output.
 type report struct {
-	Wrapper string        `json:"wrapper"`
-	Policy  string        `json:"policy,omitempty"`
-	Agents  []agentStatus `json:"agents"`
+	Wrapper string `json:"wrapper"`
+	Policy  string `json:"policy,omitempty"`
+	// SyncStateDir is where aw-sync's state was looked for.
+	SyncStateDir string `json:"syncStateDir"`
+	// Sync is aw-sync's own status, read as the developer from its state
+	// directory: enrollment, last cycle, drift. Nil when that directory
+	// could not be read, with SyncError saying why.
+	Sync      *sync.Report  `json:"sync,omitempty"`
+	SyncError string        `json:"syncError,omitempty"`
+	Agents    []agentStatus `json:"agents"`
 }
 
 type agentStatus struct {
@@ -173,7 +186,12 @@ func doctor(registry *agent.Registry, opts options, args []string) error {
 		return err
 	}
 
-	out := report{Wrapper: "aw", Policy: opts.policyPath}
+	stateDir := os.Getenv("AW_SYNC_STATE_DIR")
+	if stateDir == "" {
+		stateDir = sync.StateDir(runtime.GOOS)
+	}
+	out := report{Wrapper: "aw", Policy: opts.policyPath, SyncStateDir: stateDir}
+	out.Sync, out.SyncError = syncSection(stateDir)
 	for _, name := range registry.Names() {
 		status := agentStatus{Name: name}
 		adapter, err := registry.Lookup(name)
@@ -218,10 +236,55 @@ func doctor(registry *agent.Registry, opts options, args []string) error {
 	return nil
 }
 
+// syncSection reads aw-sync's state directory as the developer. A missing
+// directory is "not enrolled", which is a fact and not an error; a state
+// file that cannot be read is an error, so a half-installed machine is
+// visible rather than reported as clean.
+func syncSection(stateDir string) (*sync.Report, string) {
+	r, err := sync.Status(sync.Config{StateDir: stateDir})
+	if err != nil {
+		return nil, err.Error()
+	}
+	return &r, ""
+}
+
+// age says how long ago at was, coarsely: seconds under a minute, Go's
+// duration form up to a day, then days and hours. A zero time is "never".
+func age(at, now time.Time) string {
+	if at.IsZero() {
+		return "never"
+	}
+	d := now.Sub(at).Truncate(time.Second)
+	if d >= 24*time.Hour {
+		days := d / (24 * time.Hour)
+		hours := (d % (24 * time.Hour)) / time.Hour
+		return fmt.Sprintf("%dd%dh ago", days, hours)
+	}
+	return d.String() + " ago"
+}
+
 func printReport(r report) {
 	fmt.Printf("wrapper: %s\n", r.Wrapper)
 	if r.Policy != "" {
 		fmt.Printf("policy:  %s\n", r.Policy)
+	}
+	fmt.Printf("sync:    %s\n", r.SyncStateDir)
+	switch {
+	case r.SyncError != "":
+		fmt.Printf("  error:  %s\n", r.SyncError)
+	case !r.Sync.Enrolled:
+		fmt.Println("  not enrolled: aw-sync has not run on this machine")
+	default:
+		fmt.Printf("  machine: %s at %s\n", orNone(r.Sync.MachineID), orNone(r.Sync.Server))
+		fmt.Printf("  synced:  %s, version %s\n", age(r.Sync.SyncedAt, time.Now()), orNone(r.Sync.Version))
+		if r.Sync.Error != "" {
+			fmt.Printf("  error:   %s\n", r.Sync.Error)
+		}
+		for _, f := range r.Sync.Files {
+			if f.State != "ok" {
+				fmt.Printf("  %-8s %s\n", f.State+":", f.Path)
+			}
+		}
 	}
 	for _, a := range r.Agents {
 		fmt.Printf("\nagent %s\n", a.Name)
@@ -264,4 +327,12 @@ func addedEnv(base, launch []string) []string {
 		}
 	}
 	return out
+}
+
+// orNone makes an empty field visible in the plain report.
+func orNone(s string) string {
+	if s == "" {
+		return "none"
+	}
+	return s
 }

@@ -253,3 +253,42 @@ func TestAMissingPolicyFileIsReportedRatherThanIgnored(t *testing.T) {
 		t.Errorf("error %q does not name the missing policy file", out)
 	}
 }
+
+func TestDoctorReportsAwSyncState(t *testing.T) {
+	binDir := t.TempDir()
+	fakeAgent(t, binDir, "claude", "exit 0")
+	stateDir := t.TempDir()
+	state := `{"server":"http://awd.example","machineId":"m1","agents":["claude"],"etag":"","version":"v7","syncedAt":"2026-09-21T12:00:00Z","files":{},"error":"control plane unreachable","notes":[]}`
+	if err := os.WriteFile(filepath.Join(stateDir, "machine.json"), []byte(`{"server":"http://awd.example","machineId":"m1","credential":"c","agents":["claude"]}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(stateDir, "state.json"), []byte(state), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	env := append(baseEnv(t, binDir), "AW_SYNC_STATE_DIR="+stateDir)
+
+	out, code := run(t, env, "doctor", "--json")
+
+	if code != 0 {
+		t.Fatalf("exit code = %d, want 0. output:\n%s", code, out)
+	}
+	var report struct {
+		SyncStateDir string `json:"syncStateDir"`
+		Sync         struct {
+			Enrolled bool   `json:"enrolled"`
+			Version  string `json:"version"`
+			Error    string `json:"error"`
+		} `json:"sync"`
+	}
+	if err := json.Unmarshal([]byte(out), &report); err != nil {
+		t.Fatalf("doctor --json is not valid JSON: %v\n%s", err, out)
+	}
+	if report.SyncStateDir != stateDir || !report.Sync.Enrolled || report.Sync.Version != "v7" || report.Sync.Error != "control plane unreachable" {
+		t.Errorf("sync section = %+v; want aw-sync's last cycle from state.json", report)
+	}
+
+	text, _ := run(t, env, "doctor")
+	if !strings.Contains(text, "version v7") || !strings.Contains(text, "control plane unreachable") {
+		t.Errorf("plain doctor output should show the last sync and its error:\n%s", text)
+	}
+}
