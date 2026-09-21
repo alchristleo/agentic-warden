@@ -30,8 +30,16 @@ line, the project and the user.
 That matters because the helper runs on `claude`, not on `aw claude`. A
 developer who bypasses the wrapper is still governed.
 
-Deploy the helper path once through MDM or a `managed-settings.json`; every
-change after that is a server-side decision.
+One caveat, deliberate for now: the helper honours `AW_POLICY_BUNDLE` and
+`AW_POLICY_CONFIG` from its environment so tests can point it at fixtures,
+and Claude Code hands it the developer's environment. A developer who sets
+them runs on their own file. Closing that (a build-time switch, or accepting
+only root-owned files) is tracked as follow-up work; until then the
+guarantee is against accident, not intent. Repo-scoped rules key on
+`.git/config`'s origin, which is also the developer's to edit.
+
+Install `aw-sync` and `aw-policy` once; `aw-sync` writes the drop-in that
+names the helper, and every change after that is a server-side decision.
 
 **A helper that exits non-zero, or emits settings that fail schema validation,
 makes Claude Code refuse to start.** The helper must therefore always exit 0.

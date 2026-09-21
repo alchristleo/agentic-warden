@@ -14,13 +14,22 @@ The token is single-use and expires in 24 hours by default.
 
 ## 2. Install the binary and enroll
 
+Before enrolling, install `aw-policy` too: after the first cycle the drop-in
+`aw-sync` writes names `/usr/local/bin/aw-policy`
+(`C:\Program Files\AgentWrapper\aw-policy.exe` on Windows), and if that
+binary is not there every `claude` launch refuses to start. See
+`deploy/managed-settings/README.md` for what ends up in Claude Code's system
+directory.
+
 Linux and macOS:
 
+    install -m 0755 aw-policy /usr/local/bin/aw-policy
     install -m 0755 aw-sync /usr/local/bin/aw-sync
     AW_SYNC_TOKEN=<token> sudo -E aw-sync enroll --server https://awd.example.com
 
-Windows (elevated): copy `aw-sync.exe` to `C:\Program Files\AgentWrapper\`
-and run `aw-sync.exe enroll --server https://awd.example.com --token <token>`.
+Windows (elevated): copy `aw-policy.exe` and `aw-sync.exe` to
+`C:\Program Files\AgentWrapper\` and run
+`aw-sync.exe enroll --server https://awd.example.com --token <token>`.
 
 Windows caveat: `machine.json`'s 0600 mode is a no-op there — Windows has no
 POSIX permission bits, so the file is only as protected as the directory it

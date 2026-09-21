@@ -4,6 +4,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/acme/agent-wrapper/internal/agent/claude"
 	"github.com/acme/agent-wrapper/internal/sync"
 )
 
@@ -61,5 +62,23 @@ func TestAgentRootRejectsAnUnknownAgent(t *testing.T) {
 	_, err := sync.AgentRoot("linux", "copilot")
 	if err == nil || !strings.Contains(err.Error(), "copilot") {
 		t.Errorf("err = %v, want one naming the agent", err)
+	}
+}
+
+// TestClaudeRootMatchesTheAdaptersSystemDir pins the two copies of Claude
+// Code's system directory table together: aw-sync writes with
+// sync.AgentRoot and aw-policy reads with claude.SystemDir. If they ever
+// disagreed, the helper would silently emit "{}" on the machines this
+// table got wrong, while `aw-sync status` kept reporting every file ok.
+func TestClaudeRootMatchesTheAdaptersSystemDir(t *testing.T) {
+	t.Setenv("ProgramData", "")
+	for _, goos := range []string{"linux", "darwin", "windows"} {
+		got, err := sync.AgentRoot(goos, "claude")
+		if err != nil {
+			t.Fatalf("AgentRoot(%s, claude): %v", goos, err)
+		}
+		if want := claude.SystemDir(goos); got != want {
+			t.Errorf("AgentRoot(%s, claude) = %q, want %q to match claude.SystemDir", goos, got, want)
+		}
 	}
 }

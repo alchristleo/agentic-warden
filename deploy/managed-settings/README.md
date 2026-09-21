@@ -15,9 +15,12 @@ directory and why.
 Three files live there:
 
 1. `managed-settings.d/50-agent-wrapper.json` — the drop-in that names the
-   helper. `aw-sync` writes it on every cycle; the copies under `unix/` and
-   `windows/` here are the same content, for a machine that is provisioned
-   by MDM before `aw-sync` first runs, and a test keeps them identical.
+   helper. `aw-sync` writes it whenever it renders: on the first cycle, on
+   every bundle change, and on any cycle that repairs drift; a cycle the
+   control plane answers with 304 leaves it as it is. The copies under
+   `unix/` and `windows/` here are the same content, for a machine that is
+   provisioned by MDM before `aw-sync` first runs, and a test keeps them
+   identical.
 2. `aw-bundle.json` — the enrolled user's bundle, written by `aw-sync`,
    mode 0644. It is the organization's policy, not a secret.
 3. `aw-policy.json` — the helper's own configuration. Optional. One key:
