@@ -52,6 +52,11 @@ type Adapter struct {
 	ProjectDir string
 	// CacheDir overrides where generated settings are written.
 	CacheDir string
+	// SystemDir overrides the directory Claude Code reads managed settings
+	// from on this OS.
+	SystemDir string
+	// ConfigDir overrides ~/.claude, or $CLAUDE_CONFIG_DIR.
+	ConfigDir string
 }
 
 // New returns an adapter with the defaults a developer's machine implies.

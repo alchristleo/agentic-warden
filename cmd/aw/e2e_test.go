@@ -125,6 +125,43 @@ func TestDoctorJSONIsMachineReadable(t *testing.T) {
 	}
 }
 
+func TestDoctorReportsHowTheAgentIsGoverned(t *testing.T) {
+	// Whatever this machine's state, doctor says something about the
+	// enforcement path: a helper it found, or a warning that there is none.
+	binDir := t.TempDir()
+	fakeAgent(t, binDir, "claude", "exit 0")
+
+	out, code := run(t, baseEnv(t, binDir), "doctor", "--json")
+
+	if code != 0 {
+		t.Fatalf("exit code = %d, want 0. output:\n%s", code, out)
+	}
+	var report struct {
+		Agents []struct {
+			Findings []struct {
+				Level   string `json:"level"`
+				Message string `json:"message"`
+			} `json:"findings"`
+		} `json:"agents"`
+	}
+	if err := json.Unmarshal([]byte(out), &report); err != nil {
+		t.Fatalf("doctor --json is not valid JSON: %v\n%s", err, out)
+	}
+	if len(report.Agents) == 0 || len(report.Agents[0].Findings) == 0 {
+		t.Fatalf("report has no findings for the agent:\n%s", out)
+	}
+	for _, f := range report.Agents[0].Findings {
+		if f.Level == "" || f.Message == "" {
+			t.Errorf("finding %+v is missing a level or message", f)
+		}
+	}
+
+	text, _ := run(t, baseEnv(t, binDir), "doctor")
+	if !strings.Contains(text, "policyHelper") {
+		t.Errorf("plain doctor output should mention the policyHelper status:\n%s", text)
+	}
+}
+
 func TestRunningAnAgentPassesItsExitCodeThrough(t *testing.T) {
 	binDir := t.TempDir()
 	fakeAgent(t, binDir, "claude", "exit 3")

@@ -3,8 +3,10 @@ package handler_test
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -273,5 +275,31 @@ func TestResponsesAreJSON(t *testing.T) {
 
 	if got := resp.Header.Get("Content-Type"); got != "application/json" {
 		t.Errorf("Content-Type = %q, want %q", got, "application/json")
+	}
+}
+
+func TestApplyingARuleSetThatFailsManagedValidationIsRejected(t *testing.T) {
+	h := handler.New(store.NewMemory(), nil)
+	h.ManagedValidator = func(agentName string, managed map[string]any) error {
+		if agentName == "claude" && managed["model"] == 42.0 {
+			return errors.New("model must be a string")
+		}
+		return nil
+	}
+	srv := httptest.NewServer(h.Routes())
+	t.Cleanup(srv.Close)
+
+	resp := post(t, srv, "/v1/policy/revisions",
+		`{"version":"v1","rules":[{"name":"bad","agents":{"claude":{"managed":{"model":42}}}}]}`)
+
+	if resp.StatusCode != http.StatusUnprocessableEntity {
+		t.Fatalf("status = %d, want 422", resp.StatusCode)
+	}
+	var body map[string]string
+	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(body["error"], "model must be a string") {
+		t.Errorf("error %q should carry the validator's message to the author", body["error"])
 	}
 }

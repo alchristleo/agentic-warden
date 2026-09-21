@@ -118,3 +118,30 @@ func (r *Registry) namesLocked() []string {
 	sort.Strings(names)
 	return names
 }
+
+// Level grades a Finding.
+type Level string
+
+const (
+	// OK records something that is as it should be.
+	OK Level = "ok"
+	// Warn records something that silently weakens enforcement.
+	Warn Level = "warn"
+	// Error records something that will break launches.
+	Error Level = "error"
+)
+
+// Finding is one thing an Inspector noticed about the machine.
+type Finding struct {
+	Level   Level  `json:"level"`
+	Message string `json:"message"`
+}
+
+// Inspector is implemented by adapters that can check how their agent is
+// governed on this machine, beyond what a computed launch shows: whether the
+// enforcement path is wired up, and whether something shadows it.
+type Inspector interface {
+	// Inspect examines the machine as env (nil means os.Environ) describes
+	// it and reports what it found. It runs nothing.
+	Inspect(env []string) []Finding
+}

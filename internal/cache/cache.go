@@ -49,27 +49,42 @@ func Write(dir, prefix, ext string, data []byte) (string, error) {
 		return path, nil
 	}
 
-	temp, err := os.CreateTemp(dir, name+".tmp-*")
+	if err := Replace(path, data); err != nil {
+		return "", err
+	}
+	return path, nil
+}
+
+// Replace writes data to path atomically, creating the parent directory when
+// needed: the bytes land in a temporary file beside path and are renamed over
+// it, so a concurrent reader sees the old file or the new one, never a
+// partial write. The file is private to the user.
+func Replace(path string, data []byte) error {
+	dir := filepath.Dir(path)
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		return fmt.Errorf("cache: creating %s: %w", dir, err)
+	}
+	temp, err := os.CreateTemp(dir, filepath.Base(path)+".tmp-*")
 	if err != nil {
-		return "", fmt.Errorf("cache: creating a temporary file in %s: %w", dir, err)
+		return fmt.Errorf("cache: creating a temporary file in %s: %w", dir, err)
 	}
 	tempPath := temp.Name()
 	defer os.Remove(tempPath) // no-op once the rename succeeds
 
 	if _, err := temp.Write(data); err != nil {
 		temp.Close()
-		return "", fmt.Errorf("cache: writing %s: %w", tempPath, err)
+		return fmt.Errorf("cache: writing %s: %w", tempPath, err)
 	}
 	if err := temp.Close(); err != nil {
-		return "", fmt.Errorf("cache: closing %s: %w", tempPath, err)
+		return fmt.Errorf("cache: closing %s: %w", tempPath, err)
 	}
 	if err := os.Chmod(tempPath, 0o600); err != nil {
-		return "", fmt.Errorf("cache: setting permissions on %s: %w", tempPath, err)
+		return fmt.Errorf("cache: setting permissions on %s: %w", tempPath, err)
 	}
 	if err := os.Rename(tempPath, path); err != nil {
-		return "", fmt.Errorf("cache: publishing %s: %w", path, err)
+		return fmt.Errorf("cache: publishing %s: %w", path, err)
 	}
-	return path, nil
+	return nil
 }
 
 // Prune deletes files in dir last modified longer ago than maxAge. A missing

@@ -1,6 +1,7 @@
 package policy_test
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -167,5 +168,46 @@ func TestTheShippedExamplePolicyIsValid(t *testing.T) {
 	}
 	if got := doc.Agent("claude").Managed["model"]; got != "opus" {
 		t.Errorf("model = %v, want the example's group rule to apply", got)
+	}
+}
+
+func TestValidateRunsTheManagedValidatorPerAgent(t *testing.T) {
+	set := policy.RuleSet{Version: "v1", Rules: []policy.Rule{
+		{Name: "baseline", Agents: map[string]policy.AgentConfig{
+			"claude": {Managed: map[string]any{"model": "opus"}},
+		}},
+		{Name: "payments", Agents: map[string]policy.AgentConfig{
+			"claude": {Managed: map[string]any{"permissions": "broken"}},
+		}},
+	}}
+	validator := func(agentName string, managed map[string]any) error {
+		if _, broken := managed["permissions"].(string); broken {
+			return errors.New("permissions must be an object")
+		}
+		return nil
+	}
+
+	err := set.Validate(validator)
+
+	if err == nil {
+		t.Fatal("Validate() = nil, want the validator's error")
+	}
+	for _, want := range []string{"payments", "claude", "permissions must be an object"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("error %q should mention %s so the author can find the rule", err, want)
+		}
+	}
+}
+
+func TestLoadRuleSetPassesValidatorsThrough(t *testing.T) {
+	path := writeRuleSet(t, "policy.yaml", authoredYAML)
+	calls := 0
+	validator := func(string, map[string]any) error { calls++; return nil }
+
+	if _, err := policy.LoadRuleSet(path, validator); err != nil {
+		t.Fatalf("LoadRuleSet() error = %v", err)
+	}
+	if calls != 2 {
+		t.Errorf("validator ran %d times, want once per agent config (2)", calls)
 	}
 }

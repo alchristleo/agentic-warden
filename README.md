@@ -10,11 +10,15 @@ Status: early. Claude Code is the only agent implemented.
 
 Claude Code already ships a lot of what an organization needs: managed settings
 files, MDM delivery, server-managed settings from the claude.ai console,
-`managedMcpServers`, sandboxing, and OpenTelemetry. What it does not offer is
-**per-group targeting** (server-managed settings apply uniformly to the whole
-organization), identity-bound short-lived credentials, or enforced per-team
-budgets. This project fills those gaps, on an agent-agnostic interface so other
-agents can follow.
+`managedMcpServers`, sandboxing, and OpenTelemetry. Anthropic's self-hosted
+Claude apps gateway adds SSO, per-IdP-group managed settings and spend limits
+for organizations that bring their own API key or cloud provider.
+
+What remains uncovered: **per-repository targeting**, per-group policy for
+organizations on claude.ai seats (the console cannot target a group, and the
+gateway needs an upstream credential), and any agent that is not Claude Code.
+This project fills those gaps, on an agent-agnostic interface so other agents
+can follow.
 
 ## How policy reaches the agent
 
@@ -34,12 +38,30 @@ makes Claude Code refuse to start.** The helper must therefore always exit 0,
 falling back to its cached policy. That contract is the highest-severity path
 in the project.
 
+`aw-policy` is that helper. On every launch it asks the control plane for the
+policy compiled for this user's groups and this repository, validates the
+result against the published Claude Code settings schema, caches it, and
+prints it. When the control plane is unreachable it prints the cached policy;
+when there is no cache it prints an envelope with no settings, which leaves
+the static `managed-settings.json` in force. It exits non-zero only when the
+organization sets `requireFresh`. Every run appends one line to a local audit
+log. `deploy/managed-settings/` has the install templates.
+
+Server-managed settings from the claude.ai console shadow the helper
+entirely, so an organization uses one channel or the other; `aw doctor`
+detects the collision.
+
 ## Layout
 
     cmd/aw/           wrapper CLI: run an agent, doctor, agents
+    cmd/aw-policy/    the policyHelper executable
     cmd/awd/          control plane: serve, apply
+    deploy/           managed-settings install templates
     internal/agent/   Adapter interface, registry, Prepare/Launch/Exec
+    internal/agent/claude/schema/  vendored settings schema and validation
+    internal/policyhelper/  what aw-policy does: fetch, validate, cache, emit
     internal/policy/  rules, targeting, compilation, YAML/JSON authoring
+    internal/repo/    which repository a directory is in, from .git/config
     internal/merge/   settings deep-merge and environment merge
     internal/decide/  tool-call decisions; the seam for a semantic decider
     internal/store/   policy revisions (in-memory and Postgres)
@@ -59,6 +81,14 @@ Run the control plane and apply a policy:
 Fetch what a given developer would get:
 
     curl 'http://127.0.0.1:8080/v1/policy?group=platform&repo=github.com/acme/payments-api'
+
+Run the policy helper the way Claude Code would, against that server:
+
+    go build -o aw-policy ./cmd/aw-policy
+    echo '{"serverUrl":"http://127.0.0.1:8080","groups":["platform"]}' > aw-policy.json
+    AW_POLICY_CONFIG=$PWD/aw-policy.json ./aw-policy
+
+Stop `awd` and run it again: the same policy comes back from the cache.
 
 Inspect what the wrapper would run, without running it:
 

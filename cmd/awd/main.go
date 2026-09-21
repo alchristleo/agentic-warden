@@ -25,6 +25,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/acme/agent-wrapper/internal/agent/claude/schema"
 	"github.com/acme/agent-wrapper/internal/config"
 	"github.com/acme/agent-wrapper/internal/handler"
 	"github.com/acme/agent-wrapper/internal/policy"
@@ -87,6 +88,7 @@ func serve() error {
 	}
 
 	h := handler.New(backing, log)
+	h.ManagedValidator = schema.ForAgent
 	srv := &http.Server{
 		Handler:      h.Routes(),
 		ReadTimeout:  cfg.ReadTimeout,
@@ -180,7 +182,7 @@ func apply(argv []string) error {
 
 	// Validating locally first means an author sees the problem with their
 	// file rather than a status code from a server.
-	ruleSet, err := policy.LoadRuleSet(path)
+	ruleSet, err := policy.LoadRuleSet(path, schema.ForAgent)
 	if err != nil {
 		return err
 	}

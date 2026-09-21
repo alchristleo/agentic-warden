@@ -1,0 +1,7 @@
+{
+  "policyHelper": {
+    "path": "C:\\Program Files\\AgentWrapper\\aw-policy.exe",
+    "timeoutMs": 5000,
+    "refreshIntervalMs": 300000
+  }
+}

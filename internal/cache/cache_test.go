@@ -135,3 +135,35 @@ func TestDirIsNamespacedPerAgent(t *testing.T) {
 		t.Errorf("Dir(%q) = %q, want the agent name in the path", "claude", claude)
 	}
 }
+
+func TestReplaceSwapsTheFileWhole(t *testing.T) {
+	// A reader that opens the file during a write must see either the old
+	// content or the new, never a truncated middle.
+	path := filepath.Join(t.TempDir(), "nested", "policy.json")
+
+	if err := cache.Replace(path, []byte("first")); err != nil {
+		t.Fatalf("Replace() error = %v", err)
+	}
+	if err := cache.Replace(path, []byte("second")); err != nil {
+		t.Fatalf("Replace() error = %v", err)
+	}
+
+	got, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(got) != "second" {
+		t.Errorf("content = %q, want %q", got, "second")
+	}
+	entries, err := os.ReadDir(filepath.Dir(path))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(entries) != 1 {
+		t.Errorf("directory holds %d entries, want 1: no temp file may be left behind", len(entries))
+	}
+	info, _ := os.Stat(path)
+	if info.Mode().Perm() != 0o600 {
+		t.Errorf("mode = %o, want 0600: a policy cache is the developer's alone", info.Mode().Perm())
+	}
+}

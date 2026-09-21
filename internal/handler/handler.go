@@ -30,6 +30,11 @@ type Handler struct {
 	// Now supplies the current time. Tests replace it to make stored
 	// revisions deterministic.
 	Now func() time.Time
+	// ManagedValidator checks each rule's managed settings in the agent's
+	// own schema when a revision is applied, so a document that would make
+	// an agent refuse to start is rejected here, in front of the author,
+	// rather than discovered on a developer's machine. Nil skips the check.
+	ManagedValidator policy.ManagedValidator
 }
 
 // New builds a Handler. A nil logger falls back to the default one.
@@ -121,6 +126,12 @@ func (h *Handler) postRevision(w http.ResponseWriter, r *http.Request) {
 	if err := decoder.Decode(&ruleSet); err != nil {
 		writeError(w, http.StatusBadRequest, "the request body is not a valid rule set: "+err.Error())
 		return
+	}
+	if h.ManagedValidator != nil {
+		if err := ruleSet.Validate(h.ManagedValidator); err != nil {
+			writeError(w, http.StatusUnprocessableEntity, err.Error())
+			return
+		}
 	}
 
 	revision := model.Revision{

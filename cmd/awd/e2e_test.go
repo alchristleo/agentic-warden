@@ -194,6 +194,34 @@ func TestApplyRejectsAnInvalidPolicyBeforeSendingIt(t *testing.T) {
 	}
 }
 
+func TestApplyRejectsClaudeSettingsThatBreakTheSchema(t *testing.T) {
+	// Emitted by the policy helper, these settings would make Claude Code
+	// refuse to start on every machine the rule reaches. The author must
+	// hear about it here, from the server as well as the local check.
+	s := startServer(t)
+	path := writePolicy(t, "version: v1\nrules:\n  - name: baseline\n    agents:\n      claude:\n        managed:\n          permissions:\n            deny: Read(./.env)\n")
+
+	out, code := runAwd(t, "apply", path, "--url", s.url)
+
+	if code == 0 {
+		t.Fatalf("apply exited 0, want non-zero for a schema violation: %s", out)
+	}
+	if !strings.Contains(out, "/permissions/deny") {
+		t.Errorf("output %q does not name the offending setting", out)
+	}
+
+	// The server enforces the same rule for a client that skipped the check.
+	body := `{"version":"v2","rules":[{"name":"b","agents":{"claude":{"managed":{"permissions":{"deny":"x"}}}}}]}`
+	resp, err := http.Post(s.url+"/v1/policy/revisions", "application/json", strings.NewReader(body))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusUnprocessableEntity {
+		t.Errorf("server status = %d, want 422", resp.StatusCode)
+	}
+}
+
 func TestApplyReportsAConflictOnAResubmittedVersion(t *testing.T) {
 	s := startServer(t)
 	path := writePolicy(t, policyYAML)

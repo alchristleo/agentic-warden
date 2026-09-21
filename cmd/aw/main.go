@@ -160,6 +160,9 @@ type agentStatus struct {
 	// Env lists only the variables this launch adds or changes, which is the
 	// part worth reading.
 	Env []string `json:"injected_env,omitempty"`
+	// Findings is what the adapter noticed about how the agent is governed
+	// on this machine, for adapters that can tell.
+	Findings []agent.Finding `json:"findings,omitempty"`
 }
 
 func doctor(registry *agent.Registry, opts options, args []string) error {
@@ -183,6 +186,9 @@ func doctor(registry *agent.Registry, opts options, args []string) error {
 			status.Error = err.Error()
 		} else {
 			status.Binary = binary
+		}
+		if inspector, ok := adapter.(agent.Inspector); ok {
+			status.Findings = inspector.Inspect(nil)
 		}
 		launch, err := agent.Prepare(context.Background(), registry, agent.Options{
 			Agent:    name,
@@ -221,6 +227,9 @@ func printReport(r report) {
 		fmt.Printf("\nagent %s\n", a.Name)
 		if a.Binary != "" {
 			fmt.Printf("  binary: %s\n", a.Binary)
+		}
+		for _, f := range a.Findings {
+			fmt.Printf("  %-5s   %s\n", f.Level+":", f.Message)
 		}
 		if a.Error != "" {
 			fmt.Printf("  error:  %s\n", a.Error)
