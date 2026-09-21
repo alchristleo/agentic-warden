@@ -170,6 +170,57 @@ func TestRunWritesEveryRenderedFileAndRecordsState(t *testing.T) {
 	}
 }
 
+func TestRunRepairsDriftEvenWhenTheETagStillMatches(t *testing.T) {
+	f := newFakeAwd(t, testBundle())
+	cfg, root := enrolled(t, f, claudeRegistry(t), "claude")
+	if res := sync.Run(context.Background(), cfg); res.Err != nil {
+		t.Fatal(res.Err)
+	}
+
+	bundlePath := filepath.Join(root, claude.BundleFile)
+	dropInPath := filepath.Join(root, claude.DropInFile)
+	if err := os.WriteFile(bundlePath, []byte("{}\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Remove(dropInPath); err != nil {
+		t.Fatal(err)
+	}
+
+	// The bundle on the server has not changed, so a naive conditional fetch
+	// would get a 304 and leave the tampered/missing files as they are.
+	res := sync.Run(context.Background(), cfg)
+	if res.Err != nil {
+		t.Fatal(res.Err)
+	}
+	if res.Unchanged {
+		t.Error("Run reported Unchanged although the files on disk had drifted")
+	}
+	if len(res.Written) != 2 {
+		t.Errorf("Written = %v, want both files rewritten", res.Written)
+	}
+
+	var written policy.Bundle
+	if err := json.Unmarshal(mustRead(t, bundlePath), &written); err != nil {
+		t.Fatal(err)
+	}
+	if written.Version != "v1" {
+		t.Errorf("bundle on disk = %+v, want the repaired render", written)
+	}
+	if _, err := os.Stat(dropInPath); err != nil {
+		t.Errorf("the drop-in was not rewritten: %v", err)
+	}
+
+	found := false
+	for _, n := range res.Notes {
+		if strings.Contains(n, "drift detected") {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("notes = %v, want a note about the detected drift", res.Notes)
+	}
+}
+
 func TestRunIsANoOpOn304(t *testing.T) {
 	f := newFakeAwd(t, testBundle())
 	cfg, root := enrolled(t, f, claudeRegistry(t), "claude")
@@ -349,6 +400,45 @@ func TestRunRequiresEnrollment(t *testing.T) {
 	}
 }
 
+// escapingRenderer returns a file path that escapes the agent's root, to
+// prove Run refuses to write outside it.
+type escapingRenderer struct{}
+
+func (escapingRenderer) Name() string                    { return "escaping" }
+func (escapingRenderer) Locate([]string) (string, error) { return "", errors.New("not installed") }
+func (escapingRenderer) Build(context.Context, agent.BuildOptions) (*agent.Launch, error) {
+	return nil, errors.New("not buildable")
+}
+func (escapingRenderer) Render(*policy.Bundle) (agent.Rendering, error) {
+	return agent.Rendering{Files: []agent.File{{Path: "../escape.json", Content: []byte("{}"), Mode: 0o644}}}, nil
+}
+
+func TestRunRejectsAnUnsafeRendererPath(t *testing.T) {
+	f := newFakeAwd(t, testBundle())
+	cfg, root := enrolled(t, f, claudeRegistry(t, escapingRenderer{}), "escaping")
+	cfg.Roots["escaping"] = filepath.Join(t.TempDir(), "escaping-root")
+	res := sync.Run(context.Background(), cfg)
+	if res.Err == nil || !strings.Contains(res.Err.Error(), "unsafe path") {
+		t.Fatalf("err = %v, want an unsafe path error", res.Err)
+	}
+	if entries, _ := os.ReadDir(root); len(entries) != 0 {
+		t.Errorf("root has %d entries, want none", len(entries))
+	}
+	if _, err := os.Stat(filepath.Join(filepath.Dir(cfg.Roots["escaping"]), "escape.json")); !errors.Is(err, os.ErrNotExist) {
+		t.Error("the escaping path was written outside the agent root")
+	}
+}
+
+func TestRunWithoutARegistryFailsCleanly(t *testing.T) {
+	f := newFakeAwd(t, testBundle())
+	cfg, _ := enrolled(t, f, claudeRegistry(t), "claude")
+	cfg.Registry = nil
+	res := sync.Run(context.Background(), cfg)
+	if res.Err == nil || !strings.Contains(res.Err.Error(), "no adapter registry") {
+		t.Errorf("err = %v, want a clean error naming the missing registry", res.Err)
+	}
+}
+
 func TestRunRejectsAnAgentWithoutARenderer(t *testing.T) {
 	f := newFakeAwd(t, testBundle())
 	cfg, _ := enrolled(t, f, claudeRegistry(t), "codex")
@@ -369,6 +459,39 @@ func TestRunCarriesRendererNotesIntoState(t *testing.T) {
 	state, _ := sync.LoadState(cfg.StateDir)
 	if len(state.Notes) != 1 || !strings.Contains(state.Notes[0], "not enforceable") {
 		t.Errorf("notes = %v", state.Notes)
+	}
+}
+
+func TestRunDoesNotAccumulateNotesInStateAcrossFailures(t *testing.T) {
+	f := newFakeAwd(t, testBundle())
+	// notingRenderer is listed before brokenRenderer so it renders (and
+	// reports a note) before the cycle fails on the broken one.
+	cfg, _ := enrolled(t, f, claudeRegistry(t, notingRenderer{}, brokenRenderer{}), "noting", "broken")
+	cfg.Roots["noting"] = filepath.Join(t.TempDir(), "noting-root")
+
+	res := sync.Run(context.Background(), cfg)
+	if res.Err == nil {
+		t.Fatal("want an error: the broken renderer always fails")
+	}
+	first, _ := sync.LoadState(cfg.StateDir)
+
+	res = sync.Run(context.Background(), cfg)
+	if res.Err == nil {
+		t.Fatal("want an error on the second cycle too")
+	}
+	second, _ := sync.LoadState(cfg.StateDir)
+
+	if len(second.Notes) != len(first.Notes) {
+		t.Errorf("state.Notes grew across failing cycles: first %v, second %v", first.Notes, second.Notes)
+	}
+	found := false
+	for _, n := range res.Notes {
+		if strings.Contains(n, "not enforceable") {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("Result.Notes = %v, want this cycle's renderer note reported", res.Notes)
 	}
 }
 

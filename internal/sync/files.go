@@ -43,6 +43,17 @@ type Machine struct {
 
 // State is what the last cycle left behind.
 type State struct {
+	// Server, MachineID and Agents mirror the enrollment's non-secret
+	// facts, so `status` can report them without reading machine.json,
+	// which is 0600 and a developer running `status` cannot read. Every
+	// cycle keeps these in step with the enrollment, on every path
+	// (success, 304, or failure).
+	Server string `json:"server,omitempty"`
+	// MachineID is what the control plane calls this machine.
+	MachineID string `json:"machineId,omitempty"`
+	// Agents names the adapters this machine renders. Never nil once
+	// saved, so a reader in any language sees a list, not null.
+	Agents []string `json:"agents"`
 	// ETag is the bundle's entity tag, sent back as If-None-Match.
 	ETag string `json:"etag,omitempty"`
 	// Version is the policy revision last rendered.
@@ -89,10 +100,20 @@ func LoadMachine(dir string) (Machine, error) {
 	return m, nil
 }
 
-// SaveMachine writes the enrollment, private to the owner.
+// SaveMachine writes the enrollment, private to the owner. The directory is
+// created (or widened) to 0755 first: ReplaceMode would otherwise create it
+// 0700 to match machine.json's own 0600, and a 0700 state directory hides
+// state.json and the audit log from the developer running `status` even
+// though those files are themselves world-readable.
 func SaveMachine(dir string, m Machine) error {
 	if m.Agents == nil {
 		m.Agents = make([]string, 0)
+	}
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return fmt.Errorf("sync: creating %s: %w", dir, err)
+	}
+	if err := os.Chmod(dir, 0o755); err != nil {
+		return fmt.Errorf("sync: %w", err)
 	}
 	raw, err := json.MarshalIndent(m, "", "  ")
 	if err != nil {
@@ -131,6 +152,9 @@ func SaveState(dir string, s State) error {
 	}
 	if s.Notes == nil {
 		s.Notes = make([]string, 0)
+	}
+	if s.Agents == nil {
+		s.Agents = make([]string, 0)
 	}
 	raw, err := json.MarshalIndent(s, "", "  ")
 	if err != nil {

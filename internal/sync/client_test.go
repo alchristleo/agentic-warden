@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -35,6 +36,28 @@ func TestEnrollPostsTheTokenAndReturnsTheCredential(t *testing.T) {
 	}
 	if got["token"] != "tok" || got["name"] != "host1" || got["os"] != "linux" {
 		t.Errorf("request body = %v", got)
+	}
+	if e.MachineID != "m1" || e.Credential != "c1" || e.User != "alice@acme.com" {
+		t.Errorf("enrollment = %+v", e)
+	}
+}
+
+func TestEnrollDecodesASuccessBodyLargerThanTheErrorCap(t *testing.T) {
+	// maxErrorBody is 4096 bytes; the enrollment payload itself is small,
+	// so pad it past that with a long unknown field to prove the 201 path
+	// does not truncate the body before decoding it.
+	padding := strings.Repeat("x", 8192)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusCreated)
+		fmt.Fprintf(w, `{"machineId":"m1","credential":"c1","user":"alice@acme.com","padding":%q}`, padding)
+	}))
+	defer srv.Close()
+
+	c := &sync.Client{Server: srv.URL}
+	e, err := c.Enroll(context.Background(), "tok", "host1", "linux")
+	if err != nil {
+		t.Fatal(err)
 	}
 	if e.MachineID != "m1" || e.Credential != "c1" || e.User != "alice@acme.com" {
 		t.Errorf("enrollment = %+v", e)

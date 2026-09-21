@@ -37,6 +37,23 @@ func TestMachineRoundTripsAndIsPrivate(t *testing.T) {
 	}
 }
 
+func TestSaveMachineLeavesTheStateDirDeveloperReadable(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("unix file modes")
+	}
+	dir := filepath.Join(t.TempDir(), "state")
+	if err := sync.SaveMachine(dir, sync.Machine{Server: "http://awd", MachineID: "m1", Credential: "secret", Agents: []string{"claude"}}); err != nil {
+		t.Fatal(err)
+	}
+	info, err := os.Stat(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if info.Mode().Perm() != 0o755 {
+		t.Errorf("state dir mode = %o, want 0755: state.json and the audit log inside it are world-readable even though machine.json is not", info.Mode().Perm())
+	}
+}
+
 func TestLoadMachineWithoutEnrollmentIsErrNotEnrolled(t *testing.T) {
 	_, err := sync.LoadMachine(t.TempDir())
 	if !errors.Is(err, sync.ErrNotEnrolled) {
@@ -58,12 +75,15 @@ func TestLoadMachineRejectsAnIncompleteFile(t *testing.T) {
 func TestStateRoundTripsAndIsWorldReadable(t *testing.T) {
 	dir := filepath.Join(t.TempDir(), "state")
 	want := sync.State{
-		ETag:     `"abc"`,
-		Version:  "v1",
-		SyncedAt: time.Date(2026, 9, 21, 10, 0, 0, 0, time.UTC),
-		Files:    map[string]string{"/etc/claude-code/aw-bundle.json": "deadbeef"},
-		Error:    "",
-		Notes:    []string{"a note"},
+		Server:    "http://awd",
+		MachineID: "m1",
+		Agents:    []string{"claude"},
+		ETag:      `"abc"`,
+		Version:   "v1",
+		SyncedAt:  time.Date(2026, 9, 21, 10, 0, 0, 0, time.UTC),
+		Files:     map[string]string{"/etc/claude-code/aw-bundle.json": "deadbeef"},
+		Error:     "",
+		Notes:     []string{"a note"},
 	}
 	if err := sync.SaveState(dir, want); err != nil {
 		t.Fatal(err)

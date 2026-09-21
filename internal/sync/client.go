@@ -76,9 +76,22 @@ func (c *Client) Enroll(ctx context.Context, token, name, goos string) (Enrollme
 		return Enrollment{}, fmt.Errorf("sync: reaching the control plane at %s: %w", c.Server, err)
 	}
 	defer resp.Body.Close()
-	payload, _ := io.ReadAll(io.LimitReader(resp.Body, maxErrorBody))
+	// The body is read with the same cap as a bundle, not maxErrorBody: a
+	// successful enrollment's body must decode in full, and maxErrorBody
+	// applies only to the message built below for a non-201 response.
+	payload, err := io.ReadAll(io.LimitReader(resp.Body, maxBundleBytes+1))
+	if err != nil {
+		return Enrollment{}, fmt.Errorf("sync: reading the enrollment response: %w", err)
+	}
+	if len(payload) > maxBundleBytes {
+		return Enrollment{}, fmt.Errorf("sync: the enrollment response exceeds %d bytes", maxBundleBytes)
+	}
 	if resp.StatusCode != http.StatusCreated {
-		return Enrollment{}, fmt.Errorf("sync: enrollment refused: %s: %s", resp.Status, strings.TrimSpace(string(payload)))
+		msg := payload
+		if len(msg) > maxErrorBody {
+			msg = msg[:maxErrorBody]
+		}
+		return Enrollment{}, fmt.Errorf("sync: enrollment refused: %s: %s", resp.Status, strings.TrimSpace(string(msg)))
 	}
 	var e Enrollment
 	if err := json.Unmarshal(payload, &e); err != nil {

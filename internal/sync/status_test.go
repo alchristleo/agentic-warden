@@ -5,6 +5,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"runtime"
 	"sort"
 	"testing"
 
@@ -111,6 +112,32 @@ func TestStatusCarriesTheLastError(t *testing.T) {
 	}
 	if r.Error != "the control plane answered 500" {
 		t.Errorf("error = %q", r.Error)
+	}
+}
+
+func TestStatusReadsEnrollmentFactsFromState(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("unix file modes")
+	}
+	if os.Geteuid() == 0 {
+		t.Skip("root can read machine.json regardless of its mode")
+	}
+	cfg, _ := synced(t)
+	machinePath := filepath.Join(cfg.StateDir, sync.MachineFile)
+	if err := os.Chmod(machinePath, 0o000); err != nil {
+		t.Fatal(err)
+	}
+	defer os.Chmod(machinePath, 0o600)
+
+	r, err := sync.Status(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !r.Enrolled {
+		t.Error("Enrolled = false, want true: machine.json exists even though it cannot be read")
+	}
+	if r.MachineID != "m1" || r.Server == "" || len(r.Agents) != 1 || r.Agents[0] != "claude" {
+		t.Errorf("report = %+v, want the enrollment facts from state.json", r)
 	}
 }
 

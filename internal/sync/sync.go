@@ -5,12 +5,14 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io/fs"
 	"net/http"
 	"os"
 	"path/filepath"
 	"runtime"
+	"sort"
 	"strings"
 	"time"
 
@@ -79,6 +81,15 @@ func Run(ctx context.Context, cfg Config) Result {
 	if cfg.GOOS == "" {
 		cfg.GOOS = runtime.GOOS
 	}
+	if cfg.Registry == nil {
+		// Without a registry there is no adapter to look up, and reaching
+		// the lookup below would panic on a nil pointer. Audited the same
+		// way as ErrNotEnrolled: this is a caller misconfiguration, not a
+		// cycle that ran and failed.
+		res := Result{Written: make([]string, 0), Err: errors.New("sync: no adapter registry configured")}
+		cfg.audit(State{}, res)
+		return res
+	}
 
 	machine, err := LoadMachine(cfg.StateDir)
 	if err != nil {
@@ -95,9 +106,33 @@ func Run(ctx context.Context, cfg Config) Result {
 		notes = append(notes, "previous state discarded: "+err.Error())
 		state = State{}
 	}
+	// The enrollment's non-secret facts ride in state.json too, so `status`
+	// can report them without reading machine.json (0600). Every state this
+	// cycle saves, on any path, carries the current facts.
+	state.Server, state.MachineID, state.Agents = machine.Server, machine.MachineID, machine.Agents
+
+	// A file this process rendered may have been edited or deleted since:
+	// send an empty etag so the server cannot answer 304 and the cycle
+	// re-renders everything, repairing the drift. `once` overwrites drift
+	// unconditionally, so this check must run before the conditional fetch,
+	// not after a 304 short-circuits it.
+	etag := state.ETag
+	var driftPaths []string
+	for path, expected := range state.Files {
+		if st, _ := fileState(path, expected); st != "ok" {
+			driftPaths = append(driftPaths, path)
+		}
+	}
+	if len(driftPaths) > 0 {
+		sort.Strings(driftPaths)
+		etag = ""
+		for _, path := range driftPaths {
+			notes = append(notes, fmt.Sprintf("drift detected in %s; re-rendering", path))
+		}
+	}
 
 	client := &Client{Server: machine.Server, HTTP: cfg.HTTP}
-	fetched, err := client.Fetch(ctx, machine.Credential, state.ETag)
+	fetched, err := client.Fetch(ctx, machine.Credential, etag)
 	if err != nil {
 		return cfg.fail(state, notes, nil, nil, err)
 	}
@@ -134,6 +169,9 @@ func Run(ctx context.Context, cfg Config) Result {
 		}
 		notes = append(notes, rendering.Notes...)
 		for _, f := range rendering.Files {
+			if filepath.IsAbs(f.Path) || !filepath.IsLocal(f.Path) {
+				return cfg.fail(state, notes, nil, nil, fmt.Errorf("sync: renderer %s returned an unsafe path %q", name, f.Path))
+			}
 			planned = append(planned, plannedFile{path: filepath.Join(root, f.Path), content: f.Content, mode: f.Mode})
 		}
 	}
@@ -163,11 +201,14 @@ func Run(ctx context.Context, cfg Config) Result {
 		notes = make([]string, 0)
 	}
 	state = State{
-		ETag:     fetched.ETag,
-		Version:  version,
-		SyncedAt: cfg.Now().UTC(),
-		Files:    files,
-		Notes:    notes,
+		Server:    machine.Server,
+		MachineID: machine.MachineID,
+		Agents:    machine.Agents,
+		ETag:      fetched.ETag,
+		Version:   version,
+		SyncedAt:  cfg.Now().UTC(),
+		Files:     files,
+		Notes:     notes,
 	}
 	res := Result{Version: version, Written: written, Notes: notes}
 	if err := SaveState(cfg.StateDir, state); err != nil {
@@ -177,18 +218,19 @@ func Run(ctx context.Context, cfg Config) Result {
 	return res
 }
 
-// fail records err in the state without touching the last good etag or
-// version, since the cycle did not complete: `status` must still describe
-// the policy revision actually in force. partialFiles and partialWritten
-// describe files this cycle wrote to disk before the failure (nil when the
-// failure happened before any write); their hashes are merged into
-// state.Files so a file aw-sync itself just overwrote is never reported as
-// drift, and their paths are surfaced in Result.Written.
+// fail records err in the state without touching the last good etag,
+// version or notes, since the cycle did not complete: `status` must still
+// describe the policy revision actually in force. state.Notes is left as it
+// was (the last good cycle's notes), not extended with this cycle's notes,
+// so a machine stuck failing forever does not grow state.Notes without
+// bound; this cycle's own notes are reported in Result.Notes only.
+// partialFiles and partialWritten describe files this cycle wrote to disk
+// before the failure (nil when the failure happened before any write);
+// their hashes are merged into state.Files so a file aw-sync itself just
+// overwrote is never reported as drift, and their paths are surfaced in
+// Result.Written.
 func (cfg Config) fail(state State, notes []string, partialFiles map[string]string, partialWritten []string, err error) Result {
 	state.Error = err.Error()
-	if len(notes) > 0 {
-		state.Notes = append(append([]string{}, state.Notes...), notes...)
-	}
 	if len(partialFiles) > 0 {
 		merged := make(map[string]string, len(state.Files)+len(partialFiles))
 		for path, sum := range state.Files {
@@ -201,7 +243,7 @@ func (cfg Config) fail(state State, notes []string, partialFiles map[string]stri
 	}
 	written := make([]string, len(partialWritten))
 	copy(written, partialWritten)
-	res := Result{Version: state.Version, Written: written, Notes: state.Notes, Err: err}
+	res := Result{Version: state.Version, Written: written, Notes: notes, Err: err}
 	// A state write that fails is secondary to the failure being recorded;
 	// the audit line still says what happened.
 	_ = SaveState(cfg.StateDir, state)
