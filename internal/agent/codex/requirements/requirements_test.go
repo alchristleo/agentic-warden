@@ -45,8 +45,24 @@ func TestAValueTOMLCannotEncodeIsRejected(t *testing.T) {
 	// mis-encoded, and the author should hear about it at apply time.
 	err := requirements.Validate(map[string]any{"default_permissions": nil})
 
-	if err == nil {
-		t.Error("Validate = nil; want an error for a value that does not survive a TOML round trip")
+	if err == nil || !strings.Contains(err.Error(), "default_permissions") {
+		t.Errorf("err = %v; want an error naming the nil key", err)
+	}
+}
+
+func TestANestedNullIsRejectedWithItsPath(t *testing.T) {
+	err := requirements.Validate(map[string]any{"mcp_servers": map[string]any{"docs": map[string]any{"x": nil, "y": "ok"}}})
+
+	if err == nil || !strings.Contains(err.Error(), "mcp_servers.docs.x") {
+		t.Errorf("err = %v; want an error naming the nested nil path", err)
+	}
+}
+
+func TestANullInsideAListIsRejected(t *testing.T) {
+	err := requirements.Validate(map[string]any{"allowed_sandbox_modes": []any{"read-only", nil}})
+
+	if err == nil || !strings.Contains(err.Error(), "allowed_sandbox_modes[1]") {
+		t.Errorf("err = %v; want an error naming the null slice element", err)
 	}
 }
 
