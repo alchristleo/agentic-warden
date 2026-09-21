@@ -45,7 +45,12 @@ directory; it now reads a local bundle instead of the network.
 ```
 
 One network client per machine (`aw-sync`), one credential (the machine's).
-`aw-policy` does no I/O beyond reading two local files.
+`aw-policy` touches only local files: the bundle, `.git/config`, its optional
+configuration and its audit log.
+
+A machine is enrolled for one user. Shared hosts and CI runners enroll with
+a service user whose groups express what that host may do; per-developer
+policy on a shared host is out of scope for v1.
 
 ## Control plane
 
@@ -100,21 +105,38 @@ by accident. Machine auth is a bearer credential compared in constant time
 against the stored hash; `LastSeenAt` is touched on each fetch. TLS is the
 deployment's job and is documented, not built.
 
-`awd` CLI gains `enroll-token <user>`, `machines`, `revoke <id>`.
+`awd` CLI gains `enroll-token <user>`, `machines`, `revoke <id>`, all
+sending `AWD_ADMIN_TOKEN` as the bearer.
+
+Rule fragments for every agent are validated at apply time through
+`policy.ManagedValidator`, as Claude's are today: `awd serve` and `awd apply`
+register one validator per adapter (`schema.ForAgent` for Claude, the key
+allowlists for Codex and Gemini), so an unknown key fails in front of the
+author.
 
 ## aw-sync
 
 `cmd/aw-sync`, logic in `internal/sync`. Runs as root. Timer-driven, not a
 daemon: `once` is restart-safe and is what MDM tooling expects.
 
-- `aw-sync enroll --server URL --token T [--name host]`: enrolls, writes
-  `/etc/agent-wrapper/machine.json` `{server, machineId, credential}` mode
-  0600. Refuses to overwrite an existing enrollment without `--force`.
+- `aw-sync enroll --server URL --token T [--name host] [--agents claude,codex,gemini]`:
+  enrolls, writes `machine.json` `{server, machineId, credential, agents}`
+  mode 0600. `--agents` defaults to every registered adapter; a machine
+  without Codex installed lists only what it runs, so no directory is
+  created for an agent that is not there. Refuses to overwrite an existing
+  enrollment without `--force`.
 - `aw-sync once`: one cycle, exit 0 or 1.
 - `aw-sync status [--json]`: last sync, bundle version, per-agent files with
   hashes, drift, last error, renderer notes.
 - Timer units for systemd, launchd and Task Scheduler ship under
   `deploy/aw-sync/`. `install-timer` is deferred.
+
+State lives in a root-owned directory that other users can read, because
+`aw doctor` runs as the developer and reports from it:
+
+| | Linux | macOS | Windows |
+| --- | --- | --- | --- |
+| `machine.json` (0600) and `state.json` (0644) | `/var/lib/agent-wrapper/` | `/Library/Application Support/agent-wrapper/` | `C:\ProgramData\agent-wrapper\` |
 
 Cycle (`sync.Run(ctx, Config) Result`):
 
@@ -122,7 +144,8 @@ Cycle (`sync.Run(ctx, Config) Result`):
 2. `GET /v1/bundle` with `If-None-Match` from `state.json`. 304: done.
    Network error, 401 or 5xx: keep every file as it is, record the error,
    exit 1. **Rendered files are never deleted on failure.**
-3. Run every registered renderer. Each returns `[]agent.File`.
+3. Run the renderer of every agent named in `machine.json`. Each returns
+   `[]agent.File`.
 4. Validate every file before writing any. One failure means nothing is
    written this cycle, for any agent.
 5. Write all files with `cache.Replace`. TOML files carry a header comment
@@ -167,8 +190,20 @@ shows the note. Silent is not an option.
 
 ### Claude
 
-Writes `aw-bundle.json`: the bundle filtered to rules that mention `claude`,
-repo matchers intact. No compilation here.
+Writes two files:
+
+- `aw-bundle.json`: the bundle filtered to rules that mention `claude`, repo
+  matchers intact. No compilation here.
+- `managed-settings.d/50-agent-wrapper.json`: the static `policyHelper`
+  drop-in from `deploy/managed-settings/`, with the helper path for this OS.
+  It never changes, but having aw-sync own it means installing governance on
+  a machine is "install the binaries, enroll" and nothing else; MDM pushes no
+  per-agent files. `refreshIntervalMs` stays at 300000 so a running session
+  re-reads the bundle after a sync without a restart.
+
+Coexistence: server-managed settings from the claude.ai console, or a Claude
+apps gateway, shadow the helper entirely. An organization uses one channel or
+the other; `aw doctor` reports the collision, as it does today.
 
 ### Codex
 
@@ -180,6 +215,13 @@ vendored, dated allowlist of top-level keys from the requirements reference,
 plus a TOML round trip. An unknown key is an apply-time error, on the same
 path as Claude's schema check.
 
+Coexistence: Codex composes requirements from the system file (ours), then
+cloud-managed requirements from a ChatGPT Business or Enterprise workspace,
+then MDM, each overriding scalars and lists from the layer below. For an
+organization on a ChatGPT plan, a workspace admin's cloud policy therefore
+wins over ours on any key both set. Documented, not fought; for API-key
+organizations there is no cloud layer and ours is the policy.
+
 ### Gemini
 
 `managed` is `{settings: {...}, policies: [{...}]}`. `settings` renders to
@@ -188,6 +230,14 @@ by name, everything else replaces). `policies` renders to
 `policies/50-agent-wrapper.toml`, one `[[rule]]` per entry, appended across
 rules. Validation: JSON round trip, a top-level settings key allowlist, and
 each policy rule must carry `toolName` and `decision`.
+
+Known weakness: Gemini reads the system settings path from
+`GEMINI_CLI_SYSTEM_SETTINGS_PATH`, which a user can export to point elsewhere.
+The admin `policies/` directory has no such override. Gemini's own enterprise
+documentation recommends a wrapper script that pins the variable; the
+launch-time `aw gemini` adapter in a later milestone is that wrapper. Until
+then, put the rules that matter in `policies`, and treat `settings.json` as
+defaults.
 
 ## aw-policy, offline
 
@@ -248,12 +298,14 @@ aw-sync's `state.json`, and aw-sync's last error.
 One commit each, each leaving the suite green:
 
 - **M4a** — `groups` and `Slice`/`Bundle` in `policy`; machines and
-  enrollment in store and handler; admin auth; `awd enroll-token`.
-- **M4b** — `aw-policy` offline rewrite; doctor bundle finding.
-- **M4c** — Claude and Codex renderers; `aw-sync enroll`, `once`, `status`;
-  timer units under `deploy/aw-sync/`.
-- **M4d** — Gemini renderer; example policy with `codex` and `gemini`
-  blocks; README.
+  enrollment in store and handler; admin auth; `awd enroll-token`,
+  `machines`, `revoke`.
+- **M4b** — Claude renderer; `aw-sync enroll`, `once`, `status`; timer units
+  under `deploy/aw-sync/`. The milestone-3 `aw-policy` keeps fetching from
+  the network until the next commit, so the README flow never breaks.
+- **M4c** — `aw-policy` offline rewrite; doctor bundle finding; README.
+- **M4d** — Codex renderer and validator; example policy `codex` block.
+- **M4e** — Gemini renderer and validator; example policy `gemini` block.
 
 ## Out of scope, deliberately
 
