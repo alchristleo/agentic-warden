@@ -69,6 +69,11 @@ type Rule struct {
 type RuleSet struct {
 	// Version identifies this revision. Clients cache on it.
 	Version string `json:"version,omitempty"`
+	// Groups maps a user to the groups they belong to. It is authored with
+	// the rules and versioned with them, so a membership change is a policy
+	// revision like any other. An identity-provider sync can replace this
+	// map later without changing what a client receives.
+	Groups map[string][]string `json:"groups,omitempty"`
 	// Rules apply in order. A later rule overrides an earlier one per key, so
 	// the author controls precedence by ordering rather than by a priority
 	// field that has to be kept consistent.
@@ -92,24 +97,11 @@ func AgentMergeRules(agentName string) merge.Rules {
 }
 
 // Compile resolves the rule set for one subject into the document a client
-// applies. It never mutates the rule set, so the same RuleSet can serve
-// concurrent requests.
+// applies. It is the server-side slice followed by the client-side compile,
+// in one call, for callers that know the whole subject at once. It never
+// mutates the rule set, so the same RuleSet can serve concurrent requests.
 func (rs *RuleSet) Compile(s Subject) *Document {
-	if rs == nil {
-		return &Document{}
-	}
-	doc := &Document{Version: rs.Version}
-
-	for _, rule := range rs.Rules {
-		if !rule.Match.Matches(s) {
-			continue
-		}
-		doc.AppliedRules = append(doc.AppliedRules, rule.Name)
-		for agentName, config := range rule.Agents {
-			doc.mergeAgent(agentName, config)
-		}
-	}
-	return doc
+	return rs.Slice(s.Groups).Compile(s.Repo)
 }
 
 // mergeAgent layers one rule's contribution for a single agent on top of what

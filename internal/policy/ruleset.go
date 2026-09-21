@@ -44,6 +44,11 @@ func (rs *RuleSet) Validate(validators ...ManagedValidator) error {
 	if rs.Version == "" {
 		return fmt.Errorf("rule set has no version; clients cache on it, so every revision needs one")
 	}
+	for user := range rs.Groups {
+		if user == "" {
+			return fmt.Errorf("groups has an entry with no user")
+		}
+	}
 	seen := make(map[string]bool, len(rs.Rules))
 	for i, rule := range rs.Rules {
 		if rule.Name == "" {
