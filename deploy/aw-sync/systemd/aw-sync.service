@@ -1,0 +1,11 @@
+[Unit]
+Description=Sync agent governance files from the agent-wrapper control plane
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/aw-sync once
+# The state directory holds the machine credential; nothing else needs it.
+StateDirectory=agent-wrapper
+StateDirectoryMode=0755
