@@ -149,21 +149,32 @@ type Inspector interface {
 	Inspect(env []string) []Finding
 }
 
-// File is one file a Renderer produces. Path is relative to the agent's
-// system directory, which the caller supplies, so a renderer can be tested
-// into a temporary directory and deployed into /etc without knowing which.
+// File is one file a Renderer produces.
 type File struct {
-	Path    string
+	// Path is relative to the agent's system directory, which the caller
+	// supplies, so a renderer can be tested into a temporary directory and
+	// deployed into /etc without knowing which. It must stay inside that
+	// directory: the caller rejects an absolute path or one that escapes
+	// it via "..", since a renderer's bundle-derived input must never be
+	// able to point a write outside the tree the caller chose.
+	Path string
+	// Content is the file's exact bytes, already encoded in whatever
+	// format the agent reads; the caller writes it verbatim.
 	Content []byte
-	Mode    fs.FileMode
+	// Mode is the file's permission bits, chosen by the renderer because
+	// only it knows whether the file is safe to be world-readable.
+	Mode fs.FileMode
 }
 
-// Rendering is what a Renderer produced for one bundle: the files to write,
-// and a note for anything the bundle asked for that the agent's static files
-// cannot express, such as repository-scoped rules for an agent with no
-// per-launch hook. Silence about a dropped rule is not an option.
+// Rendering is what a Renderer produced for one bundle.
 type Rendering struct {
+	// Files are the files to write, each resolved against the agent's
+	// system directory by the caller.
 	Files []File
+	// Notes is a note for anything the bundle asked for that the agent's
+	// static files cannot express, such as repository-scoped rules for an
+	// agent with no per-launch hook. Silence about a dropped rule is not
+	// an option.
 	Notes []string
 }
 
@@ -172,6 +183,15 @@ type Rendering struct {
 // returns: an error means none of its files may be written, and the caller
 // then writes nothing for any agent that cycle, so the machine never carries
 // a half-applied policy.
+//
+// The operating system Render renders for is the adapter's own knob (for
+// example claude.Adapter.GOOS), set by the caller before calling Render; the
+// caller's own sync.Config.GOOS is a separate setting that only picks which
+// system directory each agent's files land in (see sync.AgentRoot). A
+// renderer must not read runtime.GOOS directly, or it would render for the
+// machine it happens to run on instead of the machine it is configured for,
+// which breaks cross-platform testing and any future case where the two
+// differ.
 type Renderer interface {
 	Render(bundle *policy.Bundle) (Rendering, error)
 }

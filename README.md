@@ -97,9 +97,9 @@ server and the CLI. Then enroll a machine and fetch its bundle:
     curl -s -H 'Authorization: Bearer <credential>' http://127.0.0.1:8080/v1/bundle
 
 The bundle is every rule that could apply to that user, with repository
-matchers still in it; the machine resolves those per session. `aw-sync`,
-which does the enrolling and the rendering on a real machine, is the next
-milestone.
+matchers still in it; the machine resolves those per session. `aw-sync` does
+the enrolling and the rendering on a real machine; see
+`deploy/aw-sync/README.md` for installing it.
 
 Fetch what a given developer would get:
 

@@ -29,7 +29,6 @@ func TestMain(m *testing.M) {
 	if err != nil {
 		panic(err)
 	}
-	defer os.RemoveAll(dir)
 	builtSync = filepath.Join(dir, "aw-sync")
 	builtAwd = filepath.Join(dir, "awd")
 	if out, err := exec.Command("go", "build", "-o", builtSync, ".").CombinedOutput(); err != nil {
@@ -38,7 +37,11 @@ func TestMain(m *testing.M) {
 	if out, err := exec.Command("go", "build", "-o", builtAwd, "../awd").CombinedOutput(); err != nil {
 		panic("building awd: " + err.Error() + "\n" + string(out))
 	}
-	os.Exit(m.Run())
+	// os.Exit does not run deferred calls, so the cleanup has to happen
+	// after m.Run returns and before Exit is called, not as a defer above.
+	code := m.Run()
+	os.RemoveAll(dir)
+	os.Exit(code)
 }
 
 type server struct {
@@ -202,6 +205,39 @@ func TestEnrollOnceStatusAndOutage(t *testing.T) {
 		}
 	}
 
+	// status works for a developer right after enroll, before any `once`
+	// has run: enroll wrote the non-secret enrollment facts into
+	// state.json, since machine.json is 0600 and a developer cannot read
+	// it.
+	stdout, stderr, code = runSync(t, nil, "status", "--json", "--state-dir", stateDir)
+	if code != 0 {
+		t.Fatalf("status right after enroll exited %d: %s%s", code, stdout, stderr)
+	}
+	var freshReport struct {
+		Enrolled  bool
+		MachineID string
+		Agents    []string
+	}
+	if err := json.Unmarshal([]byte(stdout), &freshReport); err != nil {
+		t.Fatalf("status --json is not JSON: %v\n%s", err, stdout)
+	}
+	if !freshReport.Enrolled || freshReport.MachineID == "" || len(freshReport.Agents) != 1 || freshReport.Agents[0] != "claude" {
+		t.Errorf("status right after enroll = %+v", freshReport)
+	}
+	if runtime.GOOS != "windows" && os.Geteuid() != 0 {
+		machinePath := filepath.Join(stateDir, "machine.json")
+		if err := os.Chmod(machinePath, 0o000); err != nil {
+			t.Fatal(err)
+		}
+		stdout, stderr, code = runSync(t, nil, "status", "--json", "--state-dir", stateDir)
+		if code != 0 {
+			t.Fatalf("status with an unreadable machine.json exited %d: %s%s", code, stdout, stderr)
+		}
+		if err := os.Chmod(machinePath, 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+
 	// A second enrollment is refused without --force, and the token is
 	// single-use anyway.
 	_, stderr, code = runSync(t, []string{"AW_SYNC_TOKEN=" + token},
@@ -263,13 +299,33 @@ func TestEnrollOnceStatusAndOutage(t *testing.T) {
 		t.Errorf("report = %+v", report)
 	}
 
-	// Drift is reported, then overwritten by the next cycle.
+	// Drift is reported, then repaired by the next cycle even though the
+	// bundle on the server has not changed: a naive conditional fetch
+	// would get a 304 for an unchanged bundle and leave the tampered file
+	// as it is, which is the bug C1 fixes.
 	if err := os.WriteFile(bundlePath, []byte("{}\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	stdout, _, _ = runSync(t, nil, "status", "--state-dir", stateDir)
 	if !strings.Contains(stdout, "drift") {
 		t.Errorf("status does not report drift:\n%s", stdout)
+	}
+	stdout, stderr, code = runSync(t, nil, "once", "--state-dir", stateDir, "--root", "claude="+claudeRoot)
+	if code != 0 {
+		t.Fatalf("once after drift exited %d: %s%s", code, stdout, stderr)
+	}
+	if got, _ := os.ReadFile(bundlePath); string(got) == "{}\n" {
+		t.Error("once did not repair the tampered bundle")
+	}
+	if _, err := os.Stat(filepath.Join(claudeRoot, "managed-settings.d", "50-agent-wrapper.json")); err != nil {
+		t.Errorf("drop-in not rewritten by the repair cycle: %v", err)
+	}
+
+	// Tamper again so the outage check below proves a failed fetch leaves
+	// a tampered file alone, not that the repair cycle above already fixed
+	// it.
+	if err := os.WriteFile(bundlePath, []byte("{}\n"), 0o644); err != nil {
+		t.Fatal(err)
 	}
 
 	// The server goes away: the cycle fails, the files stay.
@@ -290,6 +346,58 @@ func TestEnrollOnceStatusAndOutage(t *testing.T) {
 	}
 	if report.Error == "" || report.Version != "2026-09-21.e2e" {
 		t.Errorf("after the outage report = %+v; want the error recorded and the version kept", report)
+	}
+}
+
+func TestOnceResolvesARelativeRootAgainstTheWorkingDirectory(t *testing.T) {
+	s := startAwd(t)
+	applyPolicy(t, s)
+	stateDir := filepath.Join(t.TempDir(), "state")
+	token := mintToken(t, s, "alice@acme.com")
+	_, stderr, code := runSync(t, []string{"AW_SYNC_TOKEN=" + token},
+		"enroll", "--server", s.url, "--agents", "claude", "--state-dir", stateDir)
+	if code != 0 {
+		t.Fatalf("enroll exited %d: %s", code, stderr)
+	}
+
+	// --root is resolved with filepath.Abs before use, so a relative value
+	// must land under the process's working directory, not wherever the
+	// renderer happens to be invoked from.
+	workDir := t.TempDir()
+	cmd := exec.Command(builtSync, "once", "--state-dir", stateDir, "--root", "claude=relative-claude-root")
+	cmd.Dir = workDir
+	var out, errOut bytes.Buffer
+	cmd.Stdout, cmd.Stderr = &out, &errOut
+	if err := cmd.Run(); err != nil {
+		t.Fatalf("once exited: %v: %s%s", err, out.String(), errOut.String())
+	}
+	if _, err := os.Stat(filepath.Join(workDir, "relative-claude-root", "aw-bundle.json")); err != nil {
+		t.Errorf("a relative --root was not resolved against the working directory: %v", err)
+	}
+
+	// state.json must have recorded an absolute path: `status`, run here
+	// from a different working directory than `once` used, must still find
+	// the file and report it clean, not "missing".
+	stdout, stderr, code := runSync(t, nil, "status", "--json", "--state-dir", stateDir)
+	if code != 0 {
+		t.Fatalf("status exited %d: %s%s", code, stdout, stderr)
+	}
+	var report struct {
+		Files []struct{ Path, State string }
+	}
+	if err := json.Unmarshal([]byte(stdout), &report); err != nil {
+		t.Fatalf("status --json is not JSON: %v\n%s", err, stdout)
+	}
+	for _, f := range report.Files {
+		if !filepath.IsAbs(f.Path) {
+			t.Errorf("state.json recorded a relative path %q", f.Path)
+		}
+		if f.State != "ok" {
+			t.Errorf("file %s reports %q from a different working directory; --root was not made absolute", f.Path, f.State)
+		}
+	}
+	if len(report.Files) != 2 {
+		t.Errorf("report.Files = %v, want 2 entries", report.Files)
 	}
 }
 

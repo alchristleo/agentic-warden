@@ -22,8 +22,17 @@ Linux and macOS:
 Windows (elevated): copy `aw-sync.exe` to `C:\Program Files\AgentWrapper\`
 and run `aw-sync.exe enroll --server https://awd.example.com --token <token>`.
 
-`--agents claude,codex` limits the sync to the agents installed here; the
-default is every agent this build can render. Re-enrolling needs `--force`.
+Windows caveat: `machine.json`'s 0600 mode is a no-op there — Windows has no
+POSIX permission bits, so the file is only as protected as the directory it
+lives in. Restrict `C:\ProgramData\agent-wrapper` to SYSTEM and
+Administrators right after enrolling:
+
+    icacls "C:\ProgramData\agent-wrapper" /inheritance:r /grant:r "SYSTEM:(OI)(CI)F" "BUILTIN\Administrators:(OI)(CI)F"
+
+`--agents claude` limits the sync to the agents installed here; the default
+is every agent this build can render. Codex and Gemini renderers arrive in a
+later milestone, so `claude` is the only agent this build can actually sync
+today. Re-enrolling needs `--force`.
 
 ## 3. Install the timer
 
@@ -56,7 +65,7 @@ developers can check it too.
 
 | | Linux | macOS | Windows |
 | --- | --- | --- | --- |
-| State (`machine.json` 0600, `state.json` 0644, `aw-sync.log`) | `/var/lib/agent-wrapper/` | `/Library/Application Support/agent-wrapper/` | `C:\ProgramData\agent-wrapper\` |
+| State (`machine.json` 0600, `state.json` 0644, `aw-sync-audit.log`) | `/var/lib/agent-wrapper/` | `/Library/Application Support/agent-wrapper/` | `C:\ProgramData\agent-wrapper\` |
 | Claude Code | `/etc/claude-code/` | `/Library/Application Support/ClaudeCode/` | `C:\Program Files\ClaudeCode\` |
 
 Rendered files are root-owned and world-readable. A user who can edit them

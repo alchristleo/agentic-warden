@@ -18,6 +18,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 	"runtime"
 	"strings"
 	"text/tabwriter"
@@ -115,7 +116,11 @@ func (r rootFlags) Set(value string) error {
 	if !ok || name == "" || dir == "" {
 		return fmt.Errorf("--root wants agent=DIR, got %q", value)
 	}
-	r[name] = dir
+	abs, err := filepath.Abs(dir)
+	if err != nil {
+		return fmt.Errorf("--root %s: %w", value, err)
+	}
+	r[name] = abs
 	return nil
 }
 
@@ -176,6 +181,13 @@ func enroll(argv []string, stdout io.Writer) error {
 		}
 	}
 
+	// Created before the token is spent, so a state directory this process
+	// cannot write to fails loudly here rather than after the single-use
+	// token is already consumed.
+	if err := os.MkdirAll(*stateDir, 0o755); err != nil {
+		return fmt.Errorf("creating %s: %w", *stateDir, err)
+	}
+
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 	client := &sync.Client{Server: *server}
@@ -185,7 +197,14 @@ func enroll(argv []string, stdout io.Writer) error {
 	}
 	machine := sync.Machine{Server: *server, MachineID: e.MachineID, Credential: e.Credential, Agents: selected}
 	if err := sync.SaveMachine(*stateDir, machine); err != nil {
-		return err
+		return fmt.Errorf("%w; the enrollment token was consumed; mint a new one", err)
+	}
+	// state.json carries the enrollment's non-secret facts too, so `status`
+	// can report them without reading machine.json (0600) even before the
+	// first `once` has run.
+	initial := sync.State{Server: *server, MachineID: e.MachineID, Agents: selected}
+	if err := sync.SaveState(*stateDir, initial); err != nil {
+		return fmt.Errorf("%w; the enrollment token was consumed; mint a new one", err)
 	}
 	fmt.Fprintf(stdout, "enrolled machine %s for %s; syncing %s into %s\n", e.MachineID, e.User, strings.Join(selected, ", "), *stateDir)
 	return nil

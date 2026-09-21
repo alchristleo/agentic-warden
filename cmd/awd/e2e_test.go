@@ -26,13 +26,16 @@ func TestMain(m *testing.M) {
 	if err != nil {
 		panic(err)
 	}
-	defer os.RemoveAll(dir)
 
 	built = filepath.Join(dir, "awd")
 	if out, err := exec.Command("go", "build", "-o", built, ".").CombinedOutput(); err != nil {
 		panic("building awd: " + err.Error() + "\n" + string(out))
 	}
-	os.Exit(m.Run())
+	// os.Exit does not run deferred calls, so the cleanup has to happen
+	// after m.Run returns and before Exit is called, not as a defer above.
+	code := m.Run()
+	os.RemoveAll(dir)
+	os.Exit(code)
 }
 
 // server starts awd on an ephemeral port and returns its base URL. The server

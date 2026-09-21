@@ -18,8 +18,11 @@ const (
 	// StateFile holds what the last cycle left behind, readable by everyone
 	// because `aw doctor` reports from it as the developer.
 	StateFile = "state.json"
-	// AuditFile is the append-only log of every cycle.
-	AuditFile = "aw-sync.log"
+	// AuditFile is the append-only log of every cycle. Its name is not
+	// aw-sync.log: launchd's own stdout/stderr log for this job already
+	// uses that name, in a different directory (/Library/Logs), and the
+	// two must not be confused with each other.
+	AuditFile = "aw-sync-audit.log"
 )
 
 // ErrNotEnrolled means there is no machine.json: `aw-sync enroll` has not
