@@ -34,32 +34,36 @@ Deploy the helper path once through MDM or a `managed-settings.json`; every
 change after that is a server-side decision.
 
 **A helper that exits non-zero, or emits settings that fail schema validation,
-makes Claude Code refuse to start.** The helper must therefore always exit 0,
-falling back to its cached policy. That contract is the highest-severity path
-in the project.
+makes Claude Code refuse to start.** The helper must therefore always exit 0.
+That contract is the highest-severity path in the project.
 
-`aw-policy` is that helper. On every launch it asks the control plane for the
-policy compiled for this user's groups and this repository, validates the
-result against the published Claude Code settings schema, caches it, and
-prints it. When the control plane is unreachable it prints the cached policy;
-when there is no cache it prints an envelope with no settings, which leaves
-the static `managed-settings.json` in force. It exits non-zero only when the
-organization sets `requireFresh`. Every run appends one line to a local audit
-log. `deploy/managed-settings/` has the install templates.
+`aw-policy` is that helper, and it is offline. `aw-sync`, running as root on
+a timer, fetches the enrolled user's bundle from the control plane and writes
+it to Claude Code's system directory as `aw-bundle.json`, beside a drop-in
+that names the helper. On every launch `aw-policy` reads that bundle, makes
+the one decision left in it (which repository the session is in), validates
+the result against the published Claude Code settings schema, and prints it.
+With no bundle, or one it cannot use, it prints an envelope with no settings,
+which leaves the static managed-settings files in force, and still exits 0.
+It exits non-zero only when the organization sets `requireBundle`. Every run
+appends one line to a local audit log. `deploy/aw-sync/README.md` installs
+the timer; `deploy/managed-settings/README.md` describes the files it writes.
 
 Server-managed settings from the claude.ai console shadow the helper
 entirely, so an organization uses one channel or the other; `aw doctor`
-detects the collision.
+detects the collision, and reports the bundle and aw-sync's last cycle.
 
 ## Layout
 
     cmd/aw/           wrapper CLI: run an agent, doctor, agents
-    cmd/aw-policy/    the policyHelper executable
+    cmd/aw-policy/    the policyHelper executable, offline
+    cmd/aw-sync/      root-side sync: enroll, render every agent's files
     cmd/awd/          control plane: serve, apply
     deploy/           managed-settings install templates
     internal/agent/   Adapter interface, registry, Prepare/Launch/Exec
     internal/agent/claude/schema/  vendored settings schema and validation
-    internal/policyhelper/  what aw-policy does: fetch, validate, cache, emit
+    internal/policyhelper/  what aw-policy does: read the bundle, compile, validate, emit
+    internal/sync/    the sync cycle: fetch the bundle, render, write all-or-nothing
     internal/policy/  rules, targeting, compilation, YAML/JSON authoring
     internal/repo/    which repository a directory is in, from .git/config
     internal/merge/   settings deep-merge and environment merge
@@ -105,13 +109,17 @@ Fetch what a given developer would get:
 
     curl 'http://127.0.0.1:8080/v1/policy?group=platform&repo=github.com/acme/payments-api'
 
-Run the policy helper the way Claude Code would, against that server:
+Run the sync and the policy helper the way a managed machine would, with the
+files kept under the working directory so no root is needed:
 
-    go build -o aw-policy ./cmd/aw-policy
-    echo '{"serverUrl":"http://127.0.0.1:8080","groups":["platform"]}' > aw-policy.json
-    AW_POLICY_CONFIG=$PWD/aw-policy.json ./aw-policy
+    go build -o aw-sync ./cmd/aw-sync && go build -o aw-policy ./cmd/aw-policy
+    TOKEN=$(./awd enroll-token alice@acme.com --url http://127.0.0.1:8080)
+    AW_SYNC_TOKEN=$TOKEN ./aw-sync enroll --server http://127.0.0.1:8080 --agents claude --state-dir ./state
+    ./aw-sync once --state-dir ./state --root claude=./claude-root
+    AW_POLICY_BUNDLE=$PWD/claude-root/aw-bundle.json ./aw-policy
 
-Stop `awd` and run it again: the same policy comes back from the cache.
+Stop `awd` and run `aw-policy` again: it needs no server. Run `aw-sync once`
+again: it exits 1 and leaves the rendered files as they were.
 
 Inspect what the wrapper would run, without running it:
 
@@ -119,7 +127,9 @@ Inspect what the wrapper would run, without running it:
     ./aw --policy <(curl -s http://127.0.0.1:8080/v1/policy) doctor
 
 `doctor` prints the resolved binary, the exact arguments, the injected
-environment and a note for every decision. It never executes the agent.
+environment and a note for every decision, plus aw-sync's last cycle
+(`AW_SYNC_STATE_DIR=./state` points it at the directory above) and whether
+a bundle is in place. It never executes the agent.
 
 ## Tests
 
