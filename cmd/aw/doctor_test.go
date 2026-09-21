@@ -70,6 +70,7 @@ func TestAgeIsHumanReadable(t *testing.T) {
 		now.Add(-5 * time.Minute):  "5m0s ago",
 		now.Add(-3 * time.Hour):    "3h0m0s ago",
 		now.Add(-49 * time.Hour):   "2d1h ago",
+		now.Add(30 * time.Second):  "0s ago",
 		{}:                         "never",
 	}
 	for at, want := range cases {

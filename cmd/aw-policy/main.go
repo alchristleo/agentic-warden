@@ -48,6 +48,9 @@ const maxStderr = 16 << 10
 
 // fileConfig is the deployed configuration file.
 type fileConfig struct {
+	// RequireBundle makes the helper exit non-zero, so Claude Code refuses
+	// to start, when no usable bundle is on the machine. Off by default:
+	// failing safe keeps developers working.
 	RequireBundle bool `json:"requireBundle"`
 }
 

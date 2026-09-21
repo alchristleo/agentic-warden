@@ -94,7 +94,7 @@ func TestAMissingBundleStillExitsZero(t *testing.T) {
 	// A machine aw-sync has not reached yet must still let Claude Code
 	// start: an empty envelope leaves the static managed-settings files
 	// in force.
-	stdout, stderr, code := run(t, "AW_POLICY_BUNDLE="+filepath.Join(t.TempDir(), "absent-bundle.json"))
+	stdout, stderr, code := run(t, "AW_POLICY_BUNDLE="+filepath.Join(t.TempDir(), "absent-bundle.json"), "AW_POLICY_CONFIG="+filepath.Join(t.TempDir(), "absent.json"))
 
 	if code != 0 {
 		t.Fatalf("exit = %d, want 0", code)
@@ -139,11 +139,19 @@ func TestRequireBundleExitsNonZeroWithoutABundle(t *testing.T) {
 }
 
 func TestStderrStaysShort(t *testing.T) {
-	// Claude Code fails the run past 1 MiB of stderr, so notes are bounded
-	// however much goes wrong.
-	_, stderr, _ := run(t, "AW_POLICY_BUNDLE="+writeFile(t, "aw-bundle.json", "{"+strings.Repeat("x", 100<<10)))
+	// Claude Code fails the run past 1 MiB of stderr, and it shows stderr
+	// as the reason when the helper exits non-zero, so notes are capped at
+	// maxStderr (16 KiB) however much goes wrong. A bundle path that is
+	// itself huge gets echoed into the "no policy available" note, so it
+	// is what exercises the real cap.
+	bundlePath := filepath.Join(t.TempDir(), strings.Repeat("x", 20<<10), "aw-bundle.json")
 
-	if len(stderr) > 64<<10 {
-		t.Errorf("stderr is %d bytes", len(stderr))
+	_, stderr, _ := run(t, "AW_POLICY_BUNDLE="+bundlePath, "AW_POLICY_CONFIG="+filepath.Join(t.TempDir(), "absent.json"))
+
+	if len(stderr) > 16<<10 {
+		t.Errorf("stderr is %d bytes, want <= 16 KiB", len(stderr))
+	}
+	if len(stderr) == 0 {
+		t.Error("stderr is empty, want the truncated note")
 	}
 }

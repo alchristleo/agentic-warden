@@ -47,10 +47,12 @@ const (
 // envelope at or past it fails the run, so one is never emitted.
 const maxOutput = 1 << 20
 
-// maxBundle bounds what is read from the bundle file. aw-sync never accepts
-// more than 4 MiB from the control plane, so a larger file is not its work
-// and is not trusted.
-const maxBundle = 4 << 20
+// maxBundle bounds what is read from the bundle file. aw-sync fetches at
+// most 4 MiB from the control plane and writes it back out re-indented,
+// which can grow it slightly; 8 MiB is comfortably above anything aw-sync
+// produces, so a file past it is not its work and is not trusted. The 1
+// MiB guard on the output still protects Claude Code.
+const maxBundle = 8 << 20
 
 // Config is everything a run needs. It is plain data so that the executable
 // and the tests build it the same way.
@@ -209,8 +211,10 @@ func loadBundle(path string) (*policy.Bundle, error) {
 // compile resolves the bundle for the session's repository and checks the
 // result against the schema this binary carries. aw-sync validated every
 // rule when it wrote the file, so a failure here means this build carries a
-// newer schema than the one that wrote it; the safe answer is still no
-// settings rather than settings Claude Code refuses.
+// newer schema than the one that wrote it, or the file was edited by hand:
+// aw-sync validates each rule as it writes, not the merged result, and the
+// file is world-readable. Either way the safe answer is still no settings
+// rather than settings Claude Code refuses.
 func compile(bundle *policy.Bundle, repoName string) (map[string]any, error) {
 	managed := managedSettings(bundle.Compile(repoName).Agent("claude"))
 	if err := schema.Validate(managed); err != nil {

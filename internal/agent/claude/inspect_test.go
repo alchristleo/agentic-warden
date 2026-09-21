@@ -172,6 +172,17 @@ func TestInspectReportsTheBundleVersion(t *testing.T) {
 	}
 }
 
+func TestInspectWarnsWhenTheBundleHasNoRules(t *testing.T) {
+	in := newInspection(t)
+	in.write(t, filepath.Join(in.systemDir, "aw-bundle.json"), `{"version":"v1","groups":[],"rules":[]}`)
+
+	findings := in.adapter.Inspect([]string{})
+
+	if !findingsWith(findings, agent.Warn, "no rules") {
+		t.Errorf("findings %+v should warn that a rule-less bundle enforces nothing", findings)
+	}
+}
+
 func TestInspectFlagsAnUnparseableBundle(t *testing.T) {
 	in := newInspection(t)
 	in.write(t, filepath.Join(in.systemDir, "aw-bundle.json"), "{not json")

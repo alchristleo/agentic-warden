@@ -1,9 +1,10 @@
 // Package policy holds the organization configuration a launch applies.
 //
-// A Document is the unit the control plane will serve and the policy helper
-// will cache. It is deliberately plain data with no dependency on the agent
-// packages, so the same shape travels over HTTP, sits in a cache file, and
-// feeds a launch without translation.
+// A Document is the unit the control plane will serve. The compiled document
+// is what `aw` applies, and it is also what `aw-policy` computes per launch
+// from the bundle aw-sync leaves on the machine, rather than caching it. It
+// is deliberately plain data with no dependency on the agent packages, so
+// the same shape travels over HTTP and feeds a launch without translation.
 package policy
 
 import (

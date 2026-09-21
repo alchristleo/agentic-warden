@@ -83,10 +83,9 @@ func (h *Handler) readyz(w http.ResponseWriter, r *http.Request) {
 
 // getPolicy compiles the current rule set for the requested subject.
 //
-// An organization with no policy yet gets an empty document and a 200, not an
-// error. A client that treats an error as "fall back to the cached policy"
-// must not be pushed down that path by the ordinary case of a policy that has
-// not been authored yet.
+// An organization with no policy yet gets an empty document and a 200, not
+// an error: "no policy authored" is an ordinary state for an inspection
+// endpoint, not a failure.
 func (h *Handler) getPolicy(w http.ResponseWriter, r *http.Request) {
 	subject := policy.Subject{
 		Groups: r.URL.Query()["group"],

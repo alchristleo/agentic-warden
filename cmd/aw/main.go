@@ -257,6 +257,11 @@ func age(at, now time.Time) string {
 		return "never"
 	}
 	d := now.Sub(at).Truncate(time.Second)
+	if d < 0 {
+		// Clock skew between the machine that wrote at and this one can
+		// put at slightly in the future; "-5s ago" is not a useful report.
+		d = 0
+	}
 	if d >= 24*time.Hour {
 		days := d / (24 * time.Hour)
 		hours := (d % (24 * time.Hour)) / time.Hour

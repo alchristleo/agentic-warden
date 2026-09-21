@@ -144,6 +144,10 @@ func inspectBundle(systemDir string) agent.Finding {
 	if version == "" {
 		version = "unversioned"
 	}
+	if len(bundle.Rules) == 0 {
+		return agent.Finding{Level: agent.Warn,
+			Message: fmt.Sprintf("bundle %s has no rules (version %s): nothing is enforced; check the policy and aw-sync status", path, version)}
+	}
 	return agent.Finding{Level: agent.OK,
 		Message: fmt.Sprintf("bundle %s: version %s, %d rule(s) for %d group(s)", path, version, len(bundle.Rules), len(bundle.Groups))}
 }
