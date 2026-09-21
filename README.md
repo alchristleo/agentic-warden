@@ -73,6 +73,13 @@ detects the collision.
 
 ## Try it
 
+With Docker, the whole control plane comes up on Postgres:
+
+    docker compose -f deploy/docker-compose.yml up -d --build
+
+It listens on :8080 with `AWD_ADMIN_TOKEN=change-me` unless you export
+another. Without Docker, run it from source:
+
 Run the control plane and apply a policy:
 
     go build -o awd ./cmd/awd

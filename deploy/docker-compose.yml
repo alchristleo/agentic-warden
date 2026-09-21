@@ -1,0 +1,33 @@
+# Evaluation stack: the control plane on Postgres. Not a production
+# deployment: no TLS, a default admin token, and a password in the file.
+services:
+  postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_PASSWORD: pw
+      POSTGRES_DB: awd
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 2s
+      timeout: 2s
+      retries: 15
+    volumes:
+      - awd-pg:/var/lib/postgresql/data
+
+  awd:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      AWD_ADDR: ":8080"
+      AWD_DATABASE_URL: postgres://postgres:pw@postgres:5432/awd?sslmode=disable
+      AWD_ADMIN_TOKEN: ${AWD_ADMIN_TOKEN:-change-me}
+      AWD_LOG_LEVEL: ${AWD_LOG_LEVEL:-info}
+    ports:
+      - "8080:8080"
+
+volumes:
+  awd-pg:
