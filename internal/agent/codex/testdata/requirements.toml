@@ -1,0 +1,26 @@
+# Managed by aw-sync from policy revision 2026-09-22.1. Do not edit: the next sync overwrites this file.
+
+allowed_approval_policies = ['on-request', 'untrusted']
+allowed_sandbox_modes = ['read-only']
+
+[mcp_servers]
+[mcp_servers.docs]
+[mcp_servers.docs.identity]
+command = 'codex-mcp'
+
+[rules]
+[[rules.prefix_rules]]
+decision = 'forbidden'
+justification = 'Use git clean -fd instead.'
+
+[[rules.prefix_rules.pattern]]
+token = 'rm'
+
+[[rules.prefix_rules]]
+decision = 'prompt'
+
+[[rules.prefix_rules.pattern]]
+token = 'git'
+
+[[rules.prefix_rules.pattern]]
+token = 'push'
