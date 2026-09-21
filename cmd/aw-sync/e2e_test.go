@@ -308,6 +308,29 @@ func TestEnrollRejectsAnAgentWithoutARenderer(t *testing.T) {
 	}
 }
 
+func TestEnrollRefusesToOverwriteACorruptEnrollment(t *testing.T) {
+	stateDir := t.TempDir()
+	corrupt := []byte(`{"server":"http://awd"}`)
+	machinePath := filepath.Join(stateDir, "machine.json")
+	if err := os.WriteFile(machinePath, corrupt, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	// --server points at a closed port so the test fails loudly if the
+	// refusal doesn't come before any network call.
+	_, stderr, code := runSync(t, []string{"AW_SYNC_TOKEN=x"},
+		"enroll", "--server", "http://127.0.0.1:1", "--agents", "claude", "--state-dir", stateDir)
+	if code != 1 || !strings.Contains(stderr, "--force") {
+		t.Errorf("exit %d, stderr %q; want a refusal naming --force", code, stderr)
+	}
+	got, err := os.ReadFile(machinePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(got, corrupt) {
+		t.Errorf("machine.json changed: %q", got)
+	}
+}
+
 func TestHelpListsTheCommands(t *testing.T) {
 	stdout, _, code := runSync(t, nil, "help")
 	if code != 0 {

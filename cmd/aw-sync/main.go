@@ -61,14 +61,25 @@ func run(argv []string, stdout io.Writer) error {
 		fmt.Fprint(stdout, usage)
 		return nil
 	case "enroll":
-		return enroll(argv[1:], stdout)
+		return helpOr(enroll(argv[1:], stdout), stdout)
 	case "once":
-		return once(argv[1:], stdout)
+		return helpOr(once(argv[1:], stdout), stdout)
 	case "status":
-		return status(argv[1:], stdout)
+		return helpOr(status(argv[1:], stdout), stdout)
 	default:
 		return fmt.Errorf("unknown command %q; run `aw-sync help`", argv[0])
 	}
+}
+
+// helpOr turns a subcommand's flag.ErrHelp (from -h/--help) into the top
+// level usage printed to stdout and a clean exit, the same as `aw-sync
+// help`; any other error, including nil, passes through unchanged.
+func helpOr(err error, stdout io.Writer) error {
+	if errors.Is(err, flag.ErrHelp) {
+		fmt.Fprint(stdout, usage)
+		return nil
+	}
+	return err
 }
 
 // newRegistry holds the adapters this binary can sync. Only those that
@@ -140,6 +151,9 @@ func enroll(argv []string, stdout io.Writer) error {
 		selected = strings.Split(*agents, ",")
 		for i, a := range selected {
 			selected[i] = strings.TrimSpace(a)
+			if selected[i] == "" {
+				return fmt.Errorf("--agents has an empty entry")
+			}
 			adapter, err := reg.Lookup(selected[i])
 			if err != nil {
 				return fmt.Errorf("agent %q: %w", selected[i], err)
@@ -149,8 +163,12 @@ func enroll(argv []string, stdout io.Writer) error {
 			}
 		}
 	}
-	if existing, err := sync.LoadMachine(*stateDir); err == nil && !*force {
+	existing, loadErr := sync.LoadMachine(*stateDir)
+	switch {
+	case loadErr == nil && !*force:
 		return fmt.Errorf("already enrolled as machine %s against %s; pass --force to re-enroll", existing.MachineID, existing.Server)
+	case loadErr != nil && !errors.Is(loadErr, sync.ErrNotEnrolled) && !*force:
+		return fmt.Errorf("an enrollment exists in %s but cannot be read (%s); pass --force to replace it", *stateDir, loadErr)
 	}
 	if *name == "" {
 		if host, err := os.Hostname(); err == nil {
