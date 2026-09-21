@@ -149,3 +149,36 @@ func TestInspectAnEmptyRemoteSettingsCacheDoesNotShadow(t *testing.T) {
 		t.Errorf("findings %v: an empty payload delivers no policy key and shadows nothing", findings)
 	}
 }
+
+func TestInspectWarnsWhenThereIsNoBundle(t *testing.T) {
+	in := newInspection(t)
+
+	findings := in.adapter.Inspect([]string{})
+
+	if !findingsWith(findings, agent.Warn, "aw-bundle.json") {
+		t.Errorf("findings %+v should warn that no bundle has been synced", findings)
+	}
+}
+
+func TestInspectReportsTheBundleVersion(t *testing.T) {
+	in := newInspection(t)
+	in.write(t, filepath.Join(in.systemDir, "aw-bundle.json"),
+		`{"version":"2026-09-21.1","groups":["platform"],"rules":[{"name":"baseline","agents":{"claude":{"managed":{"model":"opus"}}}}]}`)
+
+	findings := in.adapter.Inspect([]string{})
+
+	if !findingsWith(findings, agent.OK, "version 2026-09-21.1") || !findingsWith(findings, agent.OK, "1 rule") {
+		t.Errorf("findings %+v should report the bundle's version and rule count", findings)
+	}
+}
+
+func TestInspectFlagsAnUnparseableBundle(t *testing.T) {
+	in := newInspection(t)
+	in.write(t, filepath.Join(in.systemDir, "aw-bundle.json"), "{not json")
+
+	findings := in.adapter.Inspect([]string{})
+
+	if !findingsWith(findings, agent.Error, "not valid JSON") {
+		t.Errorf("findings %+v should flag the bundle aw-policy cannot read", findings)
+	}
+}

@@ -2,6 +2,7 @@ package claude
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -10,6 +11,7 @@ import (
 	"strings"
 
 	"github.com/acme/agent-wrapper/internal/agent"
+	"github.com/acme/agent-wrapper/internal/policy"
 )
 
 // remoteSettingsFile is where Claude Code caches server-managed settings.
@@ -37,7 +39,7 @@ func (a *Adapter) Inspect(env []string) []agent.Finding {
 	if env == nil {
 		env = os.Environ()
 	}
-	findings := make([]agent.Finding, 0, 3)
+	findings := make([]agent.Finding, 0, 4)
 
 	systemDir := a.systemDir()
 	helper, source, err := findPolicyHelper(systemDir)
@@ -50,6 +52,8 @@ func (a *Adapter) Inspect(env []string) []agent.Finding {
 	default:
 		findings = append(findings, checkHelperBinary(helper, source))
 	}
+
+	findings = append(findings, inspectBundle(systemDir))
 
 	if skipper := firstSet(env, fetchSkippers); skipper != "" {
 		findings = append(findings, agent.Finding{Level: agent.OK,
@@ -113,6 +117,35 @@ func checkHelperBinary(helper, source string) agent.Finding {
 			Message: fmt.Sprintf("policyHelper %s (from %s) is not executable", helper, source)}
 	}
 	return agent.Finding{Level: agent.OK, Message: fmt.Sprintf("policyHelper %s (from %s)", helper, source)}
+}
+
+// inspectBundle reports the bundle aw-sync leaves for aw-policy. Without
+// it the helper emits no settings and every launch runs on the static
+// managed-settings files alone, which is silent; with one that does not
+// parse, the same happens for a worse reason. Age and last error are
+// aw-sync's to report, from its state directory; `aw doctor` shows both.
+func inspectBundle(systemDir string) agent.Finding {
+	path := filepath.Join(systemDir, BundleFile)
+	raw, err := os.ReadFile(path)
+	switch {
+	case errors.Is(err, os.ErrNotExist):
+		return agent.Finding{Level: agent.Warn,
+			Message: fmt.Sprintf("no bundle at %s: aw-policy emits no settings until aw-sync has run", path)}
+	case err != nil:
+		return agent.Finding{Level: agent.Error,
+			Message: fmt.Sprintf("bundle %s is unreadable, so aw-policy emits no settings: %v", path, err)}
+	}
+	var bundle policy.Bundle
+	if err := json.Unmarshal(raw, &bundle); err != nil {
+		return agent.Finding{Level: agent.Error,
+			Message: fmt.Sprintf("bundle %s is not valid JSON, so aw-policy emits no settings: %v", path, err)}
+	}
+	version := bundle.Version
+	if version == "" {
+		version = "unversioned"
+	}
+	return agent.Finding{Level: agent.OK,
+		Message: fmt.Sprintf("bundle %s: version %s, %d rule(s) for %d group(s)", path, version, len(bundle.Rules), len(bundle.Groups))}
 }
 
 // topLevelKeys lists the keys of the JSON object in path, sorted, or nothing
