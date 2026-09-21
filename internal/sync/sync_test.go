@@ -232,6 +232,59 @@ func TestRunKeepsFilesAndStateWhenTheServerFails(t *testing.T) {
 	}
 }
 
+func TestRunRecordsWhatItWroteWhenALaterWriteFails(t *testing.T) {
+	f := newFakeAwd(t, testBundle())
+	cfg, root := enrolled(t, f, claudeRegistry(t), "claude")
+	if res := sync.Run(context.Background(), cfg); res.Err != nil {
+		t.Fatal(res.Err)
+	}
+
+	// Block the drop-in's directory with a regular file, so its write
+	// fails after the bundle's write has already landed on disk.
+	dropInDir := filepath.Join(root, "managed-settings.d")
+	if err := os.RemoveAll(dropInDir); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(dropInDir, []byte("blocking"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	v2 := testBundle()
+	v2.Version = "v2"
+	f.bundle.Store(v2)
+
+	res := sync.Run(context.Background(), cfg)
+	if res.Err == nil {
+		t.Fatal("want an error when a later write fails")
+	}
+
+	bundlePath := filepath.Join(root, claude.BundleFile)
+	found := false
+	for _, w := range res.Written {
+		if w == bundlePath {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("Written = %v, want it to include %s", res.Written, bundlePath)
+	}
+
+	state, err := sync.LoadState(cfg.StateDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sum := sha256.Sum256(mustRead(t, bundlePath))
+	if state.Files[bundlePath] != hex.EncodeToString(sum[:]) {
+		t.Errorf("state.Files[%s] = %q, want the sha256 of what is on disk now", bundlePath, state.Files[bundlePath])
+	}
+	if state.Version != "v1" {
+		t.Errorf("state.Version = %q, want the last completed cycle's version", state.Version)
+	}
+	if state.Error == "" {
+		t.Error("state.Error is empty, want the write failure recorded")
+	}
+}
+
 func TestRunKeepsFilesWhenTheServerIsUnreachable(t *testing.T) {
 	f := newFakeAwd(t, testBundle())
 	cfg, root := enrolled(t, f, claudeRegistry(t), "claude")

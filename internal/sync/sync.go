@@ -82,7 +82,11 @@ func Run(ctx context.Context, cfg Config) Result {
 
 	machine, err := LoadMachine(cfg.StateDir)
 	if err != nil {
-		return Result{Err: err}
+		// No state was loaded yet, so there is nothing to merge into, but a
+		// fresh machine's first failure should still leave a trace.
+		res := Result{Written: make([]string, 0), Err: err}
+		cfg.audit(State{}, res)
+		return res
 	}
 	state, err := LoadState(cfg.StateDir)
 	var notes []string
@@ -95,7 +99,7 @@ func Run(ctx context.Context, cfg Config) Result {
 	client := &Client{Server: machine.Server, HTTP: cfg.HTTP}
 	fetched, err := client.Fetch(ctx, machine.Credential, state.ETag)
 	if err != nil {
-		return cfg.fail(state, notes, err)
+		return cfg.fail(state, notes, nil, nil, err)
 	}
 	if fetched.Unchanged {
 		state.Error = ""
@@ -114,19 +118,19 @@ func Run(ctx context.Context, cfg Config) Result {
 	for _, name := range machine.Agents {
 		adapter, err := cfg.Registry.Lookup(name)
 		if err != nil {
-			return cfg.fail(state, notes, err)
+			return cfg.fail(state, notes, nil, nil, err)
 		}
 		renderer, ok := adapter.(agent.Renderer)
 		if !ok {
-			return cfg.fail(state, notes, fmt.Errorf("sync: agent %q has no renderer", name))
+			return cfg.fail(state, notes, nil, nil, fmt.Errorf("sync: agent %q has no renderer", name))
 		}
 		root, err := cfg.root(name)
 		if err != nil {
-			return cfg.fail(state, notes, err)
+			return cfg.fail(state, notes, nil, nil, err)
 		}
 		rendering, err := renderer.Render(fetched.Bundle)
 		if err != nil {
-			return cfg.fail(state, notes, fmt.Errorf("sync: rendering %s: %w", name, err))
+			return cfg.fail(state, notes, nil, nil, fmt.Errorf("sync: rendering %s: %w", name, err))
 		}
 		notes = append(notes, rendering.Notes...)
 		for _, f := range rendering.Files {
@@ -140,14 +144,17 @@ func Run(ctx context.Context, cfg Config) Result {
 	for _, p := range planned {
 		if err := cache.ReplaceMode(p.path, p.content, p.mode); err != nil {
 			// Each write is atomic, so what landed is whole; the next cycle
-			// rewrites the rest. Report which file stopped this one.
-			return cfg.fail(state, notes, fmt.Errorf("sync: writing %s: %w", p.path, err))
+			// rewrites the rest. written/files describe only what actually
+			// reached disk this cycle, so fail can merge them into the last
+			// good state instead of reporting stale pre-cycle hashes for
+			// files this cycle already overwrote.
+			return cfg.fail(state, notes, files, written, fmt.Errorf("sync: writing %s: %w", p.path, err))
 		}
 		written = append(written, p.path)
 		files[p.path] = hashOf(p.content)
 		if strings.HasSuffix(p.path, ".json") {
 			if err := cache.ReplaceMode(p.path+revisionSuffix, []byte(revisionLine(version)), 0o644); err != nil {
-				return cfg.fail(state, notes, fmt.Errorf("sync: writing %s: %w", p.path+revisionSuffix, err))
+				return cfg.fail(state, notes, files, written, fmt.Errorf("sync: writing %s: %w", p.path+revisionSuffix, err))
 			}
 		}
 	}
@@ -170,14 +177,31 @@ func Run(ctx context.Context, cfg Config) Result {
 	return res
 }
 
-// fail records err in the state without touching the last good etag,
-// version or file list, so `status` still describes what is on disk.
-func (cfg Config) fail(state State, notes []string, err error) Result {
+// fail records err in the state without touching the last good etag or
+// version, since the cycle did not complete: `status` must still describe
+// the policy revision actually in force. partialFiles and partialWritten
+// describe files this cycle wrote to disk before the failure (nil when the
+// failure happened before any write); their hashes are merged into
+// state.Files so a file aw-sync itself just overwrote is never reported as
+// drift, and their paths are surfaced in Result.Written.
+func (cfg Config) fail(state State, notes []string, partialFiles map[string]string, partialWritten []string, err error) Result {
 	state.Error = err.Error()
 	if len(notes) > 0 {
 		state.Notes = append(append([]string{}, state.Notes...), notes...)
 	}
-	res := Result{Version: state.Version, Written: make([]string, 0), Notes: state.Notes, Err: err}
+	if len(partialFiles) > 0 {
+		merged := make(map[string]string, len(state.Files)+len(partialFiles))
+		for path, sum := range state.Files {
+			merged[path] = sum
+		}
+		for path, sum := range partialFiles {
+			merged[path] = sum
+		}
+		state.Files = merged
+	}
+	written := make([]string, len(partialWritten))
+	copy(written, partialWritten)
+	res := Result{Version: state.Version, Written: written, Notes: state.Notes, Err: err}
 	// A state write that fails is secondary to the failure being recorded;
 	// the audit line still says what happened.
 	_ = SaveState(cfg.StateDir, state)
