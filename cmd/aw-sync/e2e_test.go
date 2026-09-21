@@ -422,11 +422,17 @@ func TestEnrollOnceStatusAndOutage(t *testing.T) {
 		t.Errorf("after the outage report = %+v; want the error recorded and the version kept", report)
 	}
 
-	// The helper still answers during the outage, from whatever is on
-	// disk: it never needs the server, and a valid envelope with exit 0 is
-	// all Claude Code requires to start.
-	if _, stderr, code := runPolicy(t, t.TempDir(), bundlePath); code != 0 {
+	// The helper still answers during the outage, and from what is on
+	// disk: the bundle was tampered to "{}" above, so a helper that read
+	// the file emits an empty managedSettings object, and one that served
+	// anything stale (the platform model, say) would show it here. Exit 0
+	// with a valid envelope is all Claude Code requires to start.
+	managed, stderr, code = runPolicy(t, t.TempDir(), bundlePath)
+	if code != 0 {
 		t.Errorf("aw-policy during the outage exited %d: %s", code, stderr)
+	}
+	if managed == nil || len(managed) != 0 {
+		t.Errorf("during the outage managed = %v; want an empty object compiled from the tampered bundle on disk", managed)
 	}
 }
 
