@@ -61,8 +61,9 @@ type Machine struct {
 	OS             string    `json:"os,omitempty"`
 	CredentialHash string    `json:"-"`
 	EnrolledAt     time.Time `json:"enrolledAt"`
-	// LastSeenAt is the last successful bundle fetch; zero until the first.
-	LastSeenAt time.Time `json:"lastSeenAt,omitempty"`
+	// LastSeenAt is the last successful bundle fetch. Zero until the first
+	// fetch, and serialised as the zero time then; readers test IsZero.
+	LastSeenAt time.Time `json:"lastSeenAt"`
 	// LastBundleVersion is the policy version served at that fetch.
 	LastBundleVersion string `json:"lastBundleVersion,omitempty"`
 }

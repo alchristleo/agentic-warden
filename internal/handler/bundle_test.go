@@ -162,7 +162,12 @@ func TestARevokedMachineIs401(t *testing.T) {
 	id, alice := enroll(t, srv, mintToken(t, srv, "alice@acme.com"))
 	req, _ := http.NewRequest(http.MethodDelete, srv.URL+"/v1/machines/"+id, nil)
 	req.Header.Set("Authorization", "Bearer "+adminToken)
-	if resp, _ := http.DefaultClient.Do(req); resp.StatusCode != http.StatusNoContent {
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("revoke: %v", err)
+	}
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusNoContent {
 		t.Fatalf("revoke: %d", resp.StatusCode)
 	}
 

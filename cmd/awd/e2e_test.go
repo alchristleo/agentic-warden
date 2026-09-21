@@ -376,7 +376,10 @@ func TestEnrollTokenThenEnrollThenBundle(t *testing.T) {
 	if out, code := runAwd(t, "revoke", enrolled.MachineID, "--url", s.url); code != 0 || !strings.Contains(out, "revoked") {
 		t.Errorf("revoke: %d %q", code, out)
 	}
-	after, _ := http.DefaultClient.Do(req)
+	after, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
 	after.Body.Close()
 	if after.StatusCode != http.StatusUnauthorized {
 		t.Errorf("bundle after revoke: %d, want 401", after.StatusCode)

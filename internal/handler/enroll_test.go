@@ -157,7 +157,10 @@ func TestRevokingAMachine(t *testing.T) {
 		t.Errorf("status = %d, want 204", resp.StatusCode)
 	}
 
-	again, _ := http.DefaultClient.Do(req)
+	again, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
 	again.Body.Close()
 	if again.StatusCode != http.StatusNotFound {
 		t.Errorf("revoking twice: status = %d, want 404", again.StatusCode)

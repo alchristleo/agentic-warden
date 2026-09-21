@@ -1,5 +1,5 @@
-# Build every binary once; the compose file runs awd, and the same image can
-# run aw-sync in a sidecar for end-to-end tests.
+# Build every binary once. This image ships awd and aw-policy; the compose
+# file runs awd, and aw-sync joins this image in a later milestone.
 FROM golang:1.22-alpine AS build
 WORKDIR /src
 COPY go.mod go.sum ./
