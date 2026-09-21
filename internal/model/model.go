@@ -24,6 +24,8 @@ var (
 	ErrForbidden = errors.New("forbidden")
 	// ErrOverBudget means the caller's team has spent its allowance.
 	ErrOverBudget = errors.New("over budget")
+	// ErrUnauthorized means the caller presented no valid credential.
+	ErrUnauthorized = errors.New("unauthorized")
 )
 
 // Revision is one stored, immutable version of the organization's policy.
@@ -44,4 +46,33 @@ type Revision struct {
 	CreatedAt time.Time `json:"createdAt"`
 	// CreatedBy identifies who applied it.
 	CreatedBy string `json:"createdBy,omitempty"`
+}
+
+// Machine is a device enrolled for one user. It fetches that user's bundle
+// with a credential shown once at enrollment; only the credential's hash is
+// stored.
+type Machine struct {
+	ID   string `json:"id"`
+	User string `json:"user"`
+	// Name is what the machine called itself at enrollment, for listings.
+	Name string `json:"name,omitempty"`
+	// OS is the machine's GOOS, so an operator can see which files aw-sync
+	// writes there.
+	OS             string    `json:"os,omitempty"`
+	CredentialHash string    `json:"-"`
+	EnrolledAt     time.Time `json:"enrolledAt"`
+	// LastSeenAt is the last successful bundle fetch; zero until the first.
+	LastSeenAt time.Time `json:"lastSeenAt,omitempty"`
+	// LastBundleVersion is the policy version served at that fetch.
+	LastBundleVersion string `json:"lastBundleVersion,omitempty"`
+}
+
+// EnrollmentToken lets one machine enroll for one user, once, before it
+// expires. Only the token's hash is stored.
+type EnrollmentToken struct {
+	Hash      string
+	User      string
+	ExpiresAt time.Time
+	// UsedAt is zero until the token is consumed.
+	UsedAt time.Time
 }
