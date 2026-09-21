@@ -3,6 +3,7 @@ package cache_test
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -165,5 +166,69 @@ func TestReplaceSwapsTheFileWhole(t *testing.T) {
 	info, _ := os.Stat(path)
 	if info.Mode().Perm() != 0o600 {
 		t.Errorf("mode = %o, want 0600: a policy cache is the developer's alone", info.Mode().Perm())
+	}
+}
+
+func TestReplaceModeWritesAWorldReadableFileInAWorldReadableDirectory(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("POSIX modes")
+	}
+	dir := filepath.Join(t.TempDir(), "etc", "claude-code")
+	path := filepath.Join(dir, "aw-bundle.json")
+	if err := cache.ReplaceMode(path, []byte("{}\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	info, err := os.Stat(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if info.Mode().Perm() != 0o644 {
+		t.Errorf("file mode = %o, want 0644: a developer's helper reads what root wrote", info.Mode().Perm())
+	}
+	dirInfo, err := os.Stat(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if dirInfo.Mode().Perm() != 0o755 {
+		t.Errorf("dir mode = %o, want 0755: a readable file in an unlistable directory is unreachable", dirInfo.Mode().Perm())
+	}
+}
+
+func TestReplaceModeKeepsAPrivateFileInAPrivateDirectory(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("POSIX modes")
+	}
+	dir := filepath.Join(t.TempDir(), "state")
+	path := filepath.Join(dir, "machine.json")
+	if err := cache.ReplaceMode(path, []byte("{}\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	dirInfo, err := os.Stat(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if dirInfo.Mode().Perm() != 0o700 {
+		t.Errorf("dir mode = %o, want 0700", dirInfo.Mode().Perm())
+	}
+}
+
+func TestReplaceModeReplacesAnExistingFileWhole(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "f.json")
+	if err := cache.ReplaceMode(path, []byte("first"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := cache.ReplaceMode(path, []byte("second"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	got, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(got) != "second" {
+		t.Errorf("content = %q, want %q", got, "second")
+	}
+	entries, _ := os.ReadDir(filepath.Dir(path))
+	if len(entries) != 1 {
+		t.Errorf("directory has %d entries, want 1: no temporary file may be left behind", len(entries))
 	}
 }

@@ -10,6 +10,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"time"
@@ -60,8 +61,21 @@ func Write(dir, prefix, ext string, data []byte) (string, error) {
 // it, so a concurrent reader sees the old file or the new one, never a
 // partial write. The file is private to the user.
 func Replace(path string, data []byte) error {
+	return ReplaceMode(path, data, 0o600)
+}
+
+// ReplaceMode is Replace with an explicit file mode, for files that other
+// users must read: a policy bundle that root writes and a developer's helper
+// reads. The parent directory is created 0755 when the file is readable
+// beyond its owner and 0700 otherwise, so a private file never lands in a
+// directory that lists it and a shared file never lands in one that hides it.
+func ReplaceMode(path string, data []byte, mode fs.FileMode) error {
 	dir := filepath.Dir(path)
-	if err := os.MkdirAll(dir, 0o700); err != nil {
+	dirMode := fs.FileMode(0o700)
+	if mode&0o044 != 0 {
+		dirMode = 0o755
+	}
+	if err := os.MkdirAll(dir, dirMode); err != nil {
 		return fmt.Errorf("cache: creating %s: %w", dir, err)
 	}
 	temp, err := os.CreateTemp(dir, filepath.Base(path)+".tmp-*")
@@ -78,7 +92,7 @@ func Replace(path string, data []byte) error {
 	if err := temp.Close(); err != nil {
 		return fmt.Errorf("cache: closing %s: %w", tempPath, err)
 	}
-	if err := os.Chmod(tempPath, 0o600); err != nil {
+	if err := os.Chmod(tempPath, mode); err != nil {
 		return fmt.Errorf("cache: setting permissions on %s: %w", tempPath, err)
 	}
 	if err := os.Rename(tempPath, path); err != nil {
