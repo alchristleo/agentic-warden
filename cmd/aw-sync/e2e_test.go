@@ -18,8 +18,9 @@ import (
 )
 
 var (
-	builtSync string
-	builtAwd  string
+	builtSync   string
+	builtAwd    string
+	builtPolicy string
 )
 
 const adminToken = "e2e-admin-token"
@@ -36,6 +37,10 @@ func TestMain(m *testing.M) {
 	}
 	if out, err := exec.Command("go", "build", "-o", builtAwd, "../awd").CombinedOutput(); err != nil {
 		panic("building awd: " + err.Error() + "\n" + string(out))
+	}
+	builtPolicy = filepath.Join(dir, "aw-policy")
+	if out, err := exec.Command("go", "build", "-o", builtPolicy, "../aw-policy").CombinedOutput(); err != nil {
+		panic("building aw-policy: " + err.Error() + "\n" + string(out))
 	}
 	// os.Exit does not run deferred calls, so the cleanup has to happen
 	// after m.Run returns and before Exit is called, not as a defer above.
@@ -147,6 +152,52 @@ func runSync(t *testing.T, env []string, args ...string) (stdout, stderr string,
 		t.Fatalf("running aw-sync: %v", err)
 		return "", "", 0
 	}
+}
+
+// runPolicy executes aw-policy the way Claude Code does, from dir, against
+// the bundle aw-sync rendered. It returns the managedSettings object (nil
+// when the envelope has none), stderr and the exit code.
+func runPolicy(t *testing.T, dir, bundlePath string) (managed map[string]any, stderr string, code int) {
+	t.Helper()
+	cmd := exec.Command(builtPolicy)
+	cmd.Dir = dir
+	cmd.Env = append(os.Environ(),
+		"AW_POLICY_BUNDLE="+bundlePath,
+		"AW_POLICY_CONFIG="+filepath.Join(dir, "absent-aw-policy.json"),
+		"HOME="+t.TempDir(), "XDG_CACHE_HOME="+t.TempDir())
+	var out, errOut bytes.Buffer
+	cmd.Stdout, cmd.Stderr = &out, &errOut
+	err := cmd.Run()
+	var exitErr *exec.ExitError
+	switch {
+	case err == nil:
+		code = 0
+	case errors.As(err, &exitErr):
+		code = exitErr.ExitCode()
+	default:
+		t.Fatalf("running aw-policy: %v", err)
+	}
+	var envelope map[string]any
+	if err := json.Unmarshal(out.Bytes(), &envelope); err != nil {
+		t.Fatalf("aw-policy stdout is not one JSON object: %v\n%s", err, out.String())
+	}
+	managed, _ = envelope["managedSettings"].(map[string]any)
+	return managed, errOut.String(), code
+}
+
+// paymentsRepo makes a directory that repo.Detect resolves to
+// github.com/acme/payments-api, without needing git.
+func paymentsRepo(t *testing.T) string {
+	t.Helper()
+	root := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(root, ".git"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	config := "[remote \"origin\"]\n\turl = git@github.com:acme/payments-api.git\n"
+	if err := os.WriteFile(filepath.Join(root, ".git", "config"), []byte(config), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	return root
 }
 
 const e2ePolicy = `{
@@ -274,6 +325,29 @@ func TestEnrollOnceStatusAndOutage(t *testing.T) {
 		t.Errorf("aw-revision = %q", got)
 	}
 
+	// aw-policy resolves the rendered bundle per launch and needs no
+	// server: outside a repository the platform rule sets the model and
+	// the payments deny stays out; inside a payments repository it joins.
+	managed, stderr, code := runPolicy(t, t.TempDir(), bundlePath)
+	if code != 0 {
+		t.Fatalf("aw-policy exited %d: %s", code, stderr)
+	}
+	if managed["model"] != "opus" {
+		t.Errorf("outside a repository managed = %v; want model opus from the platform rule", managed)
+	}
+	if _, has := managed["permissions"]; has {
+		t.Errorf("outside a repository the payments rule leaked in: %v", managed)
+	}
+	managed, stderr, code = runPolicy(t, paymentsRepo(t), bundlePath)
+	if code != 0 {
+		t.Fatalf("aw-policy in the payments repository exited %d: %s", code, stderr)
+	}
+	permissions, _ := managed["permissions"].(map[string]any)
+	deny, _ := permissions["deny"].([]any)
+	if managed["model"] != "opus" || len(deny) != 1 || deny[0] != "Bash(curl *)" {
+		t.Errorf("in the payments repository managed = %v; want the platform model and the repo-scoped deny", managed)
+	}
+
 	// A second cycle is a 304 no-op.
 	stdout, _, code = runSync(t, nil, "once", "--state-dir", stateDir, "--root", "claude="+claudeRoot)
 	if code != 0 || !strings.Contains(stdout, "unchanged") {
@@ -346,6 +420,13 @@ func TestEnrollOnceStatusAndOutage(t *testing.T) {
 	}
 	if report.Error == "" || report.Version != "2026-09-21.e2e" {
 		t.Errorf("after the outage report = %+v; want the error recorded and the version kept", report)
+	}
+
+	// The helper still answers during the outage, from whatever is on
+	// disk: it never needs the server, and a valid envelope with exit 0 is
+	// all Claude Code requires to start.
+	if _, stderr, code := runPolicy(t, t.TempDir(), bundlePath); code != 0 {
+		t.Errorf("aw-policy during the outage exited %d: %s", code, stderr)
 	}
 }
 
