@@ -2,6 +2,7 @@ package main_test
 
 import (
 	"bufio"
+	"bytes"
 	"encoding/json"
 	"errors"
 	"io"
@@ -104,18 +105,32 @@ func runAwd(t *testing.T, args ...string) (string, int) {
 	return runAwdEnv(t, []string{"AWD_ADMIN_TOKEN=" + e2eAdminToken}, args...)
 }
 
-// runAwdEnv runs awd with extra environment on top of the process's own.
+// runAwdEnv runs awd with extra environment on top of the process's own. It
+// keeps stdout and stderr separate and returns whichever one the command
+// actually wrote to: commands report failures on stderr alone (main's error
+// path) and successful output on stdout alone (apply, enroll-token,
+// machines, revoke), so no awd command mixes the two in a single run.
+// Preferring stdout when non-empty lets a caller assert on a clean success
+// value like enroll-token's piped token, while still surfacing stderr text
+// for the error-path assertions the rest of this suite relies on.
 func runAwdEnv(t *testing.T, extra []string, args ...string) (string, int) {
 	t.Helper()
 	cmd := exec.Command(built, args...)
 	cmd.Env = append(append(os.Environ(), "AWD_LOG_LEVEL=error"), extra...)
-	out, err := cmd.CombinedOutput()
+	var stdout, stderr bytes.Buffer
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+	err := cmd.Run()
+	out := stdout.String()
+	if strings.TrimSpace(out) == "" {
+		out = stderr.String()
+	}
 	var exitErr *exec.ExitError
 	switch {
 	case err == nil:
-		return string(out), 0
+		return out, 0
 	case errors.As(err, &exitErr):
-		return string(out), exitErr.ExitCode()
+		return out, exitErr.ExitCode()
 	default:
 		t.Fatalf("running awd %v: %v", args, err)
 		return "", 0
@@ -302,3 +317,105 @@ func TestAnUnknownCommandFails(t *testing.T) {
 		t.Fatalf("exited 0, want non-zero: %s", out)
 	}
 }
+
+func TestEnrollTokenThenEnrollThenBundle(t *testing.T) {
+	s := startServer(t)
+	if out, code := runAwd(t, "apply", writePolicy(t, groupedPolicyYAML), "--url", s.url); code != 0 {
+		t.Fatalf("apply: %s", out)
+	}
+
+	out, code := runAwd(t, "enroll-token", "alice@acme.com", "--url", s.url)
+	if code != 0 {
+		t.Fatalf("enroll-token exited %d: %s", code, out)
+	}
+	token := strings.TrimSpace(out)
+	if token == "" || strings.ContainsAny(token, " \n") {
+		t.Fatalf("stdout should be the token alone, got %q", out)
+	}
+
+	body := `{"token":"` + token + `","name":"e2e-host","os":"linux"}`
+	resp, err := http.Post(s.url+"/v1/machines/enroll", "application/json", strings.NewReader(body))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusCreated {
+		t.Fatalf("enroll status = %d", resp.StatusCode)
+	}
+	var enrolled struct {
+		MachineID  string `json:"machineId"`
+		Credential string `json:"credential"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&enrolled); err != nil {
+		t.Fatal(err)
+	}
+
+	req, _ := http.NewRequest(http.MethodGet, s.url+"/v1/bundle", nil)
+	req.Header.Set("Authorization", "Bearer "+enrolled.Credential)
+	bundleResp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer bundleResp.Body.Close()
+	var bundle struct {
+		User  string `json:"user"`
+		Rules []struct{ Name string }
+	}
+	if err := json.NewDecoder(bundleResp.Body).Decode(&bundle); err != nil {
+		t.Fatal(err)
+	}
+	if bundle.User != "alice@acme.com" || len(bundle.Rules) != 2 {
+		t.Errorf("bundle = %+v, want alice's baseline and platform rules", bundle)
+	}
+
+	list, code := runAwd(t, "machines", "--url", s.url)
+	if code != 0 || !strings.Contains(list, enrolled.MachineID) || !strings.Contains(list, "e2e-host") {
+		t.Errorf("machines output %q should list the enrolled machine", list)
+	}
+
+	if out, code := runAwd(t, "revoke", enrolled.MachineID, "--url", s.url); code != 0 || !strings.Contains(out, "revoked") {
+		t.Errorf("revoke: %d %q", code, out)
+	}
+	after, _ := http.DefaultClient.Do(req)
+	after.Body.Close()
+	if after.StatusCode != http.StatusUnauthorized {
+		t.Errorf("bundle after revoke: %d, want 401", after.StatusCode)
+	}
+}
+
+func TestEnrollTokenNeedsAUser(t *testing.T) {
+	s := startServer(t)
+
+	out, code := runAwd(t, "enroll-token", "--url", s.url)
+
+	if code == 0 || !strings.Contains(out, "user") {
+		t.Errorf("exit %d, output %q", code, out)
+	}
+}
+
+const groupedPolicyYAML = `
+version: "e2e-groups"
+groups:
+  alice@acme.com: [platform]
+rules:
+  - name: baseline
+    agents:
+      claude:
+        managed:
+          permissions:
+            deny: [Read(./.env)]
+  - name: platform
+    match:
+      groups: [platform]
+    agents:
+      claude:
+        managed:
+          model: opus
+  - name: mobile
+    match:
+      groups: [mobile]
+    agents:
+      claude:
+        managed:
+          model: haiku
+`
