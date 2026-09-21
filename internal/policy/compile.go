@@ -80,20 +80,27 @@ type RuleSet struct {
 	Rules []Rule `json:"rules,omitempty"`
 }
 
-// AgentMergeRules returns the merge semantics for one agent's settings
-// schema. Lists that accumulate rather than replace are named here, so an
-// organization allowlist and a team allowlist coexist instead of one silently
-// erasing the other.
+// AgentMergeRules says how one agent's managed settings combine across the
+// rules that apply to a subject. Claude's permission lists union so an
+// organization allowlist and a team allowlist coexist instead of one
+// silently erasing the other. Codex's requirements follow Codex's own
+// layering: scalars and allowlists replace (a union would widen an
+// allowlist), tables such as mcp_servers merge by key, and only
+// rules.prefix_rules accumulate, since each entry is its own restriction.
 func AgentMergeRules(agentName string) merge.Rules {
-	if agentName == "claude" {
+	switch agentName {
+	case "claude":
 		return merge.Rules{UnionArrays: []string{
 			"permissions.allow",
 			"permissions.deny",
 			"permissions.ask",
 			"permissions.additionalDirectories",
 		}}
+	case "codex":
+		return merge.Rules{UnionArrays: []string{"rules.prefix_rules"}}
+	default:
+		return merge.Rules{}
 	}
-	return merge.Rules{}
 }
 
 // Compile resolves the rule set for one subject into the document a client

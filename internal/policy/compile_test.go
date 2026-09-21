@@ -263,3 +263,43 @@ func TestCompileOnANilRuleSetIsSafe(t *testing.T) {
 		t.Errorf("Compile() on a nil rule set = %v, want an empty document", doc)
 	}
 }
+
+func TestCodexRulesMergeWithCodexSemantics(t *testing.T) {
+	// Codex's own layering replaces scalars and lists and merges tables by
+	// key; a union on an allowlist would widen it. Only prefix_rules
+	// accumulate, since each is a separate restriction.
+	rs := &policy.RuleSet{Rules: []policy.Rule{
+		{Name: "baseline", Agents: map[string]policy.AgentConfig{"codex": {Managed: map[string]any{
+			"allowed_sandbox_modes": []any{"read-only", "workspace-write"},
+			"default_permissions":   ":workspace",
+			"mcp_servers":           map[string]any{"docs": map[string]any{"identity": map[string]any{"command": "codex-mcp"}}},
+			"rules":                 map[string]any{"prefix_rules": []any{map[string]any{"pattern": []any{"rm"}, "decision": "forbidden"}}},
+		}}}},
+		{Name: "strict", Agents: map[string]policy.AgentConfig{"codex": {Managed: map[string]any{
+			"allowed_sandbox_modes": []any{"read-only"},
+			"default_permissions":   ":read-only",
+			"mcp_servers":           map[string]any{"jira": map[string]any{"identity": map[string]any{"url": "https://jira/mcp"}}},
+			"rules":                 map[string]any{"prefix_rules": []any{map[string]any{"pattern": []any{"git", "push"}, "decision": "prompt"}}},
+		}}}},
+	}}
+
+	managed := rs.Compile(policy.Subject{}).Agent("codex").Managed
+
+	if modes, _ := managed["allowed_sandbox_modes"].([]any); len(modes) != 1 || modes[0] != "read-only" {
+		t.Errorf("allowed_sandbox_modes = %v; a later rule's allowlist must replace, not widen", modes)
+	}
+	if managed["default_permissions"] != ":read-only" {
+		t.Errorf("default_permissions = %v; scalars replace", managed["default_permissions"])
+	}
+	servers, _ := managed["mcp_servers"].(map[string]any)
+	if _, docs := servers["docs"]; !docs {
+		t.Error("mcp_servers lost docs; tables merge by name")
+	}
+	if _, jira := servers["jira"]; !jira {
+		t.Error("mcp_servers lost jira; tables merge by name")
+	}
+	rules, _ := managed["rules"].(map[string]any)
+	if prefix, _ := rules["prefix_rules"].([]any); len(prefix) != 2 {
+		t.Errorf("prefix_rules = %v; want both rules appended in order", prefix)
+	}
+}
