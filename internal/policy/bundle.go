@@ -36,7 +36,7 @@ func (rs *RuleSet) GroupsFor(user string) []string {
 // downstream mutates a rule.
 func (rs *RuleSet) Slice(groups []string) *Bundle {
 	if rs == nil {
-		return &Bundle{Rules: make([]Rule, 0)}
+		return &Bundle{Groups: make([]string, 0), Rules: make([]Rule, 0)}
 	}
 	if groups == nil {
 		groups = make([]string, 0)

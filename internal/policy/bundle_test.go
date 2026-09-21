@@ -1,7 +1,9 @@
 package policy_test
 
 import (
+	"encoding/json"
 	"reflect"
+	"strings"
 	"testing"
 
 	"github.com/acme/agent-wrapper/internal/policy"
@@ -145,5 +147,30 @@ func TestValidateRejectsAnEmptyUserInGroups(t *testing.T) {
 	rs := &policy.RuleSet{Version: "v1", Groups: map[string][]string{"": {"platform"}}}
 	if err := rs.Validate(); err == nil {
 		t.Error("Validate() = nil, want an error for a group entry with no user")
+	}
+}
+
+func TestNilRuleSetSlicesToEmptyLists(t *testing.T) {
+	var rs *policy.RuleSet
+	b := rs.Slice(nil)
+
+	if b.Groups == nil || len(b.Groups) != 0 {
+		t.Errorf("Groups = %v, want non-nil empty slice", b.Groups)
+	}
+	if b.Rules == nil || len(b.Rules) != 0 {
+		t.Errorf("Rules = %v, want non-nil empty slice", b.Rules)
+	}
+
+	// Verify JSON serialization contains empty arrays, not null
+	data, err := json.Marshal(b)
+	if err != nil {
+		t.Fatalf("json.Marshal failed: %v", err)
+	}
+	jsonStr := string(data)
+	if !strings.Contains(jsonStr, `"groups":[]`) {
+		t.Errorf("JSON missing \"groups\":[], got %s", jsonStr)
+	}
+	if !strings.Contains(jsonStr, `"rules":[]`) {
+		t.Errorf("JSON missing \"rules\":[], got %s", jsonStr)
 	}
 }
