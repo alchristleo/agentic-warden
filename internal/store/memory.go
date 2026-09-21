@@ -88,6 +88,9 @@ func (m *Memory) PutEnrollmentToken(_ context.Context, t model.EnrollmentToken) 
 	}
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	if _, exists := m.tokens[t.Hash]; exists {
+		return fmt.Errorf("store: enrollment token already exists: %w", model.ErrConflict)
+	}
 	m.tokens[t.Hash] = t
 	return nil
 }

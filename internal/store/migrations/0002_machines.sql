@@ -22,5 +22,3 @@ CREATE TABLE IF NOT EXISTS machines (
     last_bundle_version TEXT        NOT NULL DEFAULT '',
     seq                 BIGSERIAL   UNIQUE
 );
-
-CREATE INDEX IF NOT EXISTS machines_seq ON machines (seq);

@@ -42,6 +42,7 @@ func Run(t *testing.T, newStore Factory) {
 		{"a machine needs an id and a credential hash", machineRequiresIDAndHash},
 		{"a machine id is unique", machineIDUnique},
 		{"a credential hash is unique", machineHashUnique},
+		{"an enrollment token hash is unique", tokenHashUnique},
 		{"touching a machine records the fetch", machineTouch},
 		{"machines list in enrollment order", machinesList},
 		{"listing no machines yields an empty slice", machinesListEmpty},
@@ -297,6 +298,29 @@ func tokenExpired(t *testing.T, s store.Store) {
 	_, err := s.ConsumeEnrollmentToken(ctx, "h1", now)
 	if !errors.Is(err, model.ErrConflict) {
 		t.Errorf("consuming at the expiry instant: error = %v, want ErrConflict", err)
+	}
+}
+
+// tokenHashUnique pins that a second token minted with a colliding hash is a
+// conflict, not a silent overwrite: overwriting would let the first token's
+// plaintext, already handed to an administrator, enroll the second token's
+// user instead.
+func tokenHashUnique(t *testing.T, s store.Store) {
+	ctx := context.Background()
+	now := time.Date(2026, 9, 21, 12, 0, 0, 0, time.UTC)
+	if err := s.PutEnrollmentToken(ctx, token("h1", "alice@acme.com", now.Add(time.Hour))); err != nil {
+		t.Fatalf("PutEnrollmentToken: %v", err)
+	}
+
+	err := s.PutEnrollmentToken(ctx, token("h1", "bob@acme.com", now.Add(time.Hour)))
+
+	if !errors.Is(err, model.ErrConflict) {
+		t.Errorf("PutEnrollmentToken() error = %v, want ErrConflict", err)
+	}
+
+	user, err := s.ConsumeEnrollmentToken(ctx, "h1", now)
+	if err != nil || user != "alice@acme.com" {
+		t.Errorf("consume after the duplicate = %q, %v; want alice, the first token's user", user, err)
 	}
 }
 

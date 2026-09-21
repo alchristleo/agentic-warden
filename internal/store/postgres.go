@@ -168,6 +168,10 @@ func (p *Postgres) PutEnrollmentToken(ctx context.Context, t model.EnrollmentTok
 		INSERT INTO enrollment_tokens (hash, "user", expires_at)
 		VALUES ($1, $2, $3)`
 	if _, err := p.pool.Exec(ctx, query, t.Hash, t.User, t.ExpiresAt); err != nil {
+		var pgErr *pgconn.PgError
+		if errors.As(err, &pgErr) && pgErr.Code == uniqueViolation {
+			return fmt.Errorf("store: enrollment token already exists: %w", model.ErrConflict)
+		}
 		return fmt.Errorf("store: storing enrollment token: %w", err)
 	}
 	return nil
