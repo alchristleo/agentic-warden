@@ -19,6 +19,11 @@ import (
 // few kilobytes; anything near this is a broken server, not a policy.
 const maxBundleBytes = 4 << 20
 
+// maxErrorBody bounds what is read from a non-success response. An error
+// body is a short message; a huge one is a broken server, not worth holding
+// in memory to report.
+const maxErrorBody = 4096
+
 // defaultTimeout bounds one exchange when the caller supplies no client. A
 // timer-driven cycle can afford to wait, but not forever.
 const defaultTimeout = 15 * time.Second
@@ -34,16 +39,24 @@ type Client struct {
 // Enrollment is what the control plane returns for a consumed token. The
 // credential is shown once; the control plane keeps only its hash.
 type Enrollment struct {
-	MachineID  string `json:"machineId"`
+	// MachineID identifies this machine to the control plane going forward.
+	MachineID string `json:"machineId"`
+	// Credential authenticates this machine's future bundle fetches; it is
+	// shown once here and never retrievable again.
 	Credential string `json:"credential"`
-	User       string `json:"user"`
+	// User is the account this machine's enrollment token was minted for.
+	User string `json:"user"`
 }
 
 // Fetched is one answer to a conditional bundle request. Unchanged means
 // the server answered 304 and Bundle is nil.
 type Fetched struct {
-	Bundle    *policy.Bundle
-	ETag      string
+	// Bundle is the decoded policy, or nil when Unchanged is true.
+	Bundle *policy.Bundle
+	// ETag identifies the bundle revision, for the next call's If-None-Match.
+	ETag string
+	// Unchanged means the server answered 304: the caller's ETag is still
+	// current and Bundle was not sent.
 	Unchanged bool
 }
 
@@ -63,7 +76,7 @@ func (c *Client) Enroll(ctx context.Context, token, name, goos string) (Enrollme
 		return Enrollment{}, fmt.Errorf("sync: reaching the control plane at %s: %w", c.Server, err)
 	}
 	defer resp.Body.Close()
-	payload, _ := io.ReadAll(io.LimitReader(resp.Body, maxBundleBytes))
+	payload, _ := io.ReadAll(io.LimitReader(resp.Body, maxErrorBody))
 	if resp.StatusCode != http.StatusCreated {
 		return Enrollment{}, fmt.Errorf("sync: enrollment refused: %s: %s", resp.Status, strings.TrimSpace(string(payload)))
 	}
@@ -104,7 +117,7 @@ func (c *Client) Fetch(ctx context.Context, credential, etag string) (Fetched, e
 		return Fetched{}, fmt.Errorf("sync: %w: the control plane rejected this machine's credential; re-enroll", model.ErrUnauthorized)
 	case http.StatusOK:
 	default:
-		payload, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
+		payload, _ := io.ReadAll(io.LimitReader(resp.Body, maxErrorBody))
 		return Fetched{}, fmt.Errorf("sync: the control plane answered %s: %s", resp.Status, strings.TrimSpace(string(payload)))
 	}
 
@@ -126,6 +139,10 @@ func (c *Client) endpoint(path string) string {
 	return strings.TrimSuffix(c.Server, "/") + path
 }
 
+// client returns the configured HTTP client, or a fresh one with
+// defaultTimeout when none was set. A timer-driven cycle makes at most one
+// or two requests per run, so there is no connection pool worth keeping
+// warm between calls; building one here is cheap enough.
 func (c *Client) client() *http.Client {
 	if c.HTTP != nil {
 		return c.HTTP
