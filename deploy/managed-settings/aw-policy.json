@@ -1,6 +1,3 @@
 {
-  "serverUrl": "https://awd.example.com",
-  "groups": ["platform"],
-  "timeoutMs": 3000,
-  "requireFresh": false
+  "requireBundle": false
 }

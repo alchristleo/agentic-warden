@@ -145,11 +145,11 @@ func firstSet(env, names []string) string {
 	return ""
 }
 
-func (a *Adapter) systemDir() string {
-	if a.SystemDir != "" {
-		return a.SystemDir
-	}
-	switch a.goos() {
+// SystemDir is where Claude Code reads its managed settings on goos, and so
+// where aw-sync writes the bundle and the drop-in and where aw-policy reads
+// the bundle back. One table, so the writer and the reader cannot disagree.
+func SystemDir(goos string) string {
+	switch goos {
 	case "darwin":
 		return "/Library/Application Support/ClaudeCode"
 	case "windows":
@@ -157,6 +157,13 @@ func (a *Adapter) systemDir() string {
 	default:
 		return "/etc/claude-code"
 	}
+}
+
+func (a *Adapter) systemDir() string {
+	if a.SystemDir != "" {
+		return a.SystemDir
+	}
+	return SystemDir(a.goos())
 }
 
 func (a *Adapter) configDir(env []string) string {

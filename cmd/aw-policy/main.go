@@ -1,24 +1,26 @@
 // Command aw-policy is the policyHelper executable: Claude Code runs it at
 // startup with no arguments and applies the managed settings it prints.
 //
-// It is deployed alongside a managed-settings file that names it:
+// It is offline. aw-sync enrolls the machine and keeps the user's bundle in
+// Claude Code's system directory as aw-bundle.json, beside the drop-in that
+// names this helper:
 //
 //	{"policyHelper": {"path": "/usr/local/bin/aw-policy", "timeoutMs": 5000}}
 //
-// and reads its own configuration from aw-policy.json in the same system
-// directory as that file, so both are delivered by the same MDM push:
+// The helper reads the bundle, resolves the repository the session runs in
+// and prints the settings that apply. Its own configuration, aw-policy.json
+// in the same directory, is optional and has one key:
 //
-//	{"serverUrl": "https://awd.example.com", "groups": ["platform"]}
+//	{"requireBundle": false}
 //
 // The contract with Claude Code is strict: a non-zero exit, a timeout, or a
 // schema violation in the output refuses the launch. This program therefore
-// always exits 0 with a valid envelope, serving its cache when the control
-// plane cannot be reached, unless the organization opts into failing closed
-// with "requireFresh". See internal/policyhelper for the rules.
+// always exits 0 with a valid envelope, printing an empty one when there is
+// no usable bundle, unless the organization opts into failing closed with
+// "requireBundle". See internal/policyhelper for the rules.
 package main
 
 import (
-	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -27,20 +29,17 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
-	"time"
 
+	"github.com/acme/agent-wrapper/internal/agent/claude"
 	"github.com/acme/agent-wrapper/internal/policyhelper"
 )
-
-// defaultServerURL can be baked in at build time so that a configuration
-// file is optional:
-//
-//	go build -ldflags "-X main.defaultServerURL=https://awd.example.com" ./cmd/aw-policy
-var defaultServerURL = ""
 
 // configEnv names the configuration file explicitly. It exists for tests and
 // for trying the helper by hand; a deployment relies on the system path.
 const configEnv = "AW_POLICY_CONFIG"
+
+// bundleEnv names the bundle file explicitly, for the same reasons.
+const bundleEnv = "AW_POLICY_BUNDLE"
 
 // maxStderr bounds what is written to stderr. Claude Code fails the run past
 // 1 MiB, and it shows stderr as the reason when the helper exits non-zero,
@@ -49,10 +48,7 @@ const maxStderr = 16 << 10
 
 // fileConfig is the deployed configuration file.
 type fileConfig struct {
-	ServerURL    string   `json:"serverUrl"`
-	Groups       []string `json:"groups"`
-	TimeoutMs    int      `json:"timeoutMs"`
-	RequireFresh bool     `json:"requireFresh"`
+	RequireBundle bool `json:"requireBundle"`
 }
 
 func main() {
@@ -73,9 +69,8 @@ func run(stdout, stderr io.Writer, getenv func(string) string) (code int) {
 	}()
 
 	cfg, notes := loadConfig(getenv)
-	cfg.ClaudeCodeVersion = getenv("CLAUDE_CODE_VERSION")
 
-	result := policyhelper.Run(context.Background(), cfg)
+	result := policyhelper.Run(cfg)
 	notes = append(notes, result.Notes...)
 	if _, err := stdout.Write(result.Output); err != nil {
 		notes = append(notes, "writing stdout: "+err.Error())
@@ -83,15 +78,19 @@ func run(stdout, stderr io.Writer, getenv func(string) string) (code int) {
 	return result.ExitCode
 }
 
-// loadConfig reads the deployed file and turns it into a helper Config.
-// Problems are notes, not errors: the helper runs on to serve its cache.
+// loadConfig locates the bundle and reads the optional configuration file.
+// Problems are notes, not errors: the helper runs on with the defaults.
 func loadConfig(getenv func(string) string) (policyhelper.Config, []string) {
 	var notes []string
-	cfg := policyhelper.Config{ServerURL: defaultServerURL}
+	systemDir := claude.SystemDir(runtime.GOOS)
+	cfg := policyhelper.Config{BundlePath: getenv(bundleEnv)}
+	if cfg.BundlePath == "" {
+		cfg.BundlePath = filepath.Join(systemDir, claude.BundleFile)
+	}
 
 	path := getenv(configEnv)
 	if path == "" {
-		path = filepath.Join(systemDir(), "aw-policy.json")
+		path = filepath.Join(systemDir, "aw-policy.json")
 	}
 	raw, err := os.ReadFile(path)
 	switch {
@@ -103,37 +102,19 @@ func loadConfig(getenv func(string) string) (policyhelper.Config, []string) {
 			notes = append(notes, fmt.Sprintf("configuration %s is invalid: %v", path, err))
 			break
 		}
-		if file.ServerURL != "" {
-			cfg.ServerURL = file.ServerURL
-		}
-		cfg.Groups = file.Groups
-		cfg.Timeout = time.Duration(file.TimeoutMs) * time.Millisecond
-		cfg.RequireFresh = file.RequireFresh
-	case errors.Is(err, os.ErrNotExist) && cfg.ServerURL != "":
-		// A baked-in URL makes the file optional.
+		cfg.RequireBundle = file.RequireBundle
+	case errors.Is(err, os.ErrNotExist):
+		// The file is optional: its one key defaults to failing safe.
 	default:
 		notes = append(notes, fmt.Sprintf("configuration %s: %v", path, err))
 	}
 
 	if dir, err := os.UserCacheDir(); err == nil {
-		cfg.CacheDir = filepath.Join(dir, "agent-wrapper", "aw-policy")
+		cfg.AuditDir = filepath.Join(dir, "agent-wrapper", "aw-policy")
 	} else {
-		notes = append(notes, "no cache directory: "+err.Error())
+		notes = append(notes, "no audit directory: "+err.Error())
 	}
 	return cfg, notes
-}
-
-// systemDir is where Claude Code reads its managed settings file on this
-// OS, and so where the helper's configuration is deployed beside it.
-func systemDir() string {
-	switch runtime.GOOS {
-	case "darwin":
-		return "/Library/Application Support/ClaudeCode"
-	case "windows":
-		return `C:\Program Files\ClaudeCode`
-	default:
-		return "/etc/claude-code"
-	}
 }
 
 func writeNotes(stderr io.Writer, notes []string) {
