@@ -3,6 +3,7 @@
 /awd
 /aw-policy
 /aw-cred
+/aw-sync
 
 # Go build and test output
 *.test
