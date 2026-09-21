@@ -28,6 +28,9 @@ type Config struct {
 	IdleTimeout  time.Duration
 	// ShutdownTimeout bounds how long in-flight requests may drain.
 	ShutdownTimeout time.Duration
+	// AdminToken is the bearer token for administrative routes. Unset means
+	// those routes are disabled.
+	AdminToken string
 }
 
 // FromEnv builds a Config from the environment.
@@ -35,6 +38,7 @@ func FromEnv() (Config, error) {
 	cfg := Config{
 		Addr:        env("AWD_ADDR", ":8080"),
 		DatabaseURL: os.Getenv("AWD_DATABASE_URL"),
+		AdminToken:  os.Getenv("AWD_ADMIN_TOKEN"),
 	}
 
 	level, err := logLevel(env("AWD_LOG_LEVEL", "info"))

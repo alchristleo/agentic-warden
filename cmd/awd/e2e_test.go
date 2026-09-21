@@ -17,6 +17,9 @@ import (
 
 var built string
 
+// e2eAdminToken is the admin bearer token the e2e server is configured with.
+const e2eAdminToken = "e2e-admin-token"
+
 func TestMain(m *testing.M) {
 	dir, err := os.MkdirTemp("", "awd-e2e-*")
 	if err != nil {
@@ -42,7 +45,7 @@ type server struct {
 func startServer(t *testing.T) *server {
 	t.Helper()
 	cmd := exec.Command(built, "serve")
-	cmd.Env = append(os.Environ(), "AWD_ADDR=127.0.0.1:0", "AWD_LOG_LEVEL=error")
+	cmd.Env = append(os.Environ(), "AWD_ADDR=127.0.0.1:0", "AWD_LOG_LEVEL=error", "AWD_ADMIN_TOKEN="+e2eAdminToken)
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
 		t.Fatalf("stdout pipe: %v", err)
@@ -98,8 +101,14 @@ func waitReady(t *testing.T, base string) {
 
 func runAwd(t *testing.T, args ...string) (string, int) {
 	t.Helper()
+	return runAwdEnv(t, []string{"AWD_ADMIN_TOKEN=" + e2eAdminToken}, args...)
+}
+
+// runAwdEnv runs awd with extra environment on top of the process's own.
+func runAwdEnv(t *testing.T, extra []string, args ...string) (string, int) {
+	t.Helper()
 	cmd := exec.Command(built, args...)
-	cmd.Env = append(os.Environ(), "AWD_LOG_LEVEL=error")
+	cmd.Env = append(append(os.Environ(), "AWD_LOG_LEVEL=error"), extra...)
 	out, err := cmd.CombinedOutput()
 	var exitErr *exec.ExitError
 	switch {
@@ -212,13 +221,33 @@ func TestApplyRejectsClaudeSettingsThatBreakTheSchema(t *testing.T) {
 
 	// The server enforces the same rule for a client that skipped the check.
 	body := `{"version":"v2","rules":[{"name":"b","agents":{"claude":{"managed":{"permissions":{"deny":"x"}}}}}]}`
-	resp, err := http.Post(s.url+"/v1/policy/revisions", "application/json", strings.NewReader(body))
+	req, err := http.NewRequest(http.MethodPost, s.url+"/v1/policy/revisions", strings.NewReader(body))
+	if err != nil {
+		t.Fatal(err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+e2eAdminToken)
+	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusUnprocessableEntity {
 		t.Errorf("server status = %d, want 422", resp.StatusCode)
+	}
+}
+
+func TestApplyWithoutTheAdminTokenIsRefused(t *testing.T) {
+	s := startServer(t)
+	path := writePolicy(t, policyYAML)
+
+	out, code := runAwdEnv(t, []string{"AWD_ADMIN_TOKEN="}, "apply", path, "--url", s.url)
+
+	if code == 0 {
+		t.Fatalf("apply exited 0 without a token: %s", out)
+	}
+	if !strings.Contains(out, "401") {
+		t.Errorf("output %q should show the 401", out)
 	}
 }
 

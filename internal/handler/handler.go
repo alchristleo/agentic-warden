@@ -35,6 +35,9 @@ type Handler struct {
 	// an agent refuse to start is rejected here, in front of the author,
 	// rather than discovered on a developer's machine. Nil skips the check.
 	ManagedValidator policy.ManagedValidator
+	// AdminToken is the bearer token administrative routes require. Empty
+	// disables them with a 503; it never leaves them open.
+	AdminToken string
 }
 
 // New builds a Handler. A nil logger falls back to the default one.
@@ -51,7 +54,7 @@ func (h *Handler) Routes() http.Handler {
 	mux.HandleFunc("GET /healthz", h.healthz)
 	mux.HandleFunc("GET /readyz", h.readyz)
 	mux.HandleFunc("GET /v1/policy", h.getPolicy)
-	mux.HandleFunc("POST /v1/policy/revisions", h.postRevision)
+	mux.HandleFunc("POST /v1/policy/revisions", h.requireAdmin(h.postRevision))
 	mux.HandleFunc("GET /v1/policy/revisions", h.getRevisions)
 	return Logging(h.log)(Recovery(h.log)(mux))
 }
@@ -170,6 +173,8 @@ func (h *Handler) fail(w http.ResponseWriter, r *http.Request, err error) {
 		writeError(w, http.StatusForbidden, "forbidden")
 	case errors.Is(err, model.ErrOverBudget):
 		writeError(w, http.StatusPaymentRequired, err.Error())
+	case errors.Is(err, model.ErrUnauthorized):
+		writeError(w, http.StatusUnauthorized, "unauthorized")
 	default:
 		// An unexpected error is logged in full and reported vaguely: the
 		// detail is for the operator, not the caller.

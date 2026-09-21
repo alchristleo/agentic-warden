@@ -48,6 +48,7 @@ Environment:
   AWD_IDLE_TIMEOUT      keep-alive idle timeout (default 120s)
   AWD_SHUTDOWN_TIMEOUT  how long in-flight requests may drain (default 30s)
   AWD_URL               control plane URL used by apply (default http://localhost:8080)
+  AWD_ADMIN_TOKEN       bearer token for apply and machine administration; unset disables them
 `
 
 func main() {
@@ -89,6 +90,10 @@ func serve() error {
 
 	h := handler.New(backing, log)
 	h.ManagedValidator = schema.ForAgent
+	h.AdminToken = cfg.AdminToken
+	if cfg.AdminToken == "" {
+		log.Warn("AWD_ADMIN_TOKEN is unset; apply and machine administration are disabled")
+	}
 	srv := &http.Server{
 		Handler:      h.Routes(),
 		ReadTimeout:  cfg.ReadTimeout,
@@ -198,6 +203,9 @@ func apply(argv []string) error {
 		return err
 	}
 	req.Header.Set("Content-Type", "application/json")
+	if token := os.Getenv("AWD_ADMIN_TOKEN"); token != "" {
+		req.Header.Set("Authorization", "Bearer "+token)
+	}
 	if who := appliedBy(); who != "" {
 		req.Header.Set("X-Applied-By", who)
 	}

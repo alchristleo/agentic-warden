@@ -15,18 +15,37 @@ import (
 	"github.com/acme/agent-wrapper/internal/store"
 )
 
+// adminToken is what the test server expects on admin routes.
+const adminToken = "test-admin-token"
+
 func newServer(t *testing.T) *httptest.Server {
 	t.Helper()
 	h := handler.New(store.NewMemory(), nil)
+	h.AdminToken = adminToken
 	h.Now = func() time.Time { return time.Date(2026, 9, 20, 12, 0, 0, 0, time.UTC) }
 	srv := httptest.NewServer(h.Routes())
 	t.Cleanup(srv.Close)
 	return srv
 }
 
+// post sends JSON as an administrator.
 func post(t *testing.T, srv *httptest.Server, path, body string) *http.Response {
 	t.Helper()
-	resp, err := http.Post(srv.URL+path, "application/json", bytes.NewBufferString(body))
+	return postAs(t, srv, path, body, adminToken)
+}
+
+// postAs sends JSON with the given bearer token; empty sends none.
+func postAs(t *testing.T, srv *httptest.Server, path, body, token string) *http.Response {
+	t.Helper()
+	req, err := http.NewRequest(http.MethodPost, srv.URL+path, bytes.NewBufferString(body))
+	if err != nil {
+		t.Fatal(err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	if token != "" {
+		req.Header.Set("Authorization", "Bearer "+token)
+	}
+	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		t.Fatalf("POST %s: %v", path, err)
 	}
@@ -280,6 +299,7 @@ func TestResponsesAreJSON(t *testing.T) {
 
 func TestApplyingARuleSetThatFailsManagedValidationIsRejected(t *testing.T) {
 	h := handler.New(store.NewMemory(), nil)
+	h.AdminToken = adminToken
 	h.ManagedValidator = func(agentName string, managed map[string]any) error {
 		if agentName == "claude" && managed["model"] == 42.0 {
 			return errors.New("model must be a string")
