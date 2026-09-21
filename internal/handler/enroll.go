@@ -15,6 +15,10 @@ import (
 // afternoon" without leaving tokens lying around for weeks.
 const defaultTokenTTL = 24 * time.Hour
 
+// maxTokenTTL bounds how long an administrator can ask a token to live, so a
+// mistyped duration cannot leave an unconsumed credential valid indefinitely.
+const maxTokenTTL = 7 * 24 * time.Hour
+
 // postEnrollmentToken mints a single-use token that enrolls one machine for
 // one user. The plaintext is returned once and never stored.
 func (h *Handler) postEnrollmentToken(w http.ResponseWriter, r *http.Request) {
@@ -35,6 +39,10 @@ func (h *Handler) postEnrollmentToken(w http.ResponseWriter, r *http.Request) {
 		parsed, err := time.ParseDuration(req.TTL)
 		if err != nil || parsed <= 0 {
 			writeError(w, http.StatusUnprocessableEntity, "ttl must be a positive duration such as 24h")
+			return
+		}
+		if parsed > maxTokenTTL {
+			writeError(w, http.StatusUnprocessableEntity, "ttl must be at most 168h")
 			return
 		}
 		ttl = parsed

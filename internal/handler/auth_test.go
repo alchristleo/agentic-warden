@@ -3,6 +3,7 @@ package handler_test
 import (
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/acme/agent-wrapper/internal/handler"
@@ -39,6 +40,26 @@ func TestAdminRoutesAre503WhenNoTokenIsConfigured(t *testing.T) {
 
 	if resp.StatusCode != http.StatusServiceUnavailable {
 		t.Errorf("status = %d, want 503", resp.StatusCode)
+	}
+}
+
+func TestBearerSchemeIsCaseInsensitive(t *testing.T) {
+	srv := newServer(t)
+
+	req, err := http.NewRequest(http.MethodPost, srv.URL+"/v1/policy/revisions", strings.NewReader(baselineRuleSet))
+	if err != nil {
+		t.Fatal(err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "bearer "+adminToken)
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusCreated {
+		t.Errorf("status = %d, want 201: RFC 7235 makes the auth scheme case-insensitive", resp.StatusCode)
 	}
 }
 

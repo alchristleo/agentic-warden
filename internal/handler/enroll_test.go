@@ -58,6 +58,16 @@ func TestMintingATokenNeedsAUser(t *testing.T) {
 	}
 }
 
+func TestMintingATokenCapsTheTTL(t *testing.T) {
+	srv := newServer(t)
+
+	resp := post(t, srv, "/v1/enrollment-tokens", `{"user":"alice@acme.com","ttl":"720h"}`)
+
+	if resp.StatusCode != http.StatusUnprocessableEntity {
+		t.Errorf("status = %d, want 422: a token must not outlive a week", resp.StatusCode)
+	}
+}
+
 func TestATokenEnrollsOneMachine(t *testing.T) {
 	srv := newServer(t)
 	token := mintToken(t, srv, "alice@acme.com")

@@ -10,14 +10,14 @@ import (
 	"github.com/acme/agent-wrapper/internal/model"
 )
 
-// bearer returns the token in an Authorization: Bearer header, or "".
+// bearer returns the token in an Authorization: Bearer header, or "". The
+// scheme is matched case-insensitively, as RFC 7235 requires.
 func bearer(r *http.Request) string {
 	header := r.Header.Get("Authorization")
-	token, ok := strings.CutPrefix(header, "Bearer ")
-	if !ok {
+	if len(header) < 7 || !strings.EqualFold(header[:7], "Bearer ") {
 		return ""
 	}
-	return strings.TrimSpace(token)
+	return strings.TrimSpace(header[7:])
 }
 
 // requireAdmin admits a request only with the configured admin token. With

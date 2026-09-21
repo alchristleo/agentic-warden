@@ -72,6 +72,16 @@ func get(t *testing.T, srv *httptest.Server, path string, header http.Header) *h
 	return resp
 }
 
+// getAs sends a GET with the given bearer token; empty sends none.
+func getAs(t *testing.T, srv *httptest.Server, path, token string) *http.Response {
+	t.Helper()
+	var header http.Header
+	if token != "" {
+		header = http.Header{"Authorization": {"Bearer " + token}}
+	}
+	return get(t, srv, path, header)
+}
+
 func decodeDocument(t *testing.T, resp *http.Response) policy.Document {
 	t.Helper()
 	var doc policy.Document
@@ -256,7 +266,7 @@ func TestRevisionsListNewestFirst(t *testing.T) {
 		t.Fatalf("applying v2: status = %d, want 201", resp.StatusCode)
 	}
 
-	resp := get(t, srv, "/v1/policy/revisions", nil)
+	resp := getAs(t, srv, "/v1/policy/revisions", adminToken)
 
 	var revisions []struct {
 		Version string `json:"version"`
@@ -266,6 +276,17 @@ func TestRevisionsListNewestFirst(t *testing.T) {
 	}
 	if len(revisions) != 2 || revisions[0].Version != "v2" {
 		t.Errorf("revisions = %v, want v2 first", revisions)
+	}
+}
+
+func TestRevisionsListNeedsTheAdminToken(t *testing.T) {
+	srv := newServer(t)
+	applyBaseline(t, srv)
+
+	resp := get(t, srv, "/v1/policy/revisions", nil)
+
+	if resp.StatusCode != http.StatusUnauthorized {
+		t.Errorf("status = %d, want 401: each revision embeds the rule set, including group membership", resp.StatusCode)
 	}
 }
 
