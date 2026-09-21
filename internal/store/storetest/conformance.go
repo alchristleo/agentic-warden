@@ -35,6 +35,17 @@ func Run(t *testing.T, newStore Factory) {
 		{"listing an empty store yields an empty slice", listEmpty},
 		{"revisions stored in the same instant keep their applied order", sameInstantOrder},
 		{"the store assigns an increasing sequence number", sequenceAssigned},
+		{"an enrollment token is consumed once", tokenConsumedOnce},
+		{"an unknown enrollment token is not found", tokenUnknown},
+		{"an expired enrollment token is a conflict", tokenExpired},
+		{"a machine can be found by its credential hash", machineByCredential},
+		{"a machine needs an id and a credential hash", machineRequiresIDAndHash},
+		{"a machine id is unique", machineIDUnique},
+		{"a credential hash is unique", machineHashUnique},
+		{"touching a machine records the fetch", machineTouch},
+		{"machines list in enrollment order", machinesList},
+		{"listing no machines yields an empty slice", machinesListEmpty},
+		{"a deleted machine is gone", machineDelete},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
@@ -243,4 +254,180 @@ func versions(revisions []model.Revision) []string {
 		out = append(out, r.Version)
 	}
 	return out
+}
+
+func token(hash, user string, expires time.Time) model.EnrollmentToken {
+	return model.EnrollmentToken{Hash: hash, User: user, ExpiresAt: expires}
+}
+
+func machine(id, user, hash string, at time.Time) model.Machine {
+	return model.Machine{ID: id, User: user, Name: "laptop-" + id, OS: "linux", CredentialHash: hash, EnrolledAt: at}
+}
+
+func tokenConsumedOnce(t *testing.T, s store.Store) {
+	ctx := context.Background()
+	now := time.Date(2026, 9, 21, 12, 0, 0, 0, time.UTC)
+	if err := s.PutEnrollmentToken(ctx, token("h1", "alice@acme.com", now.Add(time.Hour))); err != nil {
+		t.Fatalf("PutEnrollmentToken: %v", err)
+	}
+
+	user, err := s.ConsumeEnrollmentToken(ctx, "h1", now)
+	if err != nil || user != "alice@acme.com" {
+		t.Fatalf("first consume = %q, %v; want alice and nil", user, err)
+	}
+	_, err = s.ConsumeEnrollmentToken(ctx, "h1", now)
+	if !errors.Is(err, model.ErrConflict) {
+		t.Errorf("second consume error = %v, want ErrConflict: a token enrolls one machine", err)
+	}
+}
+
+func tokenUnknown(t *testing.T, s store.Store) {
+	_, err := s.ConsumeEnrollmentToken(context.Background(), "nope", time.Now())
+	if !errors.Is(err, model.ErrNotFound) {
+		t.Errorf("error = %v, want ErrNotFound", err)
+	}
+}
+
+func tokenExpired(t *testing.T, s store.Store) {
+	ctx := context.Background()
+	now := time.Date(2026, 9, 21, 12, 0, 0, 0, time.UTC)
+	if err := s.PutEnrollmentToken(ctx, token("h1", "alice@acme.com", now)); err != nil {
+		t.Fatal(err)
+	}
+	_, err := s.ConsumeEnrollmentToken(ctx, "h1", now)
+	if !errors.Is(err, model.ErrConflict) {
+		t.Errorf("consuming at the expiry instant: error = %v, want ErrConflict", err)
+	}
+}
+
+func machineByCredential(t *testing.T, s store.Store) {
+	ctx := context.Background()
+	at := time.Date(2026, 9, 21, 12, 0, 0, 0, time.UTC)
+	if err := s.PutMachine(ctx, machine("m1", "alice@acme.com", "c1", at)); err != nil {
+		t.Fatalf("PutMachine: %v", err)
+	}
+
+	got, err := s.MachineByCredential(ctx, "c1")
+	if err != nil {
+		t.Fatalf("MachineByCredential: %v", err)
+	}
+	if got.ID != "m1" || got.User != "alice@acme.com" || got.Name != "laptop-m1" || got.OS != "linux" || !got.EnrolledAt.Equal(at) {
+		t.Errorf("machine = %+v", got)
+	}
+	if _, err := s.MachineByCredential(ctx, "c2"); !errors.Is(err, model.ErrNotFound) {
+		t.Errorf("unknown credential: error = %v, want ErrNotFound", err)
+	}
+}
+
+func machineRequiresIDAndHash(t *testing.T, s store.Store) {
+	ctx := context.Background()
+	if err := s.PutMachine(ctx, model.Machine{User: "a", CredentialHash: "c"}); !errors.Is(err, model.ErrBadInput) {
+		t.Errorf("no id: error = %v, want ErrBadInput", err)
+	}
+	if err := s.PutMachine(ctx, model.Machine{ID: "m", User: "a"}); !errors.Is(err, model.ErrBadInput) {
+		t.Errorf("no hash: error = %v, want ErrBadInput", err)
+	}
+}
+
+func machineIDUnique(t *testing.T, s store.Store) {
+	ctx := context.Background()
+	at := time.Now()
+	if err := s.PutMachine(ctx, machine("m1", "a", "c1", at)); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.PutMachine(ctx, machine("m1", "b", "c2", at)); !errors.Is(err, model.ErrConflict) {
+		t.Errorf("error = %v, want ErrConflict", err)
+	}
+}
+
+func machineHashUnique(t *testing.T, s store.Store) {
+	ctx := context.Background()
+	at := time.Now()
+	if err := s.PutMachine(ctx, machine("m1", "a", "c1", at)); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.PutMachine(ctx, machine("m2", "b", "c1", at)); !errors.Is(err, model.ErrConflict) {
+		t.Errorf("error = %v, want ErrConflict: two machines must never share a credential", err)
+	}
+}
+
+func machineTouch(t *testing.T, s store.Store) {
+	ctx := context.Background()
+	at := time.Date(2026, 9, 21, 12, 0, 0, 0, time.UTC)
+	if err := s.PutMachine(ctx, machine("m1", "a", "c1", at)); err != nil {
+		t.Fatal(err)
+	}
+	seen := at.Add(time.Hour)
+	if err := s.TouchMachine(ctx, "m1", seen, "v7"); err != nil {
+		t.Fatalf("TouchMachine: %v", err)
+	}
+	got, _ := s.MachineByCredential(ctx, "c1")
+	if !got.LastSeenAt.Equal(seen) || got.LastBundleVersion != "v7" {
+		t.Errorf("after touch: %+v", got)
+	}
+	if err := s.TouchMachine(ctx, "missing", seen, "v7"); !errors.Is(err, model.ErrNotFound) {
+		t.Errorf("touching an unknown machine: error = %v, want ErrNotFound", err)
+	}
+}
+
+func machinesList(t *testing.T, s store.Store) {
+	ctx := context.Background()
+	at := time.Date(2026, 9, 21, 12, 0, 0, 0, time.UTC)
+	for i, id := range []string{"m3", "m1", "m2"} {
+		if err := s.PutMachine(ctx, machine(id, "a", "c"+id, at.Add(time.Duration(i)*time.Minute))); err != nil {
+			t.Fatal(err)
+		}
+	}
+	got, err := s.ListMachines(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ids := make([]string, 0, len(got))
+	for _, m := range got {
+		ids = append(ids, m.ID)
+		if m.CredentialHash != "" {
+			t.Errorf("listing leaks a credential hash for %s", m.ID)
+		}
+	}
+	if want := []string{"m3", "m1", "m2"}; !equalStrings(ids, want) {
+		t.Errorf("ids = %v, want enrollment order %v", ids, want)
+	}
+}
+
+func machinesListEmpty(t *testing.T, s store.Store) {
+	got, err := s.ListMachines(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got == nil || len(got) != 0 {
+		t.Errorf("ListMachines on an empty store = %v, want an empty non-nil slice", got)
+	}
+}
+
+func machineDelete(t *testing.T, s store.Store) {
+	ctx := context.Background()
+	if err := s.PutMachine(ctx, machine("m1", "a", "c1", time.Now())); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.DeleteMachine(ctx, "m1"); err != nil {
+		t.Fatalf("DeleteMachine: %v", err)
+	}
+	if _, err := s.MachineByCredential(ctx, "c1"); !errors.Is(err, model.ErrNotFound) {
+		t.Errorf("after delete: error = %v, want ErrNotFound", err)
+	}
+	if err := s.DeleteMachine(ctx, "m1"); !errors.Is(err, model.ErrNotFound) {
+		t.Errorf("deleting twice: error = %v, want ErrNotFound", err)
+	}
+}
+
+func equalStrings(a, b []string) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i] != b[i] {
+			return false
+		}
+	}
+	return true
 }

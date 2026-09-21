@@ -159,12 +159,151 @@ func collectRevisions(rows pgx.Rows) ([]model.Revision, error) {
 	return out, nil
 }
 
-// Truncate removes every revision and restarts the sequence. It exists for
-// the conformance suite, which needs a fresh store per case; never call it
+// PutEnrollmentToken stores a token.
+func (p *Postgres) PutEnrollmentToken(ctx context.Context, t model.EnrollmentToken) error {
+	if t.Hash == "" || t.User == "" {
+		return fmt.Errorf("store: enrollment token needs a hash and a user: %w", model.ErrBadInput)
+	}
+	const query = `
+		INSERT INTO enrollment_tokens (hash, "user", expires_at)
+		VALUES ($1, $2, $3)`
+	if _, err := p.pool.Exec(ctx, query, t.Hash, t.User, t.ExpiresAt); err != nil {
+		return fmt.Errorf("store: storing enrollment token: %w", err)
+	}
+	return nil
+}
+
+// ConsumeEnrollmentToken marks a token used. The UPDATE's WHERE clause is the
+// atomic check: it matches only an unused, unexpired token, so of two
+// concurrent consumers exactly one sees a row.
+func (p *Postgres) ConsumeEnrollmentToken(ctx context.Context, hash string, now time.Time) (string, error) {
+	const consume = `
+		UPDATE enrollment_tokens
+		SET used_at = $2
+		WHERE hash = $1 AND used_at IS NULL AND expires_at > $2
+		RETURNING "user"`
+	var user string
+	err := p.pool.QueryRow(ctx, consume, hash, now).Scan(&user)
+	if err == nil {
+		return user, nil
+	}
+	if !errors.Is(err, pgx.ErrNoRows) {
+		return "", fmt.Errorf("store: consuming enrollment token: %w", err)
+	}
+	// Distinguish "unknown" from "used or expired" for the caller's status.
+	var exists bool
+	if err := p.pool.QueryRow(ctx, `SELECT EXISTS (SELECT 1 FROM enrollment_tokens WHERE hash = $1)`, hash).Scan(&exists); err != nil {
+		return "", fmt.Errorf("store: checking enrollment token: %w", err)
+	}
+	if !exists {
+		return "", fmt.Errorf("store: unknown enrollment token: %w", model.ErrNotFound)
+	}
+	return "", fmt.Errorf("store: enrollment token already used or expired: %w", model.ErrConflict)
+}
+
+// PutMachine stores an enrolled machine.
+func (p *Postgres) PutMachine(ctx context.Context, m model.Machine) error {
+	if m.ID == "" || m.CredentialHash == "" {
+		return fmt.Errorf("store: machine needs an id and a credential hash: %w", model.ErrBadInput)
+	}
+	const query = `
+		INSERT INTO machines (id, "user", name, os, credential_hash, enrolled_at)
+		VALUES ($1, $2, $3, $4, $5, $6)`
+	_, err := p.pool.Exec(ctx, query, m.ID, m.User, m.Name, m.OS, m.CredentialHash, m.EnrolledAt)
+	if err != nil {
+		var pgErr *pgconn.PgError
+		if errors.As(err, &pgErr) && pgErr.Code == uniqueViolation {
+			return fmt.Errorf("store: machine %q or its credential already exists: %w", m.ID, model.ErrConflict)
+		}
+		return fmt.Errorf("store: storing machine %q: %w", m.ID, err)
+	}
+	return nil
+}
+
+const selectMachine = `
+	SELECT id, "user", name, os, credential_hash, enrolled_at, last_seen_at, last_bundle_version
+	FROM machines`
+
+// MachineByCredential finds a machine by credential hash.
+func (p *Postgres) MachineByCredential(ctx context.Context, hash string) (model.Machine, error) {
+	rows, _ := p.pool.Query(ctx, selectMachine+` WHERE credential_hash = $1`, hash)
+	machines, err := collectMachines(rows)
+	if err != nil {
+		return model.Machine{}, err
+	}
+	if len(machines) == 0 {
+		return model.Machine{}, fmt.Errorf("store: no machine holds this credential: %w", model.ErrNotFound)
+	}
+	return machines[0], nil
+}
+
+// TouchMachine records a fetch.
+func (p *Postgres) TouchMachine(ctx context.Context, id string, seenAt time.Time, bundleVersion string) error {
+	tag, err := p.pool.Exec(ctx,
+		`UPDATE machines SET last_seen_at = $2, last_bundle_version = $3 WHERE id = $1`,
+		id, seenAt, bundleVersion)
+	if err != nil {
+		return fmt.Errorf("store: touching machine %q: %w", id, err)
+	}
+	if tag.RowsAffected() == 0 {
+		return fmt.Errorf("store: machine %q not found: %w", id, model.ErrNotFound)
+	}
+	return nil
+}
+
+// ListMachines returns machines in enrollment order, hashes cleared.
+func (p *Postgres) ListMachines(ctx context.Context) ([]model.Machine, error) {
+	rows, _ := p.pool.Query(ctx, selectMachine+` ORDER BY seq`)
+	machines, err := collectMachines(rows)
+	if err != nil {
+		return nil, err
+	}
+	for i := range machines {
+		machines[i].CredentialHash = ""
+	}
+	return machines, nil
+}
+
+// DeleteMachine revokes a machine.
+func (p *Postgres) DeleteMachine(ctx context.Context, id string) error {
+	tag, err := p.pool.Exec(ctx, `DELETE FROM machines WHERE id = $1`, id)
+	if err != nil {
+		return fmt.Errorf("store: deleting machine %q: %w", id, err)
+	}
+	if tag.RowsAffected() == 0 {
+		return fmt.Errorf("store: machine %q not found: %w", id, model.ErrNotFound)
+	}
+	return nil
+}
+
+func collectMachines(rows pgx.Rows) ([]model.Machine, error) {
+	defer rows.Close()
+	out := make([]model.Machine, 0)
+	for rows.Next() {
+		var (
+			m        model.Machine
+			lastSeen *time.Time
+		)
+		if err := rows.Scan(&m.ID, &m.User, &m.Name, &m.OS, &m.CredentialHash, &m.EnrolledAt, &lastSeen, &m.LastBundleVersion); err != nil {
+			return nil, fmt.Errorf("store: reading a machine: %w", err)
+		}
+		if lastSeen != nil {
+			m.LastSeenAt = *lastSeen
+		}
+		out = append(out, m)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("store: reading machines: %w", err)
+	}
+	return out, nil
+}
+
+// Truncate removes every row and restarts the sequences. It exists for the
+// conformance suite, which needs a fresh store per case; never call it
 // against a database that holds a real policy history.
 func (p *Postgres) Truncate(ctx context.Context) error {
-	if _, err := p.pool.Exec(ctx, `TRUNCATE policy_revisions RESTART IDENTITY`); err != nil {
-		return fmt.Errorf("store: truncating policy_revisions: %w", err)
+	if _, err := p.pool.Exec(ctx, `TRUNCATE policy_revisions, enrollment_tokens, machines RESTART IDENTITY`); err != nil {
+		return fmt.Errorf("store: truncating: %w", err)
 	}
 	return nil
 }
