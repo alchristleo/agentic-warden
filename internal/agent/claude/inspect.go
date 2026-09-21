@@ -149,7 +149,7 @@ func (a *Adapter) systemDir() string {
 	if a.SystemDir != "" {
 		return a.SystemDir
 	}
-	switch runtime.GOOS {
+	switch a.goos() {
 	case "darwin":
 		return "/Library/Application Support/ClaudeCode"
 	case "windows":

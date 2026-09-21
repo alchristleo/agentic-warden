@@ -12,9 +12,12 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io/fs"
 	"sort"
 	"strings"
 	"sync"
+
+	"github.com/acme/agent-wrapper/internal/policy"
 )
 
 // ErrNoAdapter is returned by Registry.Lookup for an unregistered name.
@@ -144,4 +147,31 @@ type Inspector interface {
 	// Inspect examines the machine as env (nil means os.Environ) describes
 	// it and reports what it found. It runs nothing.
 	Inspect(env []string) []Finding
+}
+
+// File is one file a Renderer produces. Path is relative to the agent's
+// system directory, which the caller supplies, so a renderer can be tested
+// into a temporary directory and deployed into /etc without knowing which.
+type File struct {
+	Path    string
+	Content []byte
+	Mode    fs.FileMode
+}
+
+// Rendering is what a Renderer produced for one bundle: the files to write,
+// and a note for anything the bundle asked for that the agent's static files
+// cannot express, such as repository-scoped rules for an agent with no
+// per-launch hook. Silence about a dropped rule is not an option.
+type Rendering struct {
+	Files []File
+	Notes []string
+}
+
+// Renderer is implemented by adapters whose agent is governed by files on
+// disk that something on the machine has to write. Render validates what it
+// returns: an error means none of its files may be written, and the caller
+// then writes nothing for any agent that cycle, so the machine never carries
+// a half-applied policy.
+type Renderer interface {
+	Render(bundle *policy.Bundle) (Rendering, error)
 }

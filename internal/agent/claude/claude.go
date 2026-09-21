@@ -19,6 +19,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"time"
 
 	"github.com/acme/agent-wrapper/internal/agent"
@@ -57,6 +58,10 @@ type Adapter struct {
 	SystemDir string
 	// ConfigDir overrides ~/.claude, or $CLAUDE_CONFIG_DIR.
 	ConfigDir string
+	// GOOS overrides the operating system the adapter renders and inspects
+	// for; empty means the one this binary runs on. Tests render the Windows
+	// drop-in on Linux with it.
+	GOOS string
 }
 
 // New returns an adapter with the defaults a developer's machine implies.
@@ -75,6 +80,14 @@ func (a *Adapter) binaryName() string {
 		return a.Binary
 	}
 	return Name
+}
+
+// goos is the operating system whose paths the adapter uses.
+func (a *Adapter) goos() string {
+	if a.GOOS != "" {
+		return a.GOOS
+	}
+	return runtime.GOOS
 }
 
 // Build computes the launch. It never executes the agent.
