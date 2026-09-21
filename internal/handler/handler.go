@@ -54,6 +54,7 @@ func (h *Handler) Routes() http.Handler {
 	mux.HandleFunc("GET /healthz", h.healthz)
 	mux.HandleFunc("GET /readyz", h.readyz)
 	mux.HandleFunc("GET /v1/policy", h.getPolicy)
+	mux.HandleFunc("GET /v1/bundle", h.requireMachine(h.getBundle))
 	mux.HandleFunc("POST /v1/policy/revisions", h.requireAdmin(h.postRevision))
 	mux.HandleFunc("GET /v1/policy/revisions", h.getRevisions)
 	mux.HandleFunc("POST /v1/enrollment-tokens", h.requireAdmin(h.postEnrollmentToken))
