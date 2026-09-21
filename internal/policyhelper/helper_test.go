@@ -1,96 +1,53 @@
 package policyhelper_test
 
 import (
-	"context"
-	"crypto/sha256"
 	"encoding/json"
-	"fmt"
-	"net/http"
-	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
-	"sync/atomic"
 	"testing"
 	"time"
 
 	"github.com/acme/agent-wrapper/internal/policyhelper"
 )
 
-// compiledPolicy is what GET /v1/policy returns for the test subject.
-const compiledPolicy = `{
+// bundle is what aw-sync leaves for a user in the platform group: a
+// baseline rule and one scoped to the payments repositories, with the
+// repository matcher intact for the helper to resolve per launch.
+const bundle = `{
   "version": "2026-09-21.1",
-  "agents": {
-    "claude": {
-      "managed": {
-        "permissions": {"deny": ["Read(./.env)"]},
-        "allowManagedPermissionRulesOnly": true
-      },
-      "env": {"CLAUDE_CODE_ENABLE_TELEMETRY": "1"}
+  "groups": ["platform"],
+  "rules": [
+    {
+      "name": "baseline",
+      "agents": {"claude": {
+        "managed": {"permissions": {"deny": ["Read(./.env)"]}, "allowManagedPermissionRulesOnly": true},
+        "env": {"CLAUDE_CODE_ENABLE_TELEMETRY": "1"}
+      }}
+    },
+    {
+      "name": "payments",
+      "match": {"repos": ["github.com/acme/payments*"]},
+      "agents": {"claude": {"managed": {"permissions": {"deny": ["Bash(curl *)"]}}}}
     }
-  },
-  "appliedRules": ["baseline"]
+  ]
 }`
 
-// fakeControlPlane serves one compiled policy and can be broken between
-// runs, which is how an outage after a good launch is simulated. The cache
-// is keyed on the server URL, so the outage has to come from the same URL.
-type fakeControlPlane struct {
-	*httptest.Server
-	status atomic.Int32 // 0 hangs until the request is cancelled
-	body   atomic.Value // string
-	hits   atomic.Int32
-}
-
-func newControlPlane(t *testing.T, status int, body string) *fakeControlPlane {
+func writeBundle(t *testing.T, body string) string {
 	t.Helper()
-	cp := &fakeControlPlane{}
-	cp.set(status, body)
-	cp.Server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		cp.hits.Add(1)
-		status := int(cp.status.Load())
-		if status == 0 {
-			<-r.Context().Done()
-			return
-		}
-		body := cp.body.Load().(string)
-		etag := fmt.Sprintf("%q", fmt.Sprintf("%x", sha256.Sum256([]byte(body))))
-		w.Header().Set("ETag", etag)
-		if status == http.StatusOK && r.Header.Get("If-None-Match") == etag {
-			w.WriteHeader(http.StatusNotModified)
-			return
-		}
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(status)
-		_, _ = w.Write([]byte(body))
-	}))
-	t.Cleanup(cp.Close)
-	return cp
-}
-
-func (cp *fakeControlPlane) set(status int, body string) {
-	cp.status.Store(int32(status))
-	cp.body.Store(body)
-}
-
-// primed returns a config whose cache already holds compiledPolicy from cp.
-func primed(t *testing.T, cp *fakeControlPlane) policyhelper.Config {
-	t.Helper()
-	cfg := config(t, cp.URL)
-	if r := policyhelper.Run(context.Background(), cfg); r.Source != policyhelper.SourceServer {
-		t.Fatalf("priming run: source = %q, notes = %q", r.Source, r.Notes)
+	path := filepath.Join(t.TempDir(), "aw-bundle.json")
+	if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
+		t.Fatal(err)
 	}
-	return cfg
+	return path
 }
 
-func config(t *testing.T, url string) policyhelper.Config {
+func config(t *testing.T, bundlePath string) policyhelper.Config {
 	t.Helper()
 	return policyhelper.Config{
-		ServerURL: url,
-		CacheDir:  t.TempDir(),
-		Groups:    []string{"platform"},
-		WorkDir:   t.TempDir(), // not a repository
-		Timeout:   2 * time.Second,
+		BundlePath: bundlePath,
+		AuditDir:   t.TempDir(),
+		WorkDir:    t.TempDir(), // not a repository
 	}
 }
 
@@ -112,177 +69,148 @@ func managedOf(t *testing.T, r policyhelper.Result) map[string]any {
 	return managed
 }
 
-func TestAFreshPolicyIsEmittedAsManagedSettings(t *testing.T) {
-	cp := newControlPlane(t, http.StatusOK, compiledPolicy)
+// denies returns permissions.deny as strings, or nothing when it is absent.
+func denies(t *testing.T, managed map[string]any) []string {
+	t.Helper()
+	permissions, _ := managed["permissions"].(map[string]any)
+	raw, _ := permissions["deny"].([]any)
+	out := make([]string, 0, len(raw))
+	for _, v := range raw {
+		out = append(out, v.(string))
+	}
+	return out
+}
 
-	r := policyhelper.Run(context.Background(), config(t, cp.URL))
+func hasNote(r policyhelper.Result, text string) bool {
+	return strings.Contains(strings.Join(r.Notes, "\n"), text)
+}
+
+func TestTheBundleIsCompiledAndEmittedAsManagedSettings(t *testing.T) {
+	r := policyhelper.Run(config(t, writeBundle(t, bundle)))
 
 	if r.ExitCode != 0 {
-		t.Fatalf("exit = %d, want 0", r.ExitCode)
+		t.Fatalf("exit = %d, want 0; notes %q", r.ExitCode, r.Notes)
 	}
-	if r.Source != policyhelper.SourceServer {
-		t.Errorf("source = %q, want server", r.Source)
+	if r.Source != policyhelper.SourceBundle || r.Version != "2026-09-21.1" {
+		t.Errorf("source = %q version = %q, want bundle and 2026-09-21.1", r.Source, r.Version)
 	}
 	managed := managedOf(t, r)
+	if got := denies(t, managed); len(got) != 1 || got[0] != "Read(./.env)" {
+		t.Errorf("deny = %q; outside a repository only the baseline rule applies", got)
+	}
 	if managed["allowManagedPermissionRulesOnly"] != true {
 		t.Errorf("managed settings lost a key: %v", managed)
 	}
 	env, _ := managed["env"].(map[string]any)
 	if env["CLAUDE_CODE_ENABLE_TELEMETRY"] != "1" {
-		t.Errorf("the policy's env should land in managedSettings.env, got %v", managed["env"])
+		t.Errorf("the policy's env was not carried into managed settings: %v", managed)
 	}
 }
 
-func TestTheSubjectIsSentToTheServer(t *testing.T) {
-	var query string
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		query = r.URL.RawQuery
-		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write([]byte(`{"version":"v1"}`))
-	}))
-	t.Cleanup(srv.Close)
-	cfg := config(t, srv.URL)
-	cfg.Groups = []string{"platform", "security"}
-	if err := os.MkdirAll(filepath.Join(cfg.WorkDir, ".git"), 0o755); err != nil {
+func TestTheRepositorySelectsItsRules(t *testing.T) {
+	cfg := config(t, writeBundle(t, bundle))
+	cfg.RepoOverride = "github.com/acme/payments-api"
+
+	r := policyhelper.Run(cfg)
+
+	if got := strings.Join(denies(t, managedOf(t, r)), ","); got != "Read(./.env),Bash(curl *)" {
+		t.Errorf("deny = %q; want the baseline and payments rules merged in order", got)
+	}
+}
+
+func TestTheRepositoryIsDetectedFromTheWorkingDirectory(t *testing.T) {
+	root := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(root, ".git"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(cfg.WorkDir, ".git", "config"),
-		[]byte("[remote \"origin\"]\n\turl = git@github.com:acme/payments-api.git\n"), 0o644); err != nil {
+	gitConfig := "[remote \"origin\"]\n\turl = git@github.com:acme/payments-api.git\n"
+	if err := os.WriteFile(filepath.Join(root, ".git", "config"), []byte(gitConfig), 0o644); err != nil {
 		t.Fatal(err)
 	}
+	cfg := config(t, writeBundle(t, bundle))
+	cfg.WorkDir = root
 
-	policyhelper.Run(context.Background(), cfg)
+	r := policyhelper.Run(cfg)
 
-	for _, want := range []string{"group=platform", "group=security", "repo=github.com%2Facme%2Fpayments-api"} {
-		if !strings.Contains(query, want) {
-			t.Errorf("query %q should contain %s", query, want)
-		}
+	if got := denies(t, managedOf(t, r)); len(got) != 2 {
+		t.Errorf("deny = %q; the payments rule should apply inside its repository", got)
 	}
 }
 
-func TestAServerErrorFallsBackToTheCachedPolicy(t *testing.T) {
-	cp := newControlPlane(t, http.StatusOK, compiledPolicy)
-	cfg := primed(t, cp)
-	cp.set(http.StatusInternalServerError, "boom")
-
-	r := policyhelper.Run(context.Background(), cfg)
-
-	if r.ExitCode != 0 {
-		t.Fatalf("exit = %d, want 0: a server outage must not brick the agent", r.ExitCode)
-	}
-	if r.Source != policyhelper.SourceCache {
-		t.Errorf("source = %q, want cache", r.Source)
-	}
-	if managedOf(t, r)["allowManagedPermissionRulesOnly"] != true {
-		t.Error("the cached policy was not the one emitted")
-	}
-}
-
-func TestATimeoutFallsBackToTheCachedPolicy(t *testing.T) {
-	cp := newControlPlane(t, http.StatusOK, compiledPolicy)
-	cfg := primed(t, cp)
-	cp.set(0, "")
-	cfg.Timeout = 100 * time.Millisecond
-
-	start := time.Now()
-	r := policyhelper.Run(context.Background(), cfg)
-
-	if r.ExitCode != 0 || r.Source != policyhelper.SourceCache {
-		t.Errorf("exit = %d source = %q, want 0 and cache", r.ExitCode, r.Source)
-	}
-	if elapsed := time.Since(start); elapsed > time.Second {
-		t.Errorf("took %v; the helper must give up well inside Claude Code's own timeout", elapsed)
-	}
-}
-
-func TestMalformedJSONFallsBackToTheCachedPolicy(t *testing.T) {
-	cp := newControlPlane(t, http.StatusOK, compiledPolicy)
-	cfg := primed(t, cp)
-	cp.set(http.StatusOK, `{"version": `)
-
-	r := policyhelper.Run(context.Background(), cfg)
-
-	if r.ExitCode != 0 || r.Source != policyhelper.SourceCache {
-		t.Errorf("exit = %d source = %q, want 0 and cache", r.ExitCode, r.Source)
-	}
-}
-
-func TestASchemaViolationIsNeverEmitted(t *testing.T) {
-	// The server is trusted for policy but not for Claude Code's schema:
-	// a stale server, or a hand-edited store, must not produce an object
-	// that makes every launch on the fleet refuse to start.
-	cp := newControlPlane(t, http.StatusOK, compiledPolicy)
-	cfg := primed(t, cp)
-	cp.set(http.StatusOK, `{"version":"v2","agents":{"claude":{"managed":{"permissions":{"deny":"Read(./.env)"}}}}}`)
-
-	r := policyhelper.Run(context.Background(), cfg)
-
-	if r.ExitCode != 0 || r.Source != policyhelper.SourceCache {
-		t.Errorf("exit = %d source = %q, want 0 and cache", r.ExitCode, r.Source)
-	}
-	if deny, _ := managedOf(t, r)["permissions"].(map[string]any); deny["deny"] == "Read(./.env)" {
-		t.Error("the invalid document was emitted")
-	}
-	if !strings.Contains(strings.Join(r.Notes, "\n"), "/permissions/deny") {
-		t.Errorf("notes %q should say what was wrong", r.Notes)
-	}
-}
-
-func TestWithNoCacheAndNoServerTheEnvelopeIsEmpty(t *testing.T) {
-	// An envelope without managedSettings contributes nothing, so the
-	// static managed-settings file the organization deployed still applies.
-	// That is the safest thing a first launch during an outage can do.
-	cp := newControlPlane(t, http.StatusInternalServerError, "boom")
-
-	r := policyhelper.Run(context.Background(), config(t, cp.URL))
+func TestWithoutABundleTheEnvelopeIsEmpty(t *testing.T) {
+	// A machine aw-sync has not reached yet is governed by the static
+	// managed-settings files alone. An envelope without managedSettings
+	// leaves them in force; that is the safest thing to do, and it is
+	// said out loud in the notes.
+	r := policyhelper.Run(config(t, filepath.Join(t.TempDir(), "absent.json")))
 
 	if r.ExitCode != 0 {
 		t.Fatalf("exit = %d, want 0", r.ExitCode)
 	}
-	if r.Source != policyhelper.SourceNone {
-		t.Errorf("source = %q, want none", r.Source)
+	if r.Source != policyhelper.SourceNone || string(r.Output) != "{}\n" {
+		t.Errorf("source = %q output = %q, want none and an empty envelope", r.Source, r.Output)
 	}
-	if _, has := envelope(t, r)["managedSettings"]; has {
-		t.Errorf("output should omit managedSettings entirely, got %s", r.Output)
-	}
-}
-
-func TestRequireFreshFailsClosedWhenTheServerIsDown(t *testing.T) {
-	cp := newControlPlane(t, http.StatusOK, compiledPolicy)
-	cfg := primed(t, cp)
-	cp.set(http.StatusInternalServerError, "boom")
-	cfg.RequireFresh = true
-
-	r := policyhelper.Run(context.Background(), cfg)
-
-	if r.ExitCode == 0 {
-		t.Error("exit = 0, want non-zero: the organization opted into refusing to start on stale policy")
+	if !hasNote(r, "no policy available") || !hasNote(r, "absent.json") {
+		t.Errorf("notes %q should say there is no policy and name the file", r.Notes)
 	}
 }
 
-func TestNotModifiedServesTheCacheWithoutReparsing(t *testing.T) {
-	cp := newControlPlane(t, http.StatusOK, compiledPolicy)
-	cfg := primed(t, cp)
+func TestAnUnparseableBundleIsNotedAndNotEmitted(t *testing.T) {
+	r := policyhelper.Run(config(t, writeBundle(t, "{not json")))
 
-	r := policyhelper.Run(context.Background(), cfg)
+	if r.ExitCode != 0 || string(r.Output) != "{}\n" {
+		t.Errorf("exit = %d output = %q, want 0 and an empty envelope", r.ExitCode, r.Output)
+	}
+	if !hasNote(r, "not valid JSON") {
+		t.Errorf("notes %q should say the bundle does not parse", r.Notes)
+	}
+}
 
-	if cp.hits.Load() != 2 {
-		t.Fatalf("server hits = %d, want 2", cp.hits.Load())
+func TestASchemaViolationIsNeverEmitted(t *testing.T) {
+	// aw-sync validated every rule when it wrote the file, so this guards
+	// a newer schema in this binary; the answer is still no settings,
+	// never settings that make Claude Code refuse to start.
+	bad := `{"version":"v2","groups":[],"rules":[{"name":"bad","agents":{"claude":{"managed":{"permissions":{"deny":"Read(./.env)"}}}}}]}`
+
+	r := policyhelper.Run(config(t, writeBundle(t, bad)))
+
+	if r.ExitCode != 0 || r.Source != policyhelper.SourceNone || string(r.Output) != "{}\n" {
+		t.Errorf("exit = %d source = %q output = %q, want 0, none and an empty envelope", r.ExitCode, r.Source, r.Output)
 	}
-	if r.Source != policyhelper.SourceServer {
-		t.Errorf("source = %q, want server: a 304 confirms the cache is current", r.Source)
+	if !hasNote(r, "/permissions/deny") {
+		t.Errorf("notes %q should say what was wrong", r.Notes)
 	}
-	if managedOf(t, r)["allowManagedPermissionRulesOnly"] != true {
-		t.Error("the confirmed cache was not emitted")
+}
+
+func TestRequireBundleFailsClosedWithoutABundle(t *testing.T) {
+	cfg := config(t, filepath.Join(t.TempDir(), "absent.json"))
+	cfg.RequireBundle = true
+
+	r := policyhelper.Run(cfg)
+
+	if r.ExitCode != 1 {
+		t.Errorf("exit = %d, want 1: the organization asked to fail closed", r.ExitCode)
+	}
+	if string(r.Output) != "{}\n" {
+		t.Errorf("output = %q; a valid envelope is printed even when refusing", r.Output)
+	}
+}
+
+func TestRequireBundleIsSatisfiedByAUsableBundle(t *testing.T) {
+	cfg := config(t, writeBundle(t, bundle))
+	cfg.RequireBundle = true
+
+	if r := policyhelper.Run(cfg); r.ExitCode != 0 {
+		t.Errorf("exit = %d, want 0; notes %q", r.ExitCode, r.Notes)
 	}
 }
 
 func TestOutputStaysUnderClaudeCodesLimit(t *testing.T) {
 	// Claude Code reads at most 1 MiB from stdout; more fails the run.
 	big := strings.Repeat("x", 2<<20)
-	cp := newControlPlane(t, http.StatusOK, `{"version":"v1","agents":{"claude":{"managed":{"model":"`+big+`"}}}}`)
+	oversized := `{"version":"v1","groups":[],"rules":[{"name":"big","agents":{"claude":{"managed":{"model":"` + big + `"}}}}]}`
 
-	r := policyhelper.Run(context.Background(), config(t, cp.URL))
+	r := policyhelper.Run(config(t, writeBundle(t, oversized)))
 
 	if r.ExitCode != 0 {
 		t.Fatalf("exit = %d, want 0", r.ExitCode)
@@ -290,47 +218,44 @@ func TestOutputStaysUnderClaudeCodesLimit(t *testing.T) {
 	if len(r.Output) >= 1<<20 {
 		t.Errorf("output is %d bytes; an oversized policy must degrade, not brick", len(r.Output))
 	}
-}
-
-func TestTheCacheIsPerSubject(t *testing.T) {
-	// Two repositories can compile to different policies. The cache for
-	// one must never be served for the other.
-	var served atomic.Int32
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		served.Add(1)
-		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write([]byte(`{"version":"v1","agents":{"claude":{"managed":{"model":"` + r.URL.Query().Get("repo") + `"}}}}`))
-	}))
-	t.Cleanup(srv.Close)
-	cfg := config(t, srv.URL)
-	cfg.Groups = nil
-	cfg.RepoOverride = "github.com/acme/a"
-	policyhelper.Run(context.Background(), cfg)
-	srv.Close()
-
-	cfg.RepoOverride = "github.com/acme/b"
-	r := policyhelper.Run(context.Background(), cfg)
-
-	if r.Source != policyhelper.SourceNone {
-		t.Errorf("source = %q, want none: repository b has no cache of its own", r.Source)
+	if !hasNote(r, "1 MiB") {
+		t.Errorf("notes %q should say the policy was too large", r.Notes)
 	}
 }
 
 func TestEveryRunIsAudited(t *testing.T) {
-	cp := newControlPlane(t, http.StatusOK, compiledPolicy)
-	cfg := config(t, cp.URL)
+	cfg := config(t, writeBundle(t, bundle))
+	cfg.RepoOverride = "github.com/acme/payments-api"
+	cfg.Now = func() time.Time { return time.Date(2026, 9, 21, 12, 0, 0, 0, time.UTC) }
 
-	policyhelper.Run(context.Background(), cfg)
+	policyhelper.Run(cfg)
 
-	raw, err := os.ReadFile(filepath.Join(cfg.CacheDir, "aw-policy.log"))
+	raw, err := os.ReadFile(filepath.Join(cfg.AuditDir, "aw-policy.log"))
 	if err != nil {
 		t.Fatalf("no audit log: %v", err)
 	}
-	var entry map[string]any
+	var entry struct {
+		Time     time.Time `json:"time"`
+		Source   string    `json:"source"`
+		Version  string    `json:"version"`
+		Groups   []string  `json:"groups"`
+		Repo     string    `json:"repo"`
+		ExitCode int       `json:"exitCode"`
+	}
 	if err := json.Unmarshal([]byte(strings.TrimSpace(string(raw))), &entry); err != nil {
 		t.Fatalf("audit line is not JSON: %v\n%s", err, raw)
 	}
-	if entry["source"] != "server" || entry["version"] != "2026-09-21.1" {
-		t.Errorf("audit entry = %v, want source and version", entry)
+	if entry.Source != "bundle" || entry.Version != "2026-09-21.1" || entry.Repo != "github.com/acme/payments-api" ||
+		len(entry.Groups) != 1 || entry.Groups[0] != "platform" || entry.ExitCode != 0 || !entry.Time.Equal(cfg.Now()) {
+		t.Errorf("audit entry = %+v; want the bundle's groups and version, the repository and the time", entry)
+	}
+}
+
+func TestNoAuditDirMeansNoAuditAndNoFailure(t *testing.T) {
+	cfg := config(t, writeBundle(t, bundle))
+	cfg.AuditDir = ""
+
+	if r := policyhelper.Run(cfg); r.ExitCode != 0 || r.Source != policyhelper.SourceBundle {
+		t.Errorf("exit = %d source = %q; auditing is best effort", r.ExitCode, r.Source)
 	}
 }

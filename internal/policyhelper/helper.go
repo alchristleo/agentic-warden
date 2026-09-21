@@ -8,31 +8,25 @@
 // Run returns something valid to print and an exit code of zero. The only
 // exception is an organization that opts into failing closed.
 //
-// The order of preference is: a fresh policy from the control plane; failing
-// that, the last policy the control plane served this subject; failing that,
-// an envelope that carries no managedSettings, which tells Claude Code to
-// apply the static managed-settings file the organization deployed. That
-// last case is a first launch during an outage, and it is governed by
-// whatever the file says, which is more than nothing.
+// The helper is offline. aw-sync, running as root on a timer, fetches the
+// enrolled user's bundle from the control plane and leaves it in Claude
+// Code's system directory; the helper reads that file, makes the one
+// decision left in it (which repository the session is in) and prints the
+// result. No bundle means an envelope that carries no managedSettings, which
+// tells Claude Code to apply the static managed-settings files the
+// organization deployed. That is a machine aw-sync has not reached yet, and
+// it is governed by whatever those files say, which is more than nothing.
 package policyhelper
 
 import (
-	"context"
-	"crypto/sha256"
-	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
-	"net/http"
-	"net/url"
 	"os"
-	"path/filepath"
-	"strings"
 	"time"
 
 	"github.com/acme/agent-wrapper/internal/agent/claude/schema"
-	"github.com/acme/agent-wrapper/internal/cache"
 	"github.com/acme/agent-wrapper/internal/policy"
 	"github.com/acme/agent-wrapper/internal/repo"
 )
@@ -41,14 +35,11 @@ import (
 type Source string
 
 const (
-	// SourceServer means the control plane served a fresh policy, or
-	// confirmed that the cached one is current.
-	SourceServer Source = "server"
-	// SourceCache means the control plane could not be used and the last
-	// good policy for this subject was emitted instead.
-	SourceCache Source = "cache"
-	// SourceNone means there was nothing to emit: no fresh policy and no
-	// cache. The envelope omits managedSettings.
+	// SourceBundle means the bundle aw-sync left on this machine was
+	// compiled for the session and emitted.
+	SourceBundle Source = "bundle"
+	// SourceNone means there was nothing to emit: no bundle, or one this
+	// binary could not use. The envelope omits managedSettings.
 	SourceNone Source = "none"
 )
 
@@ -56,45 +47,28 @@ const (
 // envelope at or past it fails the run, so one is never emitted.
 const maxOutput = 1 << 20
 
-// maxResponse bounds what is read from the control plane. It is above
-// maxOutput so that an oversized policy is diagnosed as such rather than as
-// truncated JSON.
-const maxResponse = 2 * maxOutput
-
-// DefaultTimeout is the whole HTTP budget when Config.Timeout is zero. It
-// sits well under Claude Code's default policyHelper.timeoutMs of 10000, and
-// under its 1000 minimum with room to print, so a slow control plane costs a
-// developer a pause and never a refused launch.
-const DefaultTimeout = 3 * time.Second
+// maxBundle bounds what is read from the bundle file. aw-sync never accepts
+// more than 4 MiB from the control plane, so a larger file is not its work
+// and is not trusted.
+const maxBundle = 4 << 20
 
 // Config is everything a run needs. It is plain data so that the executable
 // and the tests build it the same way.
 type Config struct {
-	// ServerURL is the control plane's base URL.
-	ServerURL string
-	// Groups are the subject's group memberships. Until identity lands they
-	// come from the helper's deployed configuration.
-	Groups []string
+	// BundlePath is the bundle aw-sync wrote for this machine's user.
+	BundlePath string
 	// WorkDir is where the session runs; the repository it is in, if any,
 	// is the subject's repo. Empty means the current directory.
 	WorkDir string
 	// RepoOverride names the repository directly and skips detection.
 	RepoOverride string
-	// CacheDir holds the last-good policy per subject and the audit log.
-	CacheDir string
-	// Timeout bounds the whole control plane exchange; zero means
-	// DefaultTimeout.
-	Timeout time.Duration
-	// RequireFresh makes a run without a fresh policy exit non-zero, so
-	// Claude Code refuses to start rather than run on cached or absent
-	// policy. It is the organization's opt-in; the default is to fail safe.
-	RequireFresh bool
-	// ClaudeCodeVersion is reported to the control plane so a policy can
-	// one day depend on it. Claude Code sets CLAUDE_CODE_VERSION.
-	ClaudeCodeVersion string
-	// HTTPClient overrides the client used; nil means a default one.
-	HTTPClient *http.Client
-	// Now supplies the time for the cache and audit log.
+	// AuditDir holds the audit log. Empty disables auditing.
+	AuditDir string
+	// RequireBundle makes a run without a usable bundle exit non-zero, so
+	// Claude Code refuses to start rather than run ungoverned. It is the
+	// organization's opt-in; the default is to fail safe.
+	RequireBundle bool
+	// Now supplies the time for the audit log.
 	Now func() time.Time
 }
 
@@ -113,18 +87,9 @@ type Result struct {
 	Notes []string
 }
 
-// cacheEntry is the on-disk form of a last-good policy.
-type cacheEntry struct {
-	ETag      string    `json:"etag,omitempty"`
-	FetchedAt time.Time `json:"fetchedAt"`
-	Version   string    `json:"version,omitempty"`
-	// Managed is the validated managedSettings object, ready to emit.
-	Managed map[string]any `json:"managed"`
-}
-
 // Run computes the envelope for one launch. It never panics out and never
 // returns without an Output.
-func Run(ctx context.Context, cfg Config) (result Result) {
+func Run(cfg Config) (result Result) {
 	defer func() {
 		// A defect in this package must still leave Claude Code able to
 		// start. Turn a panic into the no-policy envelope and a note.
@@ -138,42 +103,24 @@ func Run(ctx context.Context, cfg Config) (result Result) {
 	if cfg.Now == nil {
 		cfg.Now = time.Now
 	}
-	if cfg.Timeout <= 0 {
-		cfg.Timeout = DefaultTimeout
-	}
-	ctx, cancel := context.WithTimeout(ctx, cfg.Timeout)
-	defer cancel()
 
 	subject, notes := resolveSubject(cfg)
 	result.Notes = notes
-	cachePath := filepath.Join(cfg.CacheDir, "policy-"+subjectKey(cfg.ServerURL, subject)+".json")
-	cached := loadCache(cachePath, &result)
 
-	fresh, err := fetch(ctx, cfg, subject, cached)
-	switch {
-	case err == nil && fresh != nil:
-		result.Source = SourceServer
-		result.Version = fresh.Version
-		if err := cache.Replace(cachePath, mustJSON(fresh)); err != nil {
-			result.note("cache not updated: %v", err)
-		}
-		result.Output = envelope(fresh.Managed)
-	case err == nil && cached != nil:
-		// 304: the cache is what the server would have sent.
-		result.Source = SourceServer
-		result.Version = cached.Version
-		result.Output = envelope(cached.Managed)
-	case cached != nil:
-		result.note("using the cached policy from %s: %v", cached.FetchedAt.Format(time.RFC3339), err)
-		result.Source = SourceCache
-		result.Version = cached.Version
-		result.Output = envelope(cached.Managed)
-	default:
-		if err != nil {
-			result.note("no policy available: %v", err)
-		}
+	var managed map[string]any
+	bundle, err := loadBundle(cfg.BundlePath)
+	if err == nil {
+		subject.Groups = bundle.Groups
+		managed, err = compile(bundle, subject.Repo)
+	}
+	if err != nil {
+		result.note("no policy available: %v", err)
 		result.Source = SourceNone
 		result.Output = envelope(nil)
+	} else {
+		result.Source = SourceBundle
+		result.Version = bundle.Version
+		result.Output = envelope(managed)
 	}
 
 	if len(result.Output) >= maxOutput {
@@ -193,10 +140,10 @@ func (r *Result) note(format string, args ...any) {
 	r.Notes = append(r.Notes, fmt.Sprintf(format, args...))
 }
 
-// exitCode is zero unless the organization requires a fresh policy and this
-// run did not get one.
+// exitCode is zero unless the organization requires a bundle and this run
+// did not get a usable one.
 func exitCode(cfg Config, source Source) int {
-	if cfg.RequireFresh && source != SourceServer {
+	if cfg.RequireBundle && source != SourceBundle {
 		return 1
 	}
 	return 0
@@ -212,8 +159,10 @@ func envelope(managed map[string]any) []byte {
 	return append(out, '\n')
 }
 
+// resolveSubject finds the repository the session runs in. Groups are not
+// decided here: the bundle carries the ones it was cut for.
 func resolveSubject(cfg Config) (policy.Subject, []string) {
-	subject := policy.Subject{Groups: cfg.Groups, Repo: cfg.RepoOverride}
+	subject := policy.Subject{Repo: cfg.RepoOverride}
 	if subject.Repo != "" {
 		return subject, nil
 	}
@@ -231,111 +180,43 @@ func resolveSubject(cfg Config) (policy.Subject, []string) {
 	return subject, nil
 }
 
-// subjectKey names the cache file for one subject against one server. Any
-// difference in what is sent to the server yields a different file, so a
-// cache can never be served for a subject it was not compiled for.
-func subjectKey(server string, s policy.Subject) string {
-	sum := sha256.Sum256([]byte(server + "\x00" + strings.Join(s.Groups, "\x00") + "\x00" + s.Repo))
-	return hex.EncodeToString(sum[:])[:16]
+// loadBundle reads what aw-sync left. Every problem is one error: the
+// caller does nothing different for a missing file than for a broken one,
+// and the message says which it was.
+func loadBundle(path string) (*policy.Bundle, error) {
+	if path == "" {
+		return nil, errors.New("no bundle path configured")
+	}
+	f, err := os.Open(path)
+	if err != nil {
+		return nil, fmt.Errorf("bundle %s: %w", path, err)
+	}
+	defer f.Close()
+	raw, err := io.ReadAll(io.LimitReader(f, maxBundle+1))
+	if err != nil {
+		return nil, fmt.Errorf("reading bundle %s: %w", path, err)
+	}
+	if len(raw) > maxBundle {
+		return nil, fmt.Errorf("bundle %s exceeds %d bytes", path, maxBundle)
+	}
+	var bundle policy.Bundle
+	if err := json.Unmarshal(raw, &bundle); err != nil {
+		return nil, fmt.Errorf("bundle %s is not valid JSON: %w", path, err)
+	}
+	return &bundle, nil
 }
 
-// loadCache reads the last-good entry, revalidating it against the schema
-// this binary carries: a cache written by an older build is not trusted just
-// because it was valid then. Any problem means no cache.
-func loadCache(path string, result *Result) *cacheEntry {
-	raw, err := os.ReadFile(path)
-	if err != nil {
-		if !errors.Is(err, os.ErrNotExist) {
-			result.note("cache unreadable: %v", err)
-		}
-		return nil
-	}
-	var entry cacheEntry
-	if err := json.Unmarshal(raw, &entry); err != nil {
-		result.note("cache discarded: %v", err)
-		return nil
-	}
-	if entry.Managed == nil {
-		return nil
-	}
-	if err := schema.Validate(entry.Managed); err != nil {
-		result.note("cache discarded: %v", err)
-		return nil
-	}
-	return &entry
-}
-
-// fetch asks the control plane for the subject's policy. It returns a new
-// entry on 200, nil and no error on 304, and an error otherwise. The error
-// cases are deliberately broad: anything that is not a valid fresh policy is
-// a reason to fall back, never a reason to emit something doubtful.
-func fetch(ctx context.Context, cfg Config, subject policy.Subject, cached *cacheEntry) (*cacheEntry, error) {
-	if cfg.ServerURL == "" {
-		return nil, errors.New("no control plane URL configured")
-	}
-	query := url.Values{}
-	for _, g := range subject.Groups {
-		query.Add("group", g)
-	}
-	if subject.Repo != "" {
-		query.Set("repo", subject.Repo)
-	}
-	endpoint := strings.TrimSuffix(cfg.ServerURL, "/") + "/v1/policy"
-	if len(query) > 0 {
-		endpoint += "?" + query.Encode()
-	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
-	if err != nil {
-		return nil, fmt.Errorf("building the request: %w", err)
-	}
-	req.Header.Set("Accept", "application/json")
-	req.Header.Set("Cache-Control", "no-cache")
-	req.Header.Set("User-Agent", "aw-policy")
-	if cfg.ClaudeCodeVersion != "" {
-		req.Header.Set("X-Claude-Code-Version", cfg.ClaudeCodeVersion)
-	}
-	if cached != nil && cached.ETag != "" {
-		req.Header.Set("If-None-Match", cached.ETag)
-	}
-
-	client := cfg.HTTPClient
-	if client == nil {
-		client = &http.Client{Timeout: cfg.Timeout}
-	}
-	resp, err := client.Do(req)
-	if err != nil {
-		return nil, fmt.Errorf("control plane unreachable: %w", err)
-	}
-	defer resp.Body.Close()
-
-	switch {
-	case resp.StatusCode == http.StatusNotModified && cached != nil:
-		return nil, nil
-	case resp.StatusCode != http.StatusOK:
-		return nil, fmt.Errorf("control plane answered %s", resp.Status)
-	}
-
-	body, err := io.ReadAll(io.LimitReader(resp.Body, maxResponse+1))
-	if err != nil {
-		return nil, fmt.Errorf("reading the policy: %w", err)
-	}
-	if len(body) > maxResponse {
-		return nil, fmt.Errorf("the policy exceeds %d bytes", maxResponse)
-	}
-	doc, err := policy.Parse(body, endpoint)
-	if err != nil {
-		return nil, err
-	}
-	managed := managedSettings(doc.Agent("claude"))
+// compile resolves the bundle for the session's repository and checks the
+// result against the schema this binary carries. aw-sync validated every
+// rule when it wrote the file, so a failure here means this build carries a
+// newer schema than the one that wrote it; the safe answer is still no
+// settings rather than settings Claude Code refuses.
+func compile(bundle *policy.Bundle, repoName string) (map[string]any, error) {
+	managed := managedSettings(bundle.Compile(repoName).Agent("claude"))
 	if err := schema.Validate(managed); err != nil {
-		return nil, fmt.Errorf("the served policy is not valid Claude Code settings: %w", err)
+		return nil, fmt.Errorf("the bundle compiles to settings this build rejects: %w", err)
 	}
-	return &cacheEntry{
-		ETag:      resp.Header.Get("ETag"),
-		FetchedAt: cfg.Now().UTC(),
-		Version:   doc.Version,
-		Managed:   managed,
-	}, nil
+	return managed, nil
 }
 
 // managedSettings turns one agent's policy into the object Claude Code

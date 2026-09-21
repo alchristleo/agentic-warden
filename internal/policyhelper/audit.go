@@ -25,17 +25,17 @@ type auditEntry struct {
 	Notes    []string  `json:"notes,omitempty"`
 }
 
-// audit appends one line to the log in the cache directory. It is best
+// audit appends one line to the log in the audit directory. It is best
 // effort: a log that cannot be written must not affect the launch.
 func audit(cfg Config, subject policy.Subject, r Result) {
-	if cfg.CacheDir == "" {
+	if cfg.AuditDir == "" {
 		return
 	}
-	path := filepath.Join(cfg.CacheDir, "aw-policy.log")
+	path := filepath.Join(cfg.AuditDir, "aw-policy.log")
 	if info, err := os.Stat(path); err == nil && info.Size() > auditRotateAt {
 		_ = os.Rename(path, path+".1")
 	}
-	if err := os.MkdirAll(cfg.CacheDir, 0o700); err != nil {
+	if err := os.MkdirAll(cfg.AuditDir, 0o700); err != nil {
 		return
 	}
 	f, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o600)
