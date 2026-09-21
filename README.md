@@ -69,6 +69,7 @@ detects the collision.
     internal/glob     wildcard matching for rules and repo targeting
     internal/cache/   content-addressed generated files
     internal/config/  control plane configuration
+    internal/credential/  minting and hashing machine credentials
 
 ## Try it
 
@@ -77,6 +78,21 @@ Run the control plane and apply a policy:
     go build -o awd ./cmd/awd
     AWD_ADDR=127.0.0.1:8080 ./awd serve &
     ./awd apply examples/org-policy.yaml --url http://127.0.0.1:8080
+
+Apply needs an administrator token; set `AWD_ADMIN_TOKEN` for both the
+server and the CLI. Then enroll a machine and fetch its bundle:
+
+    export AWD_ADMIN_TOKEN=change-me
+    TOKEN=$(./awd enroll-token alice@acme.com --url http://127.0.0.1:8080)
+    curl -s -X POST http://127.0.0.1:8080/v1/machines/enroll \
+      -d "{\"token\":\"$TOKEN\",\"name\":\"$(hostname)\",\"os\":\"linux\"}"
+    # {"machineId":"...","credential":"...","user":"alice@acme.com"}
+    curl -s -H 'Authorization: Bearer <credential>' http://127.0.0.1:8080/v1/bundle
+
+The bundle is every rule that could apply to that user, with repository
+matchers still in it; the machine resolves those per session. `aw-sync`,
+which does the enrolling and the rendering on a real machine, is the next
+milestone.
 
 Fetch what a given developer would get:
 

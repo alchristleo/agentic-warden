@@ -4,6 +4,13 @@
 # Apply it with:  awd apply examples/org-policy.yaml
 version: "2026-09-20.1"
 
+# Who belongs to which group. Authored here so a membership change is a
+# policy revision like any other; an identity-provider sync can replace this
+# block later without changing what a machine receives.
+groups:
+  alice@acme.com: [platform]
+  bob@acme.com: [platform, security]
+
 rules:
   # Applies to everyone: no match block means no constraint.
   - name: baseline
