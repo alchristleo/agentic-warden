@@ -2,6 +2,7 @@ package sync_test
 
 import (
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"sort"
@@ -110,5 +111,19 @@ func TestStatusCarriesTheLastError(t *testing.T) {
 	}
 	if r.Error != "the control plane answered 500" {
 		t.Errorf("error = %q", r.Error)
+	}
+}
+
+func TestStatusReportsAMalformedEnrollment(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, sync.MachineFile), []byte(`{"server":"http://awd"}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	_, err := sync.Status(sync.Config{StateDir: dir})
+	if err == nil {
+		t.Fatal("want an error for a half-enrolled machine")
+	}
+	if errors.Is(err, sync.ErrNotEnrolled) {
+		t.Errorf("err = %v, want an error other than ErrNotEnrolled", err)
 	}
 }

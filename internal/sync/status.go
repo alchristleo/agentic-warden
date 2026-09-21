@@ -9,6 +9,7 @@ import (
 
 // FileStatus is one rendered file compared with what the last cycle wrote.
 type FileStatus struct {
+	// Path is the file's absolute path, as recorded in state.json.
 	Path string `json:"path"`
 	// State is "ok", "drift" (content differs) or "missing".
 	State string `json:"state"`
@@ -21,15 +22,27 @@ type FileStatus struct {
 // Report is what `aw-sync status` shows: enrollment, the last cycle, and
 // every rendered file's drift.
 type Report struct {
-	Enrolled  bool         `json:"enrolled"`
-	Server    string       `json:"server,omitempty"`
-	MachineID string       `json:"machineId,omitempty"`
-	Agents    []string     `json:"agents"`
-	SyncedAt  time.Time    `json:"syncedAt"`
-	Version   string       `json:"version,omitempty"`
-	Error     string       `json:"error,omitempty"`
-	Notes     []string     `json:"notes"`
-	Files     []FileStatus `json:"files"`
+	// Enrolled is false when there is no machine.json: every other
+	// enrollment field is then empty and this is not an error.
+	Enrolled bool `json:"enrolled"`
+	// Server is the control plane's base URL from the enrollment.
+	Server string `json:"server,omitempty"`
+	// MachineID is what the control plane calls this machine.
+	MachineID string `json:"machineId,omitempty"`
+	// Agents names the adapters this machine renders, from the enrollment.
+	Agents []string `json:"agents"`
+	// SyncedAt is when the last successful cycle finished, from state.json.
+	SyncedAt time.Time `json:"syncedAt"`
+	// Version is the policy revision the last cycle rendered.
+	Version string `json:"version,omitempty"`
+	// Error is why the last cycle failed, carried over from state.json.
+	Error string `json:"error,omitempty"`
+	// Notes are what the renderers reported on the last cycle, such as
+	// rules an agent cannot enforce.
+	Notes []string `json:"notes"`
+	// Files is every file the last cycle rendered, each compared against
+	// what is on disk now.
+	Files []FileStatus `json:"files"`
 	// Drift is true when any file is not as the last cycle left it. `once`
 	// overwrites drift unconditionally; the files are root-owned, and a
 	// user who can edit them already has root.
@@ -74,6 +87,10 @@ func Status(cfg Config) (Report, error) {
 		raw, err := os.ReadFile(path)
 		switch {
 		case err != nil:
+			// Any read error, not only os.ErrNotExist, is reported as
+			// "missing": a file this process cannot read is, for
+			// enforcement purposes, not there, and the next `once` rewrites
+			// it regardless of why the read failed.
 			fs.State = "missing"
 		case hashOf(raw) == fs.Expected:
 			fs.State = "ok"
