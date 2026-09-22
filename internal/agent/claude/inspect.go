@@ -1,14 +1,17 @@
 package claude
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"runtime"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/acme/agent-wrapper/internal/agent"
 	"github.com/acme/agent-wrapper/internal/policy"
@@ -50,7 +53,13 @@ func (a *Adapter) Inspect(env []string) []agent.Finding {
 		findings = append(findings, agent.Finding{Level: agent.Warn,
 			Message: fmt.Sprintf("no policyHelper in %s: organization policy is not enforced on bare `claude`", systemDir)})
 	default:
-		findings = append(findings, checkHelperBinary(helper, source))
+		binary := checkHelperBinary(helper, source)
+		findings = append(findings, binary)
+		if binary.Level == agent.OK {
+			if build, warn := checkHelperBuild(helper, source); warn {
+				findings = append(findings, build)
+			}
+		}
 	}
 
 	findings = append(findings, inspectBundle(systemDir))
@@ -117,6 +126,28 @@ func checkHelperBinary(helper, source string) agent.Finding {
 			Message: fmt.Sprintf("policyHelper %s (from %s) is not executable", helper, source)}
 	}
 	return agent.Finding{Level: agent.OK, Message: fmt.Sprintf("policyHelper %s (from %s)", helper, source)}
+}
+
+// helperProbeTimeout bounds `aw-policy build-info`. The real helper answers
+// instantly; the bound is for a helper that is not ours and reads stdin or
+// waits on a network.
+const helperProbeTimeout = 2 * time.Second
+
+// checkHelperBuild asks the helper which build it is and warns when it is a
+// test build, since that build honours AW_POLICY_BUNDLE from the
+// developer's environment and so lets a developer choose their own policy.
+// Every other outcome, including a helper that fails on the argument or
+// prints something else, is reported as nothing: the drop-in may name a
+// helper that is not ours, and only a positive answer is evidence.
+func checkHelperBuild(helper, source string) (agent.Finding, bool) {
+	ctx, cancel := context.WithTimeout(context.Background(), helperProbeTimeout)
+	defer cancel()
+	out, err := exec.CommandContext(ctx, helper, "build-info").Output()
+	if err != nil || !strings.Contains(string(out), "env-overrides=on") {
+		return agent.Finding{}, false
+	}
+	return agent.Finding{Level: agent.Warn,
+		Message: fmt.Sprintf("policyHelper %s (from %s) was built with -tags awtest: a developer can point it at their own bundle; rebuild without the tag", helper, source)}, true
 }
 
 // inspectBundle reports the bundle aw-sync leaves for aw-policy. Without

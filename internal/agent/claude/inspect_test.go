@@ -3,6 +3,7 @@ package claude_test
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -40,6 +41,21 @@ func (in *inspection) helperBinary(t *testing.T) string {
 	t.Helper()
 	path := filepath.Join(t.TempDir(), "aw-policy")
 	if err := os.WriteFile(path, []byte("#!/bin/sh\necho '{}'\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	return path
+}
+
+// helperSaying is a fake helper whose `build-info` answer is script; the
+// no-argument path still prints an envelope so the other checks hold.
+func (in *inspection) helperSaying(t *testing.T, script string) string {
+	t.Helper()
+	if runtime.GOOS == "windows" {
+		t.Skip("POSIX shell script")
+	}
+	path := filepath.Join(t.TempDir(), "aw-policy")
+	body := "#!/bin/sh\nif [ \"$1\" = build-info ]; then " + script + "; fi\necho '{}'\n"
+	if err := os.WriteFile(path, []byte(body), 0o755); err != nil {
 		t.Fatal(err)
 	}
 	return path
@@ -191,5 +207,49 @@ func TestInspectFlagsAnUnparseableBundle(t *testing.T) {
 
 	if !findingsWith(findings, agent.Error, "not valid JSON") {
 		t.Errorf("findings %+v should flag the bundle aw-policy cannot read", findings)
+	}
+}
+
+func TestInspectWarnsWhenTheHelperWasBuiltWithEnvOverrides(t *testing.T) {
+	in := newInspection(t)
+	helper := in.helperSaying(t, "echo env-overrides=on; exit 0")
+	in.write(t, filepath.Join(in.systemDir, "managed-settings.d", "50-agent-wrapper.json"),
+		`{"policyHelper":{"path":"`+helper+`"}}`)
+
+	findings := in.adapter.Inspect(nil)
+
+	if !findingsWith(findings, agent.Warn, "-tags awtest") {
+		t.Errorf("findings %v should warn that the helper honours a developer's AW_POLICY_BUNDLE", findings)
+	}
+}
+
+func TestInspectSaysNothingAboutAReleaseHelper(t *testing.T) {
+	in := newInspection(t)
+	helper := in.helperSaying(t, "echo env-overrides=off; exit 0")
+	in.write(t, filepath.Join(in.systemDir, "managed-settings.d", "50-agent-wrapper.json"),
+		`{"policyHelper":{"path":"`+helper+`"}}`)
+
+	findings := in.adapter.Inspect(nil)
+
+	if findingsWith(findings, agent.Warn, "awtest") {
+		t.Errorf("findings %v warn about a release build", findings)
+	}
+}
+
+func TestInspectSaysNothingWhenTheHelperCannotAnswerBuildInfo(t *testing.T) {
+	// The drop-in may name a helper that is not ours; failing on an unknown
+	// argument is not evidence of anything.
+	in := newInspection(t)
+	helper := in.helperSaying(t, "echo unknown argument >&2; exit 1")
+	in.write(t, filepath.Join(in.systemDir, "managed-settings.d", "50-agent-wrapper.json"),
+		`{"policyHelper":{"path":"`+helper+`"}}`)
+
+	findings := in.adapter.Inspect(nil)
+
+	if findingsWith(findings, agent.Warn, "awtest") {
+		t.Errorf("findings %v warn on a probe that failed", findings)
+	}
+	if !findingsWith(findings, agent.OK, helper) {
+		t.Errorf("findings %v should still confirm the helper binary", findings)
 	}
 }
