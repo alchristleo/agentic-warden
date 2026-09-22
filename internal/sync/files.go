@@ -23,6 +23,9 @@ const (
 	// uses that name, in a different directory (/Library/Logs), and the
 	// two must not be confused with each other.
 	AuditFile = "aw-sync-audit.log"
+	// BundleFile is the fetched bundle, every agent's rules with matchers
+	// intact, left in the state directory for `aw` to compile per launch.
+	BundleFile = "aw-bundle.json"
 )
 
 // ErrNotEnrolled means there is no machine.json: `aw-sync enroll` has not

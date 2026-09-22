@@ -421,7 +421,7 @@ func TestEnrollOnceStatusAndOutage(t *testing.T) {
 	if err := json.Unmarshal([]byte(stdout), &report); err != nil {
 		t.Fatalf("status --json is not JSON: %v\n%s", err, stdout)
 	}
-	if !report.Enrolled || report.Version != "2026-09-21.e2e" || report.Drift || report.Error != "" || len(report.Files) != 5 {
+	if !report.Enrolled || report.Version != "2026-09-21.e2e" || report.Drift || report.Error != "" || len(report.Files) != 6 {
 		t.Errorf("report = %+v", report)
 	}
 	if notes := strings.Join(report.Notes, "\n"); !strings.Contains(notes, "repo-scoped rule") || !strings.Contains(notes, "payments") ||
@@ -545,8 +545,8 @@ func TestOnceResolvesARelativeRootAgainstTheWorkingDirectory(t *testing.T) {
 			t.Errorf("file %s reports %q from a different working directory; --root was not made absolute", f.Path, f.State)
 		}
 	}
-	if len(report.Files) != 2 {
-		t.Errorf("report.Files = %v, want 2 entries", report.Files)
+	if len(report.Files) != 3 {
+		t.Errorf("report.Files = %v, want 3 entries", report.Files)
 	}
 }
 

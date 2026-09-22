@@ -176,6 +176,14 @@ func Run(ctx context.Context, cfg Config) Result {
 		}
 	}
 
+	// The full bundle goes beside state.json so `aw` can compile it for the
+	// repository a session runs in, whatever agents this machine enrolled.
+	bundleJSON, err := json.MarshalIndent(fetched.Bundle, "", "  ")
+	if err != nil {
+		return cfg.fail(state, notes, nil, nil, fmt.Errorf("sync: encoding the bundle: %w", err))
+	}
+	planned = append(planned, plannedFile{path: filepath.Join(cfg.StateDir, BundleFile), content: append(bundleJSON, '\n'), mode: 0o644})
+
 	version := fetched.Bundle.Version
 	written := make([]string, 0, len(planned))
 	files := make(map[string]string, len(planned))

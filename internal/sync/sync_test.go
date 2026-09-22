@@ -129,7 +129,7 @@ func TestRunWritesEveryRenderedFileAndRecordsState(t *testing.T) {
 	if res.Err != nil {
 		t.Fatal(res.Err)
 	}
-	if res.Unchanged || res.Version != "v1" || len(res.Written) != 2 {
+	if res.Unchanged || res.Version != "v1" || len(res.Written) != 3 {
 		t.Errorf("result = %+v", res)
 	}
 
@@ -195,8 +195,8 @@ func TestRunRepairsDriftEvenWhenTheETagStillMatches(t *testing.T) {
 	if res.Unchanged {
 		t.Error("Run reported Unchanged although the files on disk had drifted")
 	}
-	if len(res.Written) != 2 {
-		t.Errorf("Written = %v, want both files rewritten", res.Written)
+	if len(res.Written) != 3 {
+		t.Errorf("Written = %v, want the two agent files and the state-dir bundle rewritten", res.Written)
 	}
 
 	var written policy.Bundle
@@ -509,4 +509,36 @@ func (notingRenderer) Render(*policy.Bundle) (agent.Rendering, error) {
 		Files: []agent.File{{Path: "requirements.toml", Content: []byte("# ok\n"), Mode: 0o644}},
 		Notes: []string{"1 repo-scoped rule is not enforceable for noting"},
 	}, nil
+}
+
+func TestRunLeavesTheFullBundleInTheStateDirectory(t *testing.T) {
+	// aw compiles per repository from this copy, so a machine that enrols
+	// no Claude still has the bundle. It is a planned file like the rest:
+	// hashed into state, so drift on it is repaired too.
+	f := newFakeAwd(t, testBundle())
+	cfg, _ := enrolled(t, f, claudeRegistry(t), "claude")
+
+	res := sync.Run(context.Background(), cfg)
+	if res.Err != nil {
+		t.Fatal(res.Err)
+	}
+
+	path := filepath.Join(cfg.StateDir, sync.BundleFile)
+	var written policy.Bundle
+	if err := json.Unmarshal(mustRead(t, path), &written); err != nil {
+		t.Fatalf("%s: %v", path, err)
+	}
+	if written.Version != "v1" || len(written.Rules) != 1 {
+		t.Errorf("bundle on disk = %+v", written)
+	}
+	state, err := sync.LoadState(cfg.StateDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := state.Files[path]; !ok {
+		t.Errorf("state.Files lacks %s", path)
+	}
+	if len(res.Written) != 3 {
+		t.Errorf("Written = %v; want the two Claude files and the state-dir bundle", res.Written)
+	}
 }
