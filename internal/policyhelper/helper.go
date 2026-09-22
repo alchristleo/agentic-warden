@@ -25,7 +25,6 @@ import (
 	"io"
 	"os"
 	"path/filepath"
-	"strings"
 	"time"
 
 	"github.com/acme/agent-wrapper/internal/agent/claude/schema"
@@ -207,13 +206,19 @@ func resolveSubject(cfg Config) (policy.Subject, []string) {
 // (permission denied, for instance) is a broken deployment, and folding it
 // into the unsigned case would make this function fail open exactly where
 // its job is to fail closed.
+//
+// The read-three-files-and-parse-the-signature-line work is
+// signing.VerifyFiles, shared with the claude adapter's doctor finding; this
+// function only turns that into the path-and-note shape aw-policy wants.
 func VerifyBundle(stateDir, fallback string) (path string, note string, ok bool) {
 	if stateDir == "" {
 		return fallback, "", true
 	}
 	trustPath := filepath.Join(stateDir, sync.TrustFile)
-	trust, err := os.ReadFile(trustPath)
-	if errors.Is(err, os.ErrNotExist) {
+	bundlePath := filepath.Join(stateDir, sync.BundleFile)
+	sigPath := filepath.Join(stateDir, sync.SignatureFile)
+	_, trustMissing, err := signing.VerifyFiles(trustPath, bundlePath, sigPath)
+	if trustMissing {
 		// No trust file at all is the unsigned case. Anything else reading
 		// it — permission denied, a directory in its place — is a broken
 		// deployment, not an absent one, and must not be mistaken for
@@ -221,24 +226,7 @@ func VerifyBundle(stateDir, fallback string) (path string, note string, ok bool)
 		return fallback, "", true
 	}
 	if err != nil {
-		return "", "the trusted key " + trustPath + " is unreadable: " + err.Error(), false
-	}
-	key, err := signing.ParsePublic(string(trust))
-	if err != nil {
-		return "", "the trusted key " + trustPath + " is unreadable: " + err.Error(), false
-	}
-	bundlePath := filepath.Join(stateDir, sync.BundleFile)
-	body, err := os.ReadFile(bundlePath)
-	if err != nil {
-		return "", "the signed bundle is unreadable: " + err.Error(), false
-	}
-	line, err := os.ReadFile(filepath.Join(stateDir, sync.SignatureFile))
-	if err != nil {
-		return "", "no signature beside " + bundlePath, false
-	}
-	fields := strings.Fields(string(line))
-	if len(fields) != 3 || fields[0] != "aw-ed25519" || !signing.Verify(key, body, fields[2]) {
-		return "", bundlePath + " is not signed by key " + signing.KeyID(key), false
+		return "", err.Error(), false
 	}
 	return bundlePath, "", true
 }

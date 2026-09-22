@@ -23,14 +23,13 @@ import (
 // cannot import internal/sync, which imports this package for SystemDir,
 // nor internal/policyhelper, which imports internal/sync — either would
 // close an import cycle. So the file names are kept in step by hand rather
-// than a shared constant, and the verification below calls the same
-// internal/signing primitives Task 7's policyhelper.VerifyBundle calls
-// (ParsePublic, Verify, KeyID) rather than that function itself, which is
-// what cmd/aw's resolvePolicy calls directly since it sits outside this
-// cycle. stateBundleFile happens to share its value with BundleFile above,
-// but the two name different files: BundleFile is the narrowed copy this
-// adapter renders into the system directory; stateBundleFile is aw-sync's
-// own signed copy in its state directory.
+// than a shared constant; the actual verification (reading the three files
+// and parsing the signature line) is not duplicated, since it lives in
+// signing.VerifyFiles, which sits below the cycle and which
+// policyhelper.VerifyBundle calls too. stateBundleFile happens to share its
+// value with BundleFile above, but the two name different files: BundleFile
+// is the narrowed copy this adapter renders into the system directory;
+// stateBundleFile is aw-sync's own signed copy in its state directory.
 const (
 	stateTrustFile     = "aw-trust.pub"
 	stateBundleFile    = "aw-bundle.json"
@@ -213,13 +212,11 @@ func inspectBundle(systemDir string) agent.Finding {
 // original bytes cannot check). Three states, and only a positive failure
 // is an Error: a deployment that does not sign is a choice, not a fault.
 //
-// This mirrors policyhelper.VerifyBundle's file layout and signature-line
-// format rather than calling it, because internal/policyhelper imports
-// internal/sync, which imports this package for SystemDir; importing
-// policyhelper here would close that cycle. What it does share with
-// VerifyBundle is the actual cryptographic check, via the same
-// internal/signing primitives (ParsePublic, Verify, KeyID) — only the glue
-// that reads three files and picks a message is written twice.
+// The read-three-files-and-parse-the-signature-line work is
+// signing.VerifyFiles, shared with policyhelper.VerifyBundle: this package
+// cannot import policyhelper directly, since internal/policyhelper imports
+// internal/sync, which imports this package for SystemDir, but
+// internal/signing sits below that cycle and both callers reach it.
 func inspectSignature(stateDir string) agent.Finding {
 	if stateDir == "" {
 		// No state directory configured reads exactly like a machine with
@@ -228,38 +225,22 @@ func inspectSignature(stateDir string) agent.Finding {
 	}
 	trustPath := filepath.Join(stateDir, stateTrustFile)
 	bundlePath := filepath.Join(stateDir, stateBundleFile)
+	sigPath := filepath.Join(stateDir, stateSignatureFile)
 
-	trust, err := os.ReadFile(trustPath)
-	if errors.Is(err, os.ErrNotExist) {
+	keyID, trustMissing, err := signing.VerifyFiles(trustPath, bundlePath, sigPath)
+	switch {
+	case trustMissing:
 		return agent.Finding{Level: agent.OK, Message: "bundle signature: unsigned deployment"}
-	}
-	fail := func(keyID string) agent.Finding {
+	case err == nil:
+		return agent.Finding{Level: agent.OK, Message: "bundle signature: verified (key " + keyID + ")"}
+	case keyID == "":
+		// The trust file itself did not check out, so there is no key ID to
+		// report the bundle as mismatching; err already names the file and
+		// says why.
+		return agent.Finding{Level: agent.Error, Message: "bundle signature: FAILED — " + err.Error()}
+	default:
 		return agent.Finding{Level: agent.Error, Message: "bundle signature: FAILED — " + bundlePath + " does not match key " + keyID}
 	}
-	if err != nil {
-		// Present but unreadable is a broken deployment, not an unsigned
-		// one; there is no key ID to show for it.
-		return fail("")
-	}
-	key, err := signing.ParsePublic(string(trust))
-	if err != nil {
-		return fail("")
-	}
-	keyID := signing.KeyID(key)
-
-	body, err := os.ReadFile(bundlePath)
-	if err != nil {
-		return fail(keyID)
-	}
-	line, err := os.ReadFile(filepath.Join(stateDir, stateSignatureFile))
-	if err != nil {
-		return fail(keyID)
-	}
-	fields := strings.Fields(string(line))
-	if len(fields) != 3 || fields[0] != "aw-ed25519" || !signing.Verify(key, body, fields[2]) {
-		return fail(keyID)
-	}
-	return agent.Finding{Level: agent.OK, Message: "bundle signature: verified (key " + keyID + ")"}
 }
 
 // worldWritable is the permission-bit mask that, ORed into a file's mode,

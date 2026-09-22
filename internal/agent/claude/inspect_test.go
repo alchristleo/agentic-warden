@@ -351,6 +351,31 @@ func TestInspectFlagsAFailedBundleSignature(t *testing.T) {
 	}
 }
 
+func TestInspectFlagsAnUnparseableTrustFile(t *testing.T) {
+	// The trust file itself did not check out, so there is no key ID to
+	// report a mismatch against; the message must still say something
+	// sensible rather than naming a key it never got.
+	in := newInspection(t)
+	stateDir := t.TempDir()
+	in.adapter.StateDir = stateDir
+	in.write(t, filepath.Join(stateDir, "aw-trust.pub"), "not a real key\n")
+	in.write(t, filepath.Join(stateDir, "aw-bundle.json"), signedBundle)
+
+	findings := in.adapter.Inspect(nil)
+
+	if !findingsWith(findings, agent.Error, "bundle signature: FAILED") {
+		t.Errorf("findings %+v should flag the unparseable trust file", findings)
+	}
+	if !findingsWith(findings, agent.Error, "aw-trust.pub") {
+		t.Errorf("findings %+v should name the trust file that failed to parse", findings)
+	}
+	if findingsWith(findings, agent.Error, "does not match key") {
+		// The old bug: with no key ID to show, the message fell back to
+		// "does not match key " with a trailing space and nothing after it.
+		t.Errorf("findings %+v should not claim a key mismatch when there is no key to compare", findings)
+	}
+}
+
 func TestInspectWarnsWhenTheBundleIsWorldWritable(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("POSIX permission bits carry no meaning on Windows")

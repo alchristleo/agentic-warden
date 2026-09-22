@@ -75,6 +75,58 @@ func ParsePublic(s string) (ed25519.PublicKey, error) {
 	return ed25519.PublicKey(raw), nil
 }
 
+// signatureLine is the algorithm tag every signature file begins with:
+// "aw-ed25519 <keyId> <signature>", three fields, one line.
+const signatureLine = "aw-ed25519"
+
+// VerifyFiles checks the bundle at bundlePath against the signature at
+// sigPath, using the public key at trustPath, and is the one place that
+// reads those three files and parses the signature line. It exists because
+// two packages need this exact check — policyhelper.VerifyBundle and the
+// claude adapter's doctor finding — and sit on either side of an import
+// cycle neither can cross to reach the other (internal/policyhelper imports
+// internal/sync, which imports internal/agent/claude for its SystemDir
+// mapping). internal/signing imports nothing internal, so it sits below
+// both and can serve both without either duplicating the parse.
+//
+// A missing trust file is reported as trustMissing, not err: it means
+// signing was never turned on for this deployment, which both callers treat
+// differently from a proof that was turned on and failed. Every other
+// problem — an unreadable or unparseable trust file, a missing or unreadable
+// bundle or signature file, or a signature that does not match — is err,
+// naming the file at fault, so a caller that must fail closed on a broken
+// deployment can tell it apart from an absent one. keyID is set whenever the
+// trust file itself was readable and parsed, even if a later step failed,
+// so a caller can still say which key the bundle should have matched.
+func VerifyFiles(trustPath, bundlePath, sigPath string) (keyID string, trustMissing bool, err error) {
+	trust, err := os.ReadFile(trustPath)
+	if errors.Is(err, os.ErrNotExist) {
+		return "", true, nil
+	}
+	if err != nil {
+		return "", false, fmt.Errorf("the trusted key %s is unreadable: %w", trustPath, err)
+	}
+	key, err := ParsePublic(string(trust))
+	if err != nil {
+		return "", false, fmt.Errorf("the trusted key %s is unreadable: %w", trustPath, err)
+	}
+	keyID = KeyID(key)
+
+	body, err := os.ReadFile(bundlePath)
+	if err != nil {
+		return keyID, false, fmt.Errorf("the signed bundle is unreadable: %w", err)
+	}
+	line, err := os.ReadFile(sigPath)
+	if err != nil {
+		return keyID, false, fmt.Errorf("no signature beside %s", bundlePath)
+	}
+	fields := strings.Fields(string(line))
+	if len(fields) != 3 || fields[0] != signatureLine || !Verify(key, body, fields[2]) {
+		return keyID, false, fmt.Errorf("%s is not signed by key %s", bundlePath, keyID)
+	}
+	return keyID, false, nil
+}
+
 // LoadSeed reads a private key from a file that only its owner may read.
 // The permission check is part of the contract: a signing key another user
 // can read is a signing key the organization no longer controls.
