@@ -287,3 +287,50 @@ func TestFetchSendsThePinnedKeyID(t *testing.T) {
 		t.Fatalf("the request sent X-AW-Key-Id %q, want %q", seen, signing.KeyID(pub))
 	}
 }
+
+// notModifiedServer answers every request 304, carrying rollover when that
+// is non-empty — the shape a control plane mid-rotation sends to a machine
+// whose policy has not changed, which on a stable fleet is every machine.
+func notModifiedServer(t *testing.T, rollover string) *httptest.Server {
+	t.Helper()
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if rollover != "" {
+			w.Header().Set("X-AW-Key-Rollover", rollover)
+		}
+		w.WriteHeader(http.StatusNotModified)
+	}))
+	t.Cleanup(srv.Close)
+	return srv
+}
+
+func TestFetchReadsARolloverOnA304(t *testing.T) {
+	old, _ := signing.Generate()
+	next, _ := signing.Generate()
+	nextPub := next.Public().(ed25519.PublicKey)
+	srv := notModifiedServer(t, signing.SignRollover(old, nextPub))
+
+	got, err := (&sync.Client{Server: srv.URL}).Fetch(context.Background(), "cred", `"e1"`, old.Public().(ed25519.PublicKey))
+
+	if err != nil {
+		t.Fatalf("Fetch: %v", err)
+	}
+	if !got.Unchanged || got.Bundle != nil {
+		t.Errorf("fetched = %+v, want Unchanged with no bundle", got)
+	}
+	if got.Rollover == nil || !got.Rollover.PublicKey.Equal(nextPub) {
+		t.Fatal("Fetch ignored the rollover on a 304, so a rotation could never finish on a fleet whose policy is stable")
+	}
+}
+
+func TestFetchRejectsAForgedRolloverOnA304(t *testing.T) {
+	old, _ := signing.Generate()
+	stranger, _ := signing.Generate()
+	next, _ := signing.Generate()
+	// Announced by a key this machine never pinned. There is no bundle on a
+	// 304 whose own check would catch it later, so it has to be caught here.
+	srv := notModifiedServer(t, signing.SignRollover(stranger, next.Public().(ed25519.PublicKey)))
+
+	if _, err := (&sync.Client{Server: srv.URL}).Fetch(context.Background(), "cred", `"e1"`, old.Public().(ed25519.PublicKey)); err == nil {
+		t.Fatal("Fetch followed a 304's rollover that the pinned key did not sign")
+	}
+}

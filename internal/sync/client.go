@@ -70,10 +70,12 @@ type Fetched struct {
 	// signature covers these bytes, so this — not a re-encoding of Bundle —
 	// is what goes on disk.
 	Raw []byte
-	// Signature and KeyID are what the server sent, for the caller to store
-	// beside the bundle. Both empty for an unsigned deployment.
+	// Signature is what the server sent, for the caller to store beside the
+	// bundle. Empty for an unsigned deployment. The key it belongs to is not
+	// carried with it: the caller names the key it actually verified under,
+	// which after a rollover is the new one, not whatever header the server
+	// sent.
 	Signature string
-	KeyID     string
 	// Rollover is the new key this fetch repinned to, or nil. The caller
 	// persists it: the verification already happened here.
 	Rollover *signing.Rollover
@@ -150,7 +152,16 @@ func (c *Client) Fetch(ctx context.Context, credential, etag string, pinned ed25
 
 	switch resp.StatusCode {
 	case http.StatusNotModified:
-		return Fetched{ETag: etag, Unchanged: true}, nil
+		// A 304 carries no body and no signature, but it can carry a
+		// rollover: the statement is signed by the pinned key and says
+		// nothing about the bundle, so it verifies on its own. Reading it
+		// here is what lets a rotation finish on a fleet whose policy never
+		// changes, where every cycle is a 304.
+		rollover, err := rolloverFrom(resp, pinned)
+		if err != nil {
+			return Fetched{}, err
+		}
+		return Fetched{ETag: etag, Unchanged: true, Rollover: rollover}, nil
 	case http.StatusUnauthorized:
 		return Fetched{}, fmt.Errorf("sync: %w: the control plane rejected this machine's credential; re-enroll", model.ErrUnauthorized)
 	case http.StatusOK:
@@ -167,17 +178,14 @@ func (c *Client) Fetch(ctx context.Context, credential, etag string, pinned ed25
 		return Fetched{}, fmt.Errorf("sync: the bundle exceeds %d bytes", maxBundleBytes)
 	}
 	signature := resp.Header.Get("X-AW-Signature")
-	var rollover *signing.Rollover
+	rollover, err := rolloverFrom(resp, pinned)
+	if err != nil {
+		return Fetched{}, err
+	}
 	if pinned != nil {
 		verifier := pinned
-		// A rollover is the only thing that may move the pin, and only the
-		// pinned key can sign one, so trust chains back to enrollment.
-		if header := resp.Header.Get("X-AW-Key-Rollover"); header != "" {
-			next, err := signing.VerifyRollover(pinned, header)
-			if err != nil {
-				return Fetched{}, fmt.Errorf("sync: %w", err)
-			}
-			rollover, verifier = &next, next.PublicKey
+		if rollover != nil {
+			verifier = rollover.PublicKey
 		}
 		if signature == "" {
 			return Fetched{}, errors.New("sync: this machine pins a signing key but the control plane sent no signature")
@@ -191,7 +199,26 @@ func (c *Client) Fetch(ctx context.Context, credential, etag string, pinned ed25
 	if err := json.Unmarshal(payload, &bundle); err != nil {
 		return Fetched{}, fmt.Errorf("sync: parsing the bundle: %w", err)
 	}
-	return Fetched{Bundle: &bundle, Raw: payload, Signature: signature, KeyID: resp.Header.Get("X-AW-Key-Id"), ETag: resp.Header.Get("ETag"), Rollover: rollover}, nil
+	return Fetched{Bundle: &bundle, Raw: payload, Signature: signature, ETag: resp.Header.Get("ETag"), Rollover: rollover}, nil
+}
+
+// rolloverFrom reads the rollover a response announces, checked against the
+// key this machine has pinned. A rollover is the only thing that may move
+// the pin, and only the pinned key can sign one, so trust chains back to
+// enrollment; a machine that pins nothing has nothing to check a statement
+// with and ignores the header entirely. A statement that does not check out
+// is an error rather than a header quietly dropped, because on a 304 there
+// is no bundle whose own failure would otherwise surface it.
+func rolloverFrom(resp *http.Response, pinned ed25519.PublicKey) (*signing.Rollover, error) {
+	header := resp.Header.Get("X-AW-Key-Rollover")
+	if pinned == nil || header == "" {
+		return nil, nil
+	}
+	next, err := signing.VerifyRollover(pinned, header)
+	if err != nil {
+		return nil, fmt.Errorf("sync: %w", err)
+	}
+	return &next, nil
 }
 
 func (c *Client) endpoint(path string) string {

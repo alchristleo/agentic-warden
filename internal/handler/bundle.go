@@ -57,6 +57,15 @@ func (h *Handler) getBundle(w http.ResponseWriter, r *http.Request, machine mode
 		h.log.WarnContext(r.Context(), "recording a bundle fetch", "machine", machine.ID, "err", err)
 	}
 
+	// The rollover statement is self-contained and signed by the outgoing
+	// key, so it stands on its own and rides on a 304 as well as on a 200.
+	// It has to: on a fleet whose policy is stable every cycle is a 304, and
+	// a rotation announced only with changed bundle bytes would never finish
+	// there. The operator would then drop the previous key and strand every
+	// machine still pinned to it.
+	if h.Signer != nil && h.Signer.Previous != nil {
+		w.Header().Set("X-AW-Key-Rollover", signing.SignRollover(h.Signer.Previous, h.Signer.Public()))
+	}
 	etag := etagOf(body)
 	w.Header().Set("ETag", etag)
 	if r.Header.Get("If-None-Match") == etag {
@@ -68,9 +77,6 @@ func (h *Handler) getBundle(w http.ResponseWriter, r *http.Request, machine mode
 	if h.Signer != nil {
 		w.Header().Set("X-AW-Signature", signing.Sign(h.Signer.Key, body))
 		w.Header().Set("X-AW-Key-Id", h.Signer.KeyID())
-		if h.Signer.Previous != nil {
-			w.Header().Set("X-AW-Key-Rollover", signing.SignRollover(h.Signer.Previous, h.Signer.Public()))
-		}
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)

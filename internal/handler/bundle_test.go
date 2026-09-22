@@ -309,6 +309,35 @@ func TestRolloverHeaderIsSignedByThePreviousKey(t *testing.T) {
 	}
 }
 
+func TestNotModifiedStillCarriesTheRollover(t *testing.T) {
+	// A fleet whose policy is stable answers 304 to every cycle. If the
+	// rollover rode only on a changed bundle, no machine there would ever
+	// repin, and the operator who then retires the previous key strands the
+	// lot of them. The statement is signed by the outgoing key and says
+	// nothing about the body, so a 304 can carry it honestly.
+	previous, _ := signing.Generate()
+	current, _ := signing.Generate()
+	srv := newSignedServer(t, &handler.Signer{Key: current, Previous: previous})
+	_, alice := enroll(t, srv, mintToken(t, srv, "alice@acme.com"))
+	first := fetchBundle(t, srv, alice, nil)
+
+	second := fetchBundle(t, srv, alice, http.Header{"If-None-Match": {first.Header.Get("ETag")}})
+
+	if second.StatusCode != http.StatusNotModified {
+		t.Fatalf("status = %d, want 304", second.StatusCode)
+	}
+	got, err := signing.VerifyRollover(previous.Public().(ed25519.PublicKey), second.Header.Get("X-AW-Key-Rollover"))
+	if err != nil {
+		t.Fatalf("VerifyRollover on a 304: %v", err)
+	}
+	if !got.PublicKey.Equal(current.Public().(ed25519.PublicKey)) {
+		t.Fatal("the rollover on the 304 announces the wrong key")
+	}
+	if second.Header.Get("X-AW-Signature") != "" {
+		t.Error("a 304 carried a signature; there is still no body to sign")
+	}
+}
+
 func TestBundleWithAnEmptySnapshotIsTheAuthoredBundle(t *testing.T) {
 	srv := newServer(t)
 	post(t, srv, "/v1/policy/revisions", groupedRuleSet)
