@@ -40,31 +40,48 @@ func (a *Adapter) Render(bundle *policy.Bundle) (agent.Rendering, error) {
 		return agent.Rendering{}, fmt.Errorf("gemini: %w", err)
 	}
 
-	if settings == nil {
-		settings = map[string]any{}
-	}
-	settingsJSON, err := json.MarshalIndent(settings, "", "  ")
+	settingsBytes, err := settingsJSON(settings)
 	if err != nil {
-		return agent.Rendering{}, fmt.Errorf("gemini: encoding settings.json: %w", err)
+		return agent.Rendering{}, err
 	}
-	settingsJSON = append(settingsJSON, '\n')
-
-	var rules []byte
-	if len(policies) > 0 {
-		rules, err = toml.Marshal(map[string]any{"rule": integerPriorities(policies)})
-		if err != nil {
-			return agent.Rendering{}, fmt.Errorf("gemini: encoding %s: %w", PoliciesFile, err)
-		}
+	policiesBytes, err := policiesTOML(header(bundle), policies)
+	if err != nil {
+		return agent.Rendering{}, err
 	}
-	policiesTOML := append([]byte(header(bundle)), rules...)
-
 	return agent.Rendering{
 		Files: []agent.File{
-			{Path: SettingsFile, Content: settingsJSON, Mode: 0o644},
-			{Path: PoliciesFile, Content: policiesTOML, Mode: 0o644},
+			{Path: SettingsFile, Content: settingsBytes, Mode: 0o644},
+			{Path: PoliciesFile, Content: policiesBytes, Mode: 0o644},
 		},
 		Notes: dropped(bundle),
 	}, nil
+}
+
+// settingsJSON encodes the settings object as Gemini reads it: indented,
+// keys sorted by the encoder, trailing newline, {} for nothing.
+func settingsJSON(settings map[string]any) ([]byte, error) {
+	if settings == nil {
+		settings = map[string]any{}
+	}
+	encoded, err := json.MarshalIndent(settings, "", "  ")
+	if err != nil {
+		return nil, fmt.Errorf("gemini: encoding settings.json: %w", err)
+	}
+	return append(encoded, '\n'), nil
+}
+
+// policiesTOML encodes the policy list as one [[rule]] table per entry
+// under the given header; the header alone when there are none.
+func policiesTOML(header string, policies []any) ([]byte, error) {
+	var rules []byte
+	if len(policies) > 0 {
+		var err error
+		rules, err = toml.Marshal(map[string]any{"rule": integerPriorities(policies)})
+		if err != nil {
+			return nil, fmt.Errorf("gemini: encoding policies: %w", err)
+		}
+	}
+	return append([]byte(header), rules...), nil
 }
 
 // integerPriorities copies each rule with its priority as an int64. Numbers
