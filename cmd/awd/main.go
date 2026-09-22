@@ -347,7 +347,7 @@ func adminRequest(method, url, path string, body any, out any) error {
 	defer resp.Body.Close()
 	payload, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
 	if resp.StatusCode < 200 || resp.StatusCode > 299 {
-		return fmt.Errorf("control plane refused: %s: %s", resp.Status, strings.TrimSpace(string(payload)))
+		return &controlPlaneError{Status: resp.StatusCode, Message: strings.TrimSpace(string(payload))}
 	}
 	if out != nil && len(payload) > 0 {
 		if err := json.Unmarshal(payload, out); err != nil {
@@ -355,6 +355,21 @@ func adminRequest(method, url, path string, body any, out any) error {
 		}
 	}
 	return nil
+}
+
+// controlPlaneError is a non-2xx answer from awd, kept as a type so a
+// caller can act on the status without parsing the message.
+type controlPlaneError struct {
+	// Status is the HTTP status code the control plane answered with.
+	Status int
+	// Message is the response body, trimmed of surrounding whitespace.
+	Message string
+}
+
+// Error renders the same text adminRequest has always produced, so a
+// caller that only prints err.Error() sees no change.
+func (e *controlPlaneError) Error() string {
+	return fmt.Sprintf("control plane refused: %d %s: %s", e.Status, http.StatusText(e.Status), e.Message)
 }
 
 // enrollToken mints a single-use enrollment token for one user and prints
@@ -471,7 +486,8 @@ func groups(argv []string) error {
 	var summary groupSummary
 	err = adminRequest(http.MethodGet, a.url, "/v1/groups", nil, &summary)
 	if err != nil {
-		if strings.Contains(err.Error(), "404") {
+		var cpErr *controlPlaneError
+		if errors.As(err, &cpErr) && cpErr.Status == http.StatusNotFound {
 			fmt.Println("no group snapshot has been applied; bundles resolve from the policy's groups map alone")
 			return nil
 		}
