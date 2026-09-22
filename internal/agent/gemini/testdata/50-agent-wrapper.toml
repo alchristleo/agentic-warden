@@ -1,0 +1,14 @@
+# Managed by aw-sync from policy revision 2026-09-22.1. Do not edit: the next sync overwrites this file.
+
+[[rule]]
+commandPrefix = 'rm -rf'
+decision = 'deny'
+denyMessage = 'Deletion is permanent'
+priority = 100
+toolName = 'run_shell_command'
+
+[[rule]]
+decision = 'ask_user'
+modes = ['default']
+priority = 50
+toolName = ['write_file', 'replace']

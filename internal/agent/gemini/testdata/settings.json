@@ -1,0 +1,25 @@
+{
+  "admin": {
+    "secureModeEnabled": false
+  },
+  "mcp": {
+    "allowed": [
+      "docs",
+      "jira"
+    ]
+  },
+  "mcpServers": {
+    "docs": {
+      "command": "gemini-mcp"
+    },
+    "jira": {
+      "url": "https://jira/mcp"
+    }
+  },
+  "tools": {
+    "exclude": [
+      "run_shell_command",
+      "web_fetch"
+    ]
+  }
+}
