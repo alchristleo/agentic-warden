@@ -255,6 +255,39 @@ func TestApplyRejectsClaudeSettingsThatBreakTheSchema(t *testing.T) {
 	}
 }
 
+func TestApplyRejectsCodexRequirementsWithAnUnknownKey(t *testing.T) {
+	// A Codex rule goes through the same gate as a Claude one: an unknown
+	// top-level requirements.toml key is a typo nobody would notice until
+	// Codex ignored it on every machine, so apply and the server both stop it.
+	s := startServer(t)
+	path := writePolicy(t, "version: v1\nrules:\n  - name: baseline\n    agents:\n      codex:\n        managed:\n          allowed_sandbox_mode: [read-only]\n")
+
+	out, code := runAwd(t, "apply", path, "--url", s.url)
+
+	if code == 0 {
+		t.Fatalf("apply exited 0, want non-zero for an unknown Codex key: %s", out)
+	}
+	if !strings.Contains(out, `"allowed_sandbox_mode"`) {
+		t.Errorf("output %q does not name the offending key", out)
+	}
+
+	body := `{"version":"v2","rules":[{"name":"b","agents":{"codex":{"managed":{"allowed_sandbox_mode":["read-only"]}}}}]}`
+	req, err := http.NewRequest(http.MethodPost, s.url+"/v1/policy/revisions", strings.NewReader(body))
+	if err != nil {
+		t.Fatal(err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+e2eAdminToken)
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusUnprocessableEntity {
+		t.Errorf("server status = %d, want 422", resp.StatusCode)
+	}
+}
+
 func TestApplyWithoutTheAdminTokenIsRefused(t *testing.T) {
 	s := startServer(t)
 	path := writePolicy(t, policyYAML)

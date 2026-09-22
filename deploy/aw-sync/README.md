@@ -38,10 +38,14 @@ Administrators right after enrolling:
 
     icacls "C:\ProgramData\agent-wrapper" /inheritance:r /grant:r "SYSTEM:(OI)(CI)F" "BUILTIN\Administrators:(OI)(CI)F"
 
-`--agents claude` limits the sync to the agents installed here; the default
-is every agent this build can render. Codex and Gemini renderers arrive in a
-later milestone, so `claude` is the only agent this build can actually sync
-today. Re-enrolling needs `--force`.
+`--agents claude,codex` limits the sync to the agents installed here; the
+default is every agent this build can render, and the choices are `claude`
+and `codex`. List only the agents this machine runs: a file rendered for an
+agent that is not installed is noise for whoever audits the box. Codex's file
+is `/etc/codex/requirements.toml` (`%ProgramData%\OpenAI\Codex\requirements.toml`
+on Windows), and aw-sync owns it whole: the next cycle overwrites it, so
+requirements set by hand belong in the policy, not in that file. The Gemini
+renderer arrives in a later milestone. Re-enrolling needs `--force`.
 
 ## 3. Install the timer
 

@@ -27,6 +27,7 @@ import (
 	"time"
 
 	"github.com/acme/agent-wrapper/internal/agent/claude/schema"
+	"github.com/acme/agent-wrapper/internal/agent/codex/requirements"
 	"github.com/acme/agent-wrapper/internal/config"
 	"github.com/acme/agent-wrapper/internal/handler"
 	"github.com/acme/agent-wrapper/internal/model"
@@ -100,7 +101,7 @@ func serve() error {
 	}
 
 	h := handler.New(backing, log)
-	h.ManagedValidator = schema.ForAgent
+	h.ManagedValidator = managedValidator
 	h.AdminToken = cfg.AdminToken
 	if cfg.AdminToken == "" {
 		log.Warn("AWD_ADMIN_TOKEN is unset; apply and machine administration are disabled")
@@ -198,7 +199,7 @@ func apply(argv []string) error {
 
 	// Validating locally first means an author sees the problem with their
 	// file rather than a status code from a server.
-	ruleSet, err := policy.LoadRuleSet(path, schema.ForAgent)
+	ruleSet, err := policy.LoadRuleSet(path, managedValidator)
 	if err != nil {
 		return err
 	}
@@ -235,6 +236,17 @@ func apply(argv []string) error {
 	}
 	fmt.Printf("applied revision %s (%d rules)\n", ruleSet.Version, len(ruleSet.Rules))
 	return nil
+}
+
+// managedValidator runs every agent's own check over a rule's managed
+// settings: Claude's settings schema and Codex's requirements allowlist.
+// Each ignores the agents it does not know, so adding an agent is adding a
+// line here.
+func managedValidator(agentName string, managed map[string]any) error {
+	if err := schema.ForAgent(agentName, managed); err != nil {
+		return err
+	}
+	return requirements.ForAgent(agentName, managed)
 }
 
 func appliedBy() string {

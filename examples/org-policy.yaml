@@ -28,6 +28,17 @@ rules:
           CLAUDE_CODE_ENABLE_TELEMETRY: "1"
         # Organization values replace what a developer already exports.
         forceEnv: true
+      # Codex reads a machine-wide requirements.toml that aw-sync writes.
+      # Scalars and allowlists replace across rules; prefix_rules accumulate.
+      codex:
+        managed:
+          allowed_sandbox_modes: [read-only, workspace-write]
+          allowed_approval_policies: [on-request, untrusted]
+          rules:
+            prefix_rules:
+              - pattern: [{token: rm}]
+                decision: forbidden
+                justification: Use git clean -fd instead.
 
   # Group membership comes from identity-provider claims and compares exactly.
   - name: platform-team
