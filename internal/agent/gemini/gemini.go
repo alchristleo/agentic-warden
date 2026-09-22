@@ -148,7 +148,10 @@ func (a *Adapter) Build(ctx context.Context, o agent.BuildOptions) (*agent.Launc
 			return nil, err
 		}
 		launch.Files = append(launch.Files, policyPath)
-		settings = withPolicyPath(settings, policyPath)
+		settings, err = withPolicyPath(settings, policyPath)
+		if err != nil {
+			return nil, err
+		}
 	}
 	settingsBytes, err := settingsJSON(settings)
 	if err != nil {
@@ -178,17 +181,27 @@ func (a *Adapter) Build(ctx context.Context, o agent.BuildOptions) (*agent.Launc
 
 // withPolicyPath returns settings with path appended to policyPaths, the
 // author's own entries first. settings is not modified: it is the compiled
-// document, which doctor may print afterwards.
-func withPolicyPath(settings map[string]any, path string) map[string]any {
+// document, which doctor may print afterwards. An existing policyPaths that
+// is not a list is refused rather than silently overwritten: Validate only
+// checks settings' top-level key names and JSON round-trippability, so a
+// malformed policyPaths would otherwise pass unnoticed until Gemini itself
+// rejected the file.
+func withPolicyPath(settings map[string]any, path string) (map[string]any, error) {
 	out := make(map[string]any, len(settings)+1)
 	for k, v := range settings {
 		out[k] = v
 	}
-	existing, _ := out["policyPaths"].([]any)
+	var existing []any
+	if raw, present := out["policyPaths"]; present {
+		var ok bool
+		if existing, ok = raw.([]any); !ok {
+			return nil, fmt.Errorf("gemini: settings.policyPaths is %T, not a list, so the session's policy file cannot be added", raw)
+		}
+	}
 	paths := make([]any, 0, len(existing)+1)
 	paths = append(paths, existing...)
 	out["policyPaths"] = append(paths, path)
-	return out
+	return out, nil
 }
 
 // pin sets name=value in env, replacing any earlier value and saying so.

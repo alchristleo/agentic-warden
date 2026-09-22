@@ -177,6 +177,44 @@ func TestBuildRejectsAManagedDocumentThatFailsValidation(t *testing.T) {
 	}
 }
 
+func TestBuildRefusesWhenPolicyPathsIsNotAList(t *testing.T) {
+	_, err := newAdapter(t).Build(context.Background(), agent.BuildOptions{
+		Env: fakeBinary(t),
+		Settings: agent.Settings{Managed: map[string]any{
+			"settings": map[string]any{"policyPaths": "somefile"},
+			"policies": []any{map[string]any{"toolName": "*", "decision": "deny", "priority": float64(1)}},
+		}},
+	})
+	if err == nil || !strings.Contains(err.Error(), "policyPaths") {
+		t.Errorf("err = %v; want policyPaths named", err)
+	}
+}
+
+func TestBuildKeepsTheAuthorsExistingPolicyPathsFirst(t *testing.T) {
+	launch, err := newAdapter(t).Build(context.Background(), agent.BuildOptions{
+		Env: fakeBinary(t),
+		Settings: agent.Settings{Managed: map[string]any{
+			"settings": map[string]any{"policyPaths": []any{"/etc/x.toml"}},
+			"policies": []any{map[string]any{"toolName": "*", "decision": "deny", "priority": float64(1)}},
+		}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw, err := os.ReadFile(envValue(launch.Env, gemini.SystemSettingsEnv))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var settings map[string]any
+	if err := json.Unmarshal(raw, &settings); err != nil {
+		t.Fatal(err)
+	}
+	paths, _ := settings["policyPaths"].([]any)
+	if len(paths) != 2 || paths[0] != "/etc/x.toml" {
+		t.Errorf("policyPaths = %v; want the author's entry first and the generated file second", paths)
+	}
+}
+
 func TestBuildFailsWhenTheBinaryIsMissing(t *testing.T) {
 	_, err := gemini.New().Build(context.Background(), agent.BuildOptions{Env: []string{"PATH=" + t.TempDir()}})
 
