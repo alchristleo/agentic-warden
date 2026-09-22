@@ -1,6 +1,6 @@
 # Launch-time Codex and Gemini adapters: per-repo overlays from the machine bundle
 
-Date: 2026-09-22. Status: approved design, not yet implemented. Extends
+Date: 2026-09-22. Status: implemented 2026-09-22 (main 27e7c67). Extends
 `2026-09-21-multi-agent-bundle-sync-design.md`, whose "Out of scope" listed
 this as a later milestone.
 

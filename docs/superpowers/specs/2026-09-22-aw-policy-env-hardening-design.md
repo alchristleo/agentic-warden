@@ -1,6 +1,6 @@
 # aw-policy: environment overrides compiled out of release builds
 
-Date: 2026-09-22. Status: approved design, not yet implemented. Amends the
+Date: 2026-09-22. Status: implemented 2026-09-22 (main d664607). Amends the
 "aw-policy, offline" section of
 `2026-09-21-multi-agent-bundle-sync-design.md`.
 
