@@ -1,10 +1,15 @@
 package handler_test
 
 import (
+	"crypto/ed25519"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"testing"
+
+	"github.com/acme/agent-wrapper/internal/handler"
+	"github.com/acme/agent-wrapper/internal/signing"
+	"github.com/acme/agent-wrapper/internal/store"
 )
 
 // mintToken asks the server for an enrollment token as an administrator.
@@ -80,6 +85,55 @@ func TestATokenEnrollsOneMachine(t *testing.T) {
 	resp := postAs(t, srv, "/v1/machines/enroll", `{"token":"`+token+`","name":"other"}`, "")
 	if resp.StatusCode != http.StatusConflict {
 		t.Errorf("second enrollment status = %d, want 409", resp.StatusCode)
+	}
+}
+
+func TestEnrollmentReturnsThePublicKeyWhenSigned(t *testing.T) {
+	h := handler.New(store.NewMemory(), nil)
+	h.AdminToken = adminToken
+	key, _ := signing.Generate()
+	h.Signer = &handler.Signer{Key: key}
+	srv := httptest.NewServer(h.Routes())
+	t.Cleanup(srv.Close)
+	token := mintToken(t, srv, "alice@acme.com")
+
+	resp := postAs(t, srv, "/v1/machines/enroll", `{"token":"`+token+`","name":"laptop"}`, "")
+	if resp.StatusCode != http.StatusCreated {
+		t.Fatalf("status = %d, want 201", resp.StatusCode)
+	}
+	var body struct {
+		PublicKey string `json:"publicKey"`
+		KeyID     string `json:"keyId"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
+		t.Fatal(err)
+	}
+	pub := key.Public().(ed25519.PublicKey)
+	if body.PublicKey != signing.FormatPublic(pub) {
+		t.Errorf("publicKey = %q, want %q", body.PublicKey, signing.FormatPublic(pub))
+	}
+	if body.KeyID != signing.KeyID(pub) {
+		t.Errorf("keyId = %q, want %q", body.KeyID, signing.KeyID(pub))
+	}
+}
+
+func TestEnrollmentOmitsThePublicKeyWhenUnsigned(t *testing.T) {
+	srv := newServer(t)
+	token := mintToken(t, srv, "alice@acme.com")
+
+	resp := postAs(t, srv, "/v1/machines/enroll", `{"token":"`+token+`","name":"laptop"}`, "")
+	if resp.StatusCode != http.StatusCreated {
+		t.Fatalf("status = %d, want 201", resp.StatusCode)
+	}
+	var body map[string]any
+	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := body["publicKey"]; ok {
+		t.Error("publicKey present in an unsigned deployment")
+	}
+	if _, ok := body["keyId"]; ok {
+		t.Error("keyId present in an unsigned deployment")
 	}
 }
 

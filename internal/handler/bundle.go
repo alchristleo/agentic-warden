@@ -8,6 +8,7 @@ import (
 
 	"github.com/acme/agent-wrapper/internal/model"
 	"github.com/acme/agent-wrapper/internal/policy"
+	"github.com/acme/agent-wrapper/internal/signing"
 )
 
 // getBundle serves the machine's user their slice of the current policy:
@@ -59,8 +60,17 @@ func (h *Handler) getBundle(w http.ResponseWriter, r *http.Request, machine mode
 	etag := etagOf(body)
 	w.Header().Set("ETag", etag)
 	if r.Header.Get("If-None-Match") == etag {
+		// A 304 has no body to sign, and the machine still holds the
+		// signature it verified when it first received these bytes.
 		w.WriteHeader(http.StatusNotModified)
 		return
+	}
+	if h.Signer != nil {
+		w.Header().Set("X-AW-Signature", signing.Sign(h.Signer.Key, body))
+		w.Header().Set("X-AW-Key-Id", h.Signer.KeyID())
+		if h.Signer.Previous != nil {
+			w.Header().Set("X-AW-Key-Rollover", signing.SignRollover(h.Signer.Previous, h.Signer.Public()))
+		}
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
