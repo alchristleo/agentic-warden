@@ -1,6 +1,6 @@
 # IdP group sync: membership snapshots pushed to the control plane
 
-Date: 2026-09-22. Status: approved design, not yet implemented. Extends
+Date: 2026-09-22. Status: implemented 2026-09-22. Extends
 `2026-09-21-multi-agent-bundle-sync-design.md`, "Group resolution", which
 said "an identity-provider sync later replaces the map without touching
 clients or the bundle format". This is that sync. One refinement to that
@@ -151,7 +151,8 @@ conventions.
 | --- | --- | --- |
 | awd | `AWD_ADMIN_TOKEN` unset | 503 on both routes (unchanged rule) |
 | awd | wrong bearer | 401 |
-| awd | malformed snapshot | 422 naming the key; previous snapshot untouched |
+| awd | body not the expected JSON shape | 400; previous snapshot untouched |
+| awd | empty user key or group name, or no `members` | 422 naming the key; previous snapshot untouched |
 | awd | body over 8 MiB | 413; previous snapshot untouched |
 | awd | store write fails | 500; previous snapshot untouched |
 | awd | no snapshot yet | bundles resolve from the authored map; `GET /v1/groups` 404 |
