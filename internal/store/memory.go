@@ -21,6 +21,7 @@ type Memory struct {
 	machines  map[string]model.Machine         // by id
 	byHash    map[string]string                // credential hash -> machine id
 	order     []string                         // machine ids in enrollment order
+	snapshots []model.GroupSnapshot
 }
 
 // NewMemory returns an empty in-memory store.
@@ -188,4 +189,30 @@ func (m *Memory) DeleteMachine(_ context.Context, id string) error {
 		}
 	}
 	return nil
+}
+
+// PutGroupSnapshot appends a snapshot; the newest is current.
+func (m *Memory) PutGroupSnapshot(_ context.Context, s model.GroupSnapshot) error {
+	if err := s.Validate(); err != nil {
+		return fmt.Errorf("store: %w", err)
+	}
+	if s.SyncedAt.IsZero() {
+		s.SyncedAt = time.Now()
+	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.nextSeq++
+	s.Seq = m.nextSeq
+	m.snapshots = append(m.snapshots, s)
+	return nil
+}
+
+// CurrentGroupSnapshot returns the newest snapshot.
+func (m *Memory) CurrentGroupSnapshot(_ context.Context) (model.GroupSnapshot, error) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	if len(m.snapshots) == 0 {
+		return model.GroupSnapshot{}, fmt.Errorf("store: no group snapshot has been posted: %w", model.ErrNotFound)
+	}
+	return m.snapshots[len(m.snapshots)-1], nil
 }

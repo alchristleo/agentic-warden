@@ -47,6 +47,11 @@ func Run(t *testing.T, newStore Factory) {
 		{"machines list in enrollment order", machinesList},
 		{"listing no machines yields an empty slice", machinesListEmpty},
 		{"a deleted machine is gone", machineDelete},
+		{"current group snapshot on an empty store reports not found", snapshotOnEmpty},
+		{"a stored group snapshot can be read back", snapshotPutThenCurrent},
+		{"the newest group snapshot is the current one", snapshotNewestWins},
+		{"a group snapshot with an empty user key is rejected", snapshotUserKeyRequired},
+		{"a group snapshot with an empty group name is rejected", snapshotGroupNameRequired},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
@@ -454,4 +459,70 @@ func equalStrings(a, b []string) bool {
 		}
 	}
 	return true
+}
+
+func snapshot(source string, at time.Time, members map[string][]string) model.GroupSnapshot {
+	return model.GroupSnapshot{Source: source, AppliedBy: "ops", SyncedAt: at, Members: members}
+}
+
+func snapshotOnEmpty(t *testing.T, s store.Store) {
+	_, err := s.CurrentGroupSnapshot(context.Background())
+	if !errors.Is(err, model.ErrNotFound) {
+		t.Errorf("err = %v, want ErrNotFound before any snapshot is posted", err)
+	}
+}
+
+func snapshotPutThenCurrent(t *testing.T, s store.Store) {
+	at := time.Date(2026, 9, 22, 10, 0, 0, 0, time.UTC)
+	want := snapshot("okta", at, map[string][]string{"alice@acme.com": {"platform", "oncall"}})
+	if err := s.PutGroupSnapshot(context.Background(), want); err != nil {
+		t.Fatal(err)
+	}
+
+	got, err := s.CurrentGroupSnapshot(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Source != "okta" || got.AppliedBy != "ops" || !got.SyncedAt.Equal(at) {
+		t.Errorf("snapshot header = %+v", got)
+	}
+	if !equalStrings(got.Members["alice@acme.com"], []string{"platform", "oncall"}) {
+		t.Errorf("members = %v", got.Members)
+	}
+}
+
+func snapshotNewestWins(t *testing.T, s store.Store) {
+	at := time.Date(2026, 9, 22, 10, 0, 0, 0, time.UTC)
+	first := snapshot("okta", at, map[string][]string{"alice@acme.com": {"platform"}})
+	second := snapshot("okta", at.Add(time.Hour), map[string][]string{"bob@acme.com": {"mobile"}})
+	for _, snap := range []model.GroupSnapshot{first, second} {
+		if err := s.PutGroupSnapshot(context.Background(), snap); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	got, err := s.CurrentGroupSnapshot(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, alice := got.Members["alice@acme.com"]; alice {
+		t.Error("a snapshot replaces the previous one whole; alice should be gone")
+	}
+	if !equalStrings(got.Members["bob@acme.com"], []string{"mobile"}) {
+		t.Errorf("members = %v", got.Members)
+	}
+}
+
+func snapshotUserKeyRequired(t *testing.T, s store.Store) {
+	err := s.PutGroupSnapshot(context.Background(), snapshot("okta", time.Now(), map[string][]string{"": {"platform"}}))
+	if !errors.Is(err, model.ErrBadInput) {
+		t.Errorf("err = %v, want ErrBadInput", err)
+	}
+}
+
+func snapshotGroupNameRequired(t *testing.T, s store.Store) {
+	err := s.PutGroupSnapshot(context.Background(), snapshot("okta", time.Now(), map[string][]string{"alice@acme.com": {"platform", ""}}))
+	if !errors.Is(err, model.ErrBadInput) {
+		t.Errorf("err = %v, want ErrBadInput", err)
+	}
 }

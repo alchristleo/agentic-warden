@@ -8,6 +8,7 @@ package model
 
 import (
 	"errors"
+	"fmt"
 	"time"
 
 	"github.com/acme/agent-wrapper/internal/policy"
@@ -46,6 +47,40 @@ type Revision struct {
 	CreatedAt time.Time `json:"createdAt"`
 	// CreatedBy identifies who applied it.
 	CreatedBy string `json:"createdBy,omitempty"`
+}
+
+// GroupSnapshot is one export of identity-provider memberships. It replaces
+// the previous snapshot whole: a user absent from it has no synced groups,
+// which is what a cron export means and what makes a snapshot auditable.
+type GroupSnapshot struct {
+	// Seq orders snapshots, assigned by the store as for revisions.
+	Seq int64 `json:"seq"`
+	// Source names the exporter, for the operator reading a listing.
+	Source string `json:"source"`
+	// AppliedBy is who posted it, from the client's environment.
+	AppliedBy string `json:"appliedBy,omitempty"`
+	// SyncedAt is when the server stored it.
+	SyncedAt time.Time `json:"syncedAt"`
+	// Members maps a user, exactly as the enrollment names them, to their
+	// groups. No case folding: an export whose keys differ from the
+	// enrolled emails is an export to fix, not to paper over.
+	Members map[string][]string `json:"members"`
+}
+
+// Validate reports whether every user key and group name is present. A
+// snapshot with an empty key would silently apply to nobody.
+func (s GroupSnapshot) Validate() error {
+	for user, groups := range s.Members {
+		if user == "" {
+			return fmt.Errorf("group snapshot has a member with an empty user: %w", ErrBadInput)
+		}
+		for _, g := range groups {
+			if g == "" {
+				return fmt.Errorf("group snapshot: user %q has an empty group name: %w", user, ErrBadInput)
+			}
+		}
+	}
+	return nil
 }
 
 // Machine is a device enrolled for one user. It fetches that user's bundle

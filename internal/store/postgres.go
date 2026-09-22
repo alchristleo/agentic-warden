@@ -302,11 +302,57 @@ func collectMachines(rows pgx.Rows) ([]model.Machine, error) {
 	return out, nil
 }
 
+// PutGroupSnapshot stores a snapshot; the newest is current.
+func (p *Postgres) PutGroupSnapshot(ctx context.Context, s model.GroupSnapshot) error {
+	if err := s.Validate(); err != nil {
+		return fmt.Errorf("store: %w", err)
+	}
+	encoded, err := json.Marshal(s.Members)
+	if err != nil {
+		return fmt.Errorf("store: encoding group snapshot members: %w", err)
+	}
+	syncedAt := s.SyncedAt
+	if syncedAt.IsZero() {
+		syncedAt = time.Now()
+	}
+	const query = `
+		INSERT INTO group_snapshots (source, applied_by, synced_at, members)
+		VALUES ($1, $2, $3, $4)`
+	if _, err := p.pool.Exec(ctx, query, s.Source, s.AppliedBy, syncedAt, encoded); err != nil {
+		return fmt.Errorf("store: storing group snapshot: %w", err)
+	}
+	return nil
+}
+
+// CurrentGroupSnapshot returns the newest snapshot.
+func (p *Postgres) CurrentGroupSnapshot(ctx context.Context) (model.GroupSnapshot, error) {
+	const query = `
+		SELECT seq, source, applied_by, synced_at, members
+		FROM group_snapshots
+		ORDER BY seq DESC
+		LIMIT 1`
+	var (
+		s       model.GroupSnapshot
+		members []byte
+	)
+	err := p.pool.QueryRow(ctx, query).Scan(&s.Seq, &s.Source, &s.AppliedBy, &s.SyncedAt, &members)
+	switch {
+	case errors.Is(err, pgx.ErrNoRows):
+		return model.GroupSnapshot{}, fmt.Errorf("store: no group snapshot has been posted: %w", model.ErrNotFound)
+	case err != nil:
+		return model.GroupSnapshot{}, fmt.Errorf("store: reading the group snapshot: %w", err)
+	}
+	if err := json.Unmarshal(members, &s.Members); err != nil {
+		return model.GroupSnapshot{}, fmt.Errorf("store: decoding group snapshot members: %w", err)
+	}
+	return s, nil
+}
+
 // Truncate removes every row and restarts the sequences. It exists for the
 // conformance suite, which needs a fresh store per case; never call it
 // against a database that holds a real policy history.
 func (p *Postgres) Truncate(ctx context.Context) error {
-	if _, err := p.pool.Exec(ctx, `TRUNCATE policy_revisions, enrollment_tokens, machines RESTART IDENTITY`); err != nil {
+	if _, err := p.pool.Exec(ctx, `TRUNCATE policy_revisions, enrollment_tokens, machines, group_snapshots RESTART IDENTITY`); err != nil {
 		return fmt.Errorf("store: truncating: %w", err)
 	}
 	return nil

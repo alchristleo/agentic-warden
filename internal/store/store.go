@@ -47,4 +47,11 @@ type Store interface {
 	ListMachines(ctx context.Context) ([]model.Machine, error)
 	// DeleteMachine revokes a machine, or model.ErrNotFound.
 	DeleteMachine(ctx context.Context, id string) error
+
+	// PutGroupSnapshot stores a membership snapshot; the newest is current.
+	// It returns model.ErrBadInput for an empty user key or group name.
+	PutGroupSnapshot(ctx context.Context, s model.GroupSnapshot) error
+	// CurrentGroupSnapshot returns the newest snapshot, or model.ErrNotFound
+	// when none has ever been posted.
+	CurrentGroupSnapshot(ctx context.Context) (model.GroupSnapshot, error)
 }
