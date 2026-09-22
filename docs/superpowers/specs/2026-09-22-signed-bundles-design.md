@@ -115,20 +115,30 @@ to start: a half-configured rotation must not look like a finished one.
 
 ## On disk
 
-`aw-sync` writes three more planned files — hashed into `state.json`,
+`aw-sync` writes two more planned files, and changes what it writes into a third — hashed into `state.json`,
 reported by `aw-sync status`, rewritten on drift, all-or-nothing with the
 rest of the cycle:
 
 | File | Contents |
 | --- | --- |
-| `<agent system dir>/aw-bundle.json.sig` | one line, `aw-ed25519 <key id> <base64 signature>` |
-| `<state dir>/aw-bundle.json.sig` | the same, for the launch adapters' copy |
-| `<agent system dir>/aw-trust.pub` (0644) | `aw-ed25519:<base64>`, the pinned public key |
-| `<state dir>/aw-trust.pub` (0644) | the same, beside the launch adapters' copy |
+| `<state dir>/aw-bundle.json` | the **served bytes, verbatim** |
+| `<state dir>/aw-bundle.json.sig` | one line, `aw-ed25519 <key id> <base64 signature>` |
+| `<state dir>/aw-trust.pub` (0644) | `aw-ed25519:<base64>`, the pinned public key |
 
-"Agent system dir" is each enrolled agent's root, the same directory that
-already receives that agent's `aw-bundle.json` or rendered files, so a
-verifier finds the key beside the file it is checking.
+A signature covers the bytes the server sent, so only a file holding those
+exact bytes can carry one. Two consequences, both load-bearing:
+
+- `sync.Run` today re-encodes the decoded bundle with `json.MarshalIndent`
+  before writing `<state dir>/aw-bundle.json`. It must instead write the
+  payload it received. `Fetched` gains `Raw []byte`, `Signature` and
+  `KeyID` for that.
+- Claude's renderer writes its own `aw-bundle.json` under the Claude system
+  directory, *narrowed* to Claude's rules. Those are different bytes, so
+  that file cannot be signed and is left exactly as it is today.
+
+The signed artifact is therefore the state-directory copy alone. It is
+root-owned and world-readable by design — `aw doctor` already reads from
+there as the developer — so every verifier can reach it.
 
 `aw-trust.pub` exists because `aw-policy` runs as the developer and cannot
 read the 0600 `machine.json`. A cycle that cannot verify writes none of
@@ -136,19 +146,26 @@ these files, as it writes none of the others.
 
 ## aw-policy and the launch adapters
 
-`policyhelper.Run` gains one step before compiling: read
-`<system dir>/aw-trust.pub` and `<bundle path>.sig`.
+`policyhelper.Run` gains one step before compiling. It looks for
+`<state dir>/aw-trust.pub`:
 
-- Verified: proceed exactly as today.
-- `aw-trust.pub` present, signature missing or failing: `{}` envelope, a
+- Absent: an unsigned deployment. Read
+  `<claude system dir>/aw-bundle.json` and behave exactly as today.
+- Present: verify `<state dir>/aw-bundle.json` against
+  `<state dir>/aw-bundle.json.sig`. On success, compile from that file —
+  the signed bytes are the only ones whose origin is proven, and it holds
+  a superset of the narrowed copy, so the compiled Claude settings are
+  unchanged. On failure, or with the signature missing: `{}` envelope, a
   note naming the file, an audit line, exit 0 — and exit 1 under
   `requireBundle`, matching how a missing bundle already behaves. A key
   problem never bricks a launch that would otherwise have run unpoliced.
-- No `aw-trust.pub`: an unsigned deployment; behave exactly as today.
 
-`aw codex` and `aw gemini` apply the same three cases to the state-dir
-copy, and refuse to launch on a failed verification, because for them the
-bundle is the only input.
+`aw-policy` learns the state directory from `sync.StateDir(runtime.GOOS)`;
+`AW_SYNC_STATE_DIR` overrides it, as it already does for `aw doctor`.
+
+`aw codex` and `aw gemini` read that same state-directory copy and apply
+the same three cases, refusing to launch on a failed verification, because
+for them the bundle is the only input.
 
 ## aw doctor
 
@@ -156,7 +173,7 @@ The Claude inspection reports one more line:
 
     bundle signature: verified (key 3f9a1c22b0d41e77)
     bundle signature: unsigned deployment
-    bundle signature: FAILED — /etc/claude-code/aw-bundle.json does not match key 3f9a1c22b0d41e77
+    bundle signature: FAILED — /var/lib/agent-wrapper/aw-bundle.json does not match key 3f9a1c22b0d41e77
 
 A failure is an Error finding. Warn findings: `aw-trust.pub` or the bundle
 writable by anyone but root (mode and owner on POSIX, ACL on Windows), and
@@ -166,7 +183,7 @@ a machine with an empty pin.
 
 Apply-time verification is worth more than the bundle's own file
 permissions only when the trust anchor is harder to write than the bundle
-is. Both live in the root-owned system directory, so against genuine root
+is. Both live in the root-owned state directory, so against genuine root
 this is **detection, not prevention** — the same boundary the 2026-09-22
 hardening design drew, for the same reason: root can replace the binary
 that does the checking.
@@ -175,7 +192,7 @@ Where it prevents rather than detects:
 
 - `C:\ProgramData` subtrees, whose inherited ACLs routinely let a standard
   user write files the deploy assumed were administrator-only.
-- A deploy that chmods or chowns the system directory wrongly.
+- A deploy that chmods or chowns the state directory wrongly.
 - A compromised or impersonated `aw-sync`, and a bundle restored from a
   backup, copied between machines, or served by a stale cache.
 - The fetch path generally: there the anchor is the 0600 `machine.json`,
@@ -220,8 +237,9 @@ Three deploys, each safe on its own and in this order:
   `publicKey` and `keyId`.
 - `sync`: a good signature applies; a tampered body writes nothing; a
   rollover repins `machine.json` and then applies; an unpinned machine
-  skips verification; the three new planned files appear in `state.json`
-  and drift is detected on each.
+  skips verification; `<state dir>/aw-bundle.json` holds the served bytes
+  byte for byte, and its recorded hash is the hash of those bytes; the two
+  new planned files appear in `state.json` and drift is detected on each.
 - `cmd/aw-policy` e2e: a good signature applies; a flipped byte yields `{}`
   with a note; `requireBundle` turns that into exit 1; with no
   `aw-trust.pub` the behaviour is byte-identical to today.
@@ -242,9 +260,10 @@ Three deploys, each safe on its own and in this order:
 ## Out of scope, deliberately
 
 - Signing the rendered agent files (Codex `requirements.toml`, Gemini
-  `settings.json`, Claude's managed settings). Those agents read their
-  files natively and offer no verification hook; only Claude's path runs
-  through a verifier we control.
+  `settings.json`, Claude's managed settings and its narrowed
+  `aw-bundle.json`). Those agents read their files natively and offer no
+  verification hook, and the narrowed copy is a re-encoding the server
+  never signed; only the state-directory bundle carries proof.
 - KMS or HSM signers, X.509, and transparency logs.
 - More than two keys live at once. One current key and one previous is
   what a rotation needs.
