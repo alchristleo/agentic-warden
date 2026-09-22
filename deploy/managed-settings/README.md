@@ -39,6 +39,16 @@ registry; it is ignored in server-managed settings and in `HKCU`.
 `policyHelper.path` must be absolute and normalized: no `.` or `..`
 segments, no symlinks. On Windows it must end in `.exe`.
 
+## Building the helper
+
+    go build -o aw-policy ./cmd/aw-policy
+
+Never install a helper built with `-tags awtest`: that build honours
+`AW_POLICY_BUNDLE` and `AW_POLICY_CONFIG` from the developer's environment,
+which Claude Code passes through, so a developer could point it at a bundle
+they wrote. `aw-policy build-info` prints `env-overrides=off` for a release
+build, and `aw doctor` warns when the installed helper answers `on`.
+
 ## Installing by hand
 
     install -m 0755 aw-policy /usr/local/bin/aw-policy

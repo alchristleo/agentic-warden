@@ -32,13 +32,13 @@ line, the project and the user.
 That matters because the helper runs on `claude`, not on `aw claude`. A
 developer who bypasses the wrapper is still governed.
 
-One caveat, deliberate for now: the helper honours `AW_POLICY_BUNDLE` and
-`AW_POLICY_CONFIG` from its environment so tests can point it at fixtures,
-and Claude Code hands it the developer's environment. A developer who sets
-them runs on their own file. Closing that (a build-time switch, or accepting
-only root-owned files) is tracked as follow-up work; until then the
-guarantee is against accident, not intent. Repo-scoped rules key on
-`.git/config`'s origin, which is also the developer's to edit.
+A release build of the helper reads only the system directory. The
+`AW_POLICY_BUNDLE` and `AW_POLICY_CONFIG` overrides the tests use exist
+only under `-tags awtest`; a release build ignores them and says so on
+stderr, and `aw doctor` warns if a tagged helper is installed. What remains
+outside the helper's control is which repository a session is in:
+repo-scoped rules key on `.git/config`'s origin, which is the developer's
+to edit.
 
 Install `aw-sync` and `aw-policy` once; `aw-sync` writes the drop-in that
 names the helper, and every change after that is a server-side decision.
@@ -128,7 +128,7 @@ Fetch what a given developer would get:
 Run the sync and the policy helper the way a managed machine would, with the
 files kept under the working directory so no root is needed:
 
-    go build -o aw-sync ./cmd/aw-sync && go build -o aw-policy ./cmd/aw-policy
+    go build -o aw-sync ./cmd/aw-sync && go build -tags awtest -o aw-policy ./cmd/aw-policy
     TOKEN=$(./awd enroll-token alice@acme.com --url http://127.0.0.1:8080)
     AW_SYNC_TOKEN=$TOKEN ./aw-sync enroll --server http://127.0.0.1:8080 --agents claude --state-dir ./state
     ./aw-sync once --state-dir ./state --root claude=./claude-root
@@ -136,6 +136,10 @@ files kept under the working directory so no root is needed:
 
 Stop `awd` and run `aw-policy` again: it needs no server. Run `aw-sync once`
 again: it exits 1 and leaves the rendered files as they were.
+
+The `-tags awtest` build is what lets `AW_POLICY_BUNDLE` point at the
+working directory; it is for this walkthrough and the tests, never for a
+machine you enrol.
 
 Inspect what the wrapper would run, without running it:
 
