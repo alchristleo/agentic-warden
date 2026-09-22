@@ -24,11 +24,15 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/acme/agent-wrapper/internal/agent/claude/schema"
 	"github.com/acme/agent-wrapper/internal/policy"
 	"github.com/acme/agent-wrapper/internal/repo"
+	"github.com/acme/agent-wrapper/internal/signing"
+	"github.com/acme/agent-wrapper/internal/sync"
 )
 
 // Source says where the emitted policy came from.
@@ -59,6 +63,10 @@ const maxBundle = 8 << 20
 type Config struct {
 	// BundlePath is the bundle aw-sync wrote for this machine's user.
 	BundlePath string
+	// StateDir is where aw-sync keeps the signed bundle, its signature and
+	// the key they are checked against. Empty disables verification, which
+	// is what a test aiming at a single bundle file wants.
+	StateDir string
 	// WorkDir is where the session runs; the repository it is in, if any,
 	// is the subject's repo. Empty means the current directory.
 	WorkDir string
@@ -110,19 +118,26 @@ func Run(cfg Config) (result Result) {
 	result.Notes = notes
 
 	var managed map[string]any
-	bundle, err := loadBundle(cfg.BundlePath)
-	if err == nil {
-		subject.Groups = bundle.Groups
-		managed, err = compile(bundle, subject.Repo)
-	}
-	if err != nil {
-		result.note("no policy available: %v", err)
+	bundlePath, note, ok := VerifyBundle(cfg.StateDir, cfg.BundlePath)
+	if !ok {
+		result.note("%s", note)
 		result.Source = SourceNone
 		result.Output = envelope(nil)
 	} else {
-		result.Source = SourceBundle
-		result.Version = bundle.Version
-		result.Output = envelope(managed)
+		bundle, err := loadBundle(bundlePath)
+		if err == nil {
+			subject.Groups = bundle.Groups
+			managed, err = compile(bundle, subject.Repo)
+		}
+		if err != nil {
+			result.note("no policy available: %v", err)
+			result.Source = SourceNone
+			result.Output = envelope(nil)
+		} else {
+			result.Source = SourceBundle
+			result.Version = bundle.Version
+			result.Output = envelope(managed)
+		}
 	}
 
 	if len(result.Output) >= maxOutput {
@@ -180,6 +195,52 @@ func resolveSubject(cfg Config) (policy.Subject, []string) {
 	}
 	subject.Repo = detected
 	return subject, nil
+}
+
+// VerifyBundle reports which bundle file to compile from. An unsigned
+// deployment — no trust file in stateDir — yields fallback and no note, so a
+// machine that has never seen a signature behaves exactly as it did before
+// signing existed. A note with ok false means signing is configured and the
+// proof does not hold; the caller emits the no-policy envelope rather than
+// compile from bytes that did not check out. Only a missing trust file reads
+// as unsigned: a trust file present but unreadable for some other reason
+// (permission denied, for instance) is a broken deployment, and folding it
+// into the unsigned case would make this function fail open exactly where
+// its job is to fail closed.
+func VerifyBundle(stateDir, fallback string) (path string, note string, ok bool) {
+	if stateDir == "" {
+		return fallback, "", true
+	}
+	trustPath := filepath.Join(stateDir, sync.TrustFile)
+	trust, err := os.ReadFile(trustPath)
+	if errors.Is(err, os.ErrNotExist) {
+		// No trust file at all is the unsigned case. Anything else reading
+		// it — permission denied, a directory in its place — is a broken
+		// deployment, not an absent one, and must not be mistaken for
+		// "signing was never turned on here".
+		return fallback, "", true
+	}
+	if err != nil {
+		return "", "the trusted key " + trustPath + " is unreadable: " + err.Error(), false
+	}
+	key, err := signing.ParsePublic(string(trust))
+	if err != nil {
+		return "", "the trusted key " + trustPath + " is unreadable: " + err.Error(), false
+	}
+	bundlePath := filepath.Join(stateDir, sync.BundleFile)
+	body, err := os.ReadFile(bundlePath)
+	if err != nil {
+		return "", "the signed bundle is unreadable: " + err.Error(), false
+	}
+	line, err := os.ReadFile(filepath.Join(stateDir, sync.SignatureFile))
+	if err != nil {
+		return "", "no signature beside " + bundlePath, false
+	}
+	fields := strings.Fields(string(line))
+	if len(fields) != 3 || fields[0] != "aw-ed25519" || !signing.Verify(key, body, fields[2]) {
+		return "", bundlePath + " is not signed by key " + signing.KeyID(key), false
+	}
+	return bundlePath, "", true
 }
 
 // loadBundle reads what aw-sync left. Every problem is one error: the
