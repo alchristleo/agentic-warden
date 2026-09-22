@@ -33,9 +33,10 @@ in them, which is the bundle.
 
 `aw-sync once` writes one more file on every successful cycle:
 `<state dir>/aw-bundle.json` (0644; `/var/lib/agent-wrapper` on Linux, the
-existing `sync.StateDir` elsewhere). It is the fetched bundle verbatim, the
-same bytes the Claude renderer writes to `/etc/claude-code/aw-bundle.json`,
-placed where a machine that enrols no Claude still has it. It is a planned
+existing `sync.StateDir` elsewhere). It is the fetched bundle with every
+agent's rules and their matchers intact (Claude's own copy under
+`/etc/claude-code` is narrowed to Claude's rules), placed where a machine
+that enrols no Claude still has it. It is a planned
 file like any rendered file: hashed into `state.json`, reported by `aw-sync
 status`, overwritten on drift, and it gets the `.aw-revision` sibling every
 `.json` file gets.
