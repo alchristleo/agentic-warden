@@ -187,3 +187,46 @@ func equal(a, b []string) bool {
 	}
 	return true
 }
+
+func TestBundleGroupsAreTheUnionOfAuthoredAndSynced(t *testing.T) {
+	srv := newServer(t)
+	post(t, srv, "/v1/policy/revisions", groupedRuleSet)
+	_, alice := enroll(t, srv, mintToken(t, srv, "alice@acme.com"))
+	before := fetchBundle(t, srv, alice, nil)
+	beforeETag := before.Header.Get("ETag")
+
+	// The IdP says alice is also mobile; the authored map keeps platform.
+	if resp := putGroups(t, srv, `{"members":{"alice@acme.com":["mobile","platform"]}}`, adminToken); resp.StatusCode != http.StatusOK {
+		t.Fatalf("put groups: %d", resp.StatusCode)
+	}
+
+	resp := fetchBundle(t, srv, alice, http.Header{"If-None-Match": {beforeETag}})
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d; a changed membership must change the ETag and defeat the 304", resp.StatusCode)
+	}
+	b := decodeBundle(t, resp)
+	if !equal(b.Groups, []string{"mobile", "platform"}) {
+		t.Errorf("groups = %v, want the sorted union", b.Groups)
+	}
+	names := make([]string, 0)
+	for _, r := range b.Rules {
+		names = append(names, r.Name)
+	}
+	if want := []string{"baseline", "platform", "mobile", "payments"}; !equal(names, want) {
+		t.Errorf("rules = %v, want %v", names, want)
+	}
+}
+
+func TestBundleWithAnEmptySnapshotIsTheAuthoredBundle(t *testing.T) {
+	srv := newServer(t)
+	post(t, srv, "/v1/policy/revisions", groupedRuleSet)
+	_, alice := enroll(t, srv, mintToken(t, srv, "alice@acme.com"))
+	authored := decodeBundle(t, fetchBundle(t, srv, alice, nil))
+
+	putGroups(t, srv, `{"members":{}}`, adminToken)
+
+	synced := decodeBundle(t, fetchBundle(t, srv, alice, nil))
+	if !equal(synced.Groups, authored.Groups) || len(synced.Rules) != len(authored.Rules) {
+		t.Errorf("bundle changed under an empty snapshot: %+v vs %+v", synced, authored)
+	}
+}
