@@ -1,6 +1,8 @@
 package claude_test
 
 import (
+	"crypto/ed25519"
+	"fmt"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -9,7 +11,48 @@ import (
 
 	"github.com/acme/agent-wrapper/internal/agent"
 	"github.com/acme/agent-wrapper/internal/agent/claude"
+	"github.com/acme/agent-wrapper/internal/signing"
 )
+
+// signedBundle is a minimal bundle body: the signature check cares only
+// about the bytes, not the schema, so this is enough to exercise it.
+const signedBundle = `{"version":"2026-09-22.sig","groups":["platform"],"rules":[]}`
+
+// writeSignedState builds a state directory the way aw-sync leaves one: the
+// bundle, its signature, and the public key it verifies against.
+func (in *inspection) writeSignedState(t *testing.T, stateDir, body string) {
+	t.Helper()
+	key, err := signing.Generate()
+	if err != nil {
+		t.Fatal(err)
+	}
+	pub := key.Public().(ed25519.PublicKey)
+	in.write(t, filepath.Join(stateDir, "aw-trust.pub"), signing.FormatPublic(pub)+"\n")
+	in.write(t, filepath.Join(stateDir, "aw-bundle.json"), body)
+	line := fmt.Sprintf("aw-ed25519 %s %s\n", signing.KeyID(pub), signing.Sign(key, []byte(body)))
+	in.write(t, filepath.Join(stateDir, "aw-bundle.json.sig"), line)
+}
+
+// tamperByte changes one digit of path, invalidating any signature over its
+// former contents while leaving the file valid JSON and valid UTF-8, so a
+// test using it exercises the signature check rather than a parse failure.
+func tamperByte(t *testing.T, path string) {
+	t.Helper()
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i, b := range raw {
+		if b >= '0' && b <= '9' {
+			raw[i] = '0' + (b-'0'+1)%10
+			if err := os.WriteFile(path, raw, 0o644); err != nil {
+				t.Fatal(err)
+			}
+			return
+		}
+	}
+	t.Fatalf("tamperByte: %s has no digit to change", path)
+}
 
 // inspection sets up a managed system directory and a Claude config
 // directory under the test's control and returns an adapter aimed at them.
@@ -251,5 +294,120 @@ func TestInspectSaysNothingWhenTheHelperCannotAnswerBuildInfo(t *testing.T) {
 	}
 	if !findingsWith(findings, agent.OK, helper) {
 		t.Errorf("findings %v should still confirm the helper binary", findings)
+	}
+}
+
+func TestInspectReportsAnUnsignedDeploymentWhenThereIsNoStateDir(t *testing.T) {
+	// The zero value (no StateDir configured) is what every other Inspect
+	// test above already relies on, and it must read as "signing was never
+	// turned on here", exactly like a real machine with no trust file.
+	in := newInspection(t)
+
+	findings := in.adapter.Inspect(nil)
+
+	if !findingsWith(findings, agent.OK, "bundle signature: unsigned deployment") {
+		t.Errorf("findings %+v should report an unsigned deployment", findings)
+	}
+}
+
+func TestInspectReportsAnUnsignedDeploymentWhenThereIsNoTrustFile(t *testing.T) {
+	in := newInspection(t)
+	in.adapter.StateDir = t.TempDir()
+
+	findings := in.adapter.Inspect(nil)
+
+	if !findingsWith(findings, agent.OK, "bundle signature: unsigned deployment") {
+		t.Errorf("findings %+v should report an unsigned deployment", findings)
+	}
+}
+
+func TestInspectReportsAVerifiedBundleSignature(t *testing.T) {
+	in := newInspection(t)
+	stateDir := t.TempDir()
+	in.adapter.StateDir = stateDir
+	in.writeSignedState(t, stateDir, signedBundle)
+
+	findings := in.adapter.Inspect(nil)
+
+	if !findingsWith(findings, agent.OK, "bundle signature: verified (key ") {
+		t.Errorf("findings %+v should report a verified signature", findings)
+	}
+}
+
+func TestInspectFlagsAFailedBundleSignature(t *testing.T) {
+	in := newInspection(t)
+	stateDir := t.TempDir()
+	in.adapter.StateDir = stateDir
+	in.writeSignedState(t, stateDir, signedBundle)
+	tamperByte(t, filepath.Join(stateDir, "aw-bundle.json"))
+
+	findings := in.adapter.Inspect(nil)
+
+	if !findingsWith(findings, agent.Error, "bundle signature: FAILED") {
+		t.Errorf("findings %+v should flag the tampered bundle as a failure", findings)
+	}
+	if !findingsWith(findings, agent.Error, "aw-bundle.json") {
+		t.Errorf("findings %+v should name the file that failed to verify", findings)
+	}
+}
+
+func TestInspectWarnsWhenTheBundleIsWorldWritable(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("POSIX permission bits carry no meaning on Windows")
+	}
+	in := newInspection(t)
+	stateDir := t.TempDir()
+	in.adapter.StateDir = stateDir
+	in.writeSignedState(t, stateDir, signedBundle)
+	bundlePath := filepath.Join(stateDir, "aw-bundle.json")
+	if err := os.Chmod(bundlePath, 0o646); err != nil {
+		t.Fatal(err)
+	}
+
+	findings := in.adapter.Inspect(nil)
+
+	if !findingsWith(findings, agent.Warn, bundlePath) {
+		t.Errorf("findings %+v should warn that %s is writable by more than its owner", findings, bundlePath)
+	}
+}
+
+func TestInspectWarnsWhenTheTrustFileIsWorldWritable(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("POSIX permission bits carry no meaning on Windows")
+	}
+	in := newInspection(t)
+	stateDir := t.TempDir()
+	in.adapter.StateDir = stateDir
+	in.writeSignedState(t, stateDir, signedBundle)
+	trustPath := filepath.Join(stateDir, "aw-trust.pub")
+	if err := os.Chmod(trustPath, 0o664); err != nil {
+		t.Fatal(err)
+	}
+
+	findings := in.adapter.Inspect(nil)
+
+	if !findingsWith(findings, agent.Warn, trustPath) {
+		t.Errorf("findings %+v should warn that %s is writable by more than its owner", findings, trustPath)
+	}
+}
+
+func TestInspectDoesNotWarnWhenTheStateFilesAreOwnerOnly(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("POSIX permission bits carry no meaning on Windows")
+	}
+	in := newInspection(t)
+	stateDir := t.TempDir()
+	in.adapter.StateDir = stateDir
+	in.writeSignedState(t, stateDir, signedBundle)
+	for _, name := range []string{"aw-bundle.json", "aw-trust.pub"} {
+		if err := os.Chmod(filepath.Join(stateDir, name), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	findings := in.adapter.Inspect(nil)
+
+	if findingsWith(findings, agent.Warn, "writable") {
+		t.Errorf("findings %+v should not warn about ordinary owner-writable, world-readable files", findings)
 	}
 }

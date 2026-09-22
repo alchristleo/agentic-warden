@@ -15,6 +15,26 @@ import (
 
 	"github.com/acme/agent-wrapper/internal/agent"
 	"github.com/acme/agent-wrapper/internal/policy"
+	"github.com/acme/agent-wrapper/internal/signing"
+)
+
+// stateTrustFile, stateBundleFile and stateSignatureFile mirror
+// sync.TrustFile, sync.BundleFile and sync.SignatureFile. This package
+// cannot import internal/sync, which imports this package for SystemDir,
+// nor internal/policyhelper, which imports internal/sync — either would
+// close an import cycle. So the file names are kept in step by hand rather
+// than a shared constant, and the verification below calls the same
+// internal/signing primitives Task 7's policyhelper.VerifyBundle calls
+// (ParsePublic, Verify, KeyID) rather than that function itself, which is
+// what cmd/aw's resolvePolicy calls directly since it sits outside this
+// cycle. stateBundleFile happens to share its value with BundleFile above,
+// but the two name different files: BundleFile is the narrowed copy this
+// adapter renders into the system directory; stateBundleFile is aw-sync's
+// own signed copy in its state directory.
+const (
+	stateTrustFile     = "aw-trust.pub"
+	stateBundleFile    = "aw-bundle.json"
+	stateSignatureFile = "aw-bundle.json.sig"
 )
 
 // remoteSettingsFile is where Claude Code caches server-managed settings.
@@ -63,6 +83,10 @@ func (a *Adapter) Inspect(env []string) []agent.Finding {
 	}
 
 	findings = append(findings, inspectBundle(systemDir))
+	findings = append(findings, inspectSignature(a.StateDir))
+	if warn := inspectPermissions(a.goos(), a.StateDir); warn != nil {
+		findings = append(findings, *warn)
+	}
 
 	if skipper := firstSet(env, fetchSkippers); skipper != "" {
 		findings = append(findings, agent.Finding{Level: agent.OK,
@@ -181,6 +205,94 @@ func inspectBundle(systemDir string) agent.Finding {
 	}
 	return agent.Finding{Level: agent.OK,
 		Message: fmt.Sprintf("bundle %s: version %s, %d rule(s) for %d group(s)", path, version, len(bundle.Rules), len(bundle.Groups))}
+}
+
+// inspectSignature reports the state aw-sync's signature check is in, from
+// its own state directory, not from this agent's system directory (which
+// holds a narrowed, re-encoded copy of the bundle that a signature over the
+// original bytes cannot check). Three states, and only a positive failure
+// is an Error: a deployment that does not sign is a choice, not a fault.
+//
+// This mirrors policyhelper.VerifyBundle's file layout and signature-line
+// format rather than calling it, because internal/policyhelper imports
+// internal/sync, which imports this package for SystemDir; importing
+// policyhelper here would close that cycle. What it does share with
+// VerifyBundle is the actual cryptographic check, via the same
+// internal/signing primitives (ParsePublic, Verify, KeyID) — only the glue
+// that reads three files and picks a message is written twice.
+func inspectSignature(stateDir string) agent.Finding {
+	if stateDir == "" {
+		// No state directory configured reads exactly like a machine with
+		// no trust file: signing was never turned on for this Inspect call.
+		return agent.Finding{Level: agent.OK, Message: "bundle signature: unsigned deployment"}
+	}
+	trustPath := filepath.Join(stateDir, stateTrustFile)
+	bundlePath := filepath.Join(stateDir, stateBundleFile)
+
+	trust, err := os.ReadFile(trustPath)
+	if errors.Is(err, os.ErrNotExist) {
+		return agent.Finding{Level: agent.OK, Message: "bundle signature: unsigned deployment"}
+	}
+	fail := func(keyID string) agent.Finding {
+		return agent.Finding{Level: agent.Error, Message: "bundle signature: FAILED — " + bundlePath + " does not match key " + keyID}
+	}
+	if err != nil {
+		// Present but unreadable is a broken deployment, not an unsigned
+		// one; there is no key ID to show for it.
+		return fail("")
+	}
+	key, err := signing.ParsePublic(string(trust))
+	if err != nil {
+		return fail("")
+	}
+	keyID := signing.KeyID(key)
+
+	body, err := os.ReadFile(bundlePath)
+	if err != nil {
+		return fail(keyID)
+	}
+	line, err := os.ReadFile(filepath.Join(stateDir, stateSignatureFile))
+	if err != nil {
+		return fail(keyID)
+	}
+	fields := strings.Fields(string(line))
+	if len(fields) != 3 || fields[0] != "aw-ed25519" || !signing.Verify(key, body, fields[2]) {
+		return fail(keyID)
+	}
+	return agent.Finding{Level: agent.OK, Message: "bundle signature: verified (key " + keyID + ")"}
+}
+
+// worldWritable is the permission-bit mask that, ORed into a file's mode,
+// means someone other than its owner can rewrite it: group or other write
+// access. Either bit on the bundle or the trust file would let a non-root
+// account replace what the signature check above trusts.
+const worldWritable = 0o022
+
+// inspectPermissions warns when the bundle or the trust file in stateDir is
+// writable by more than its owner. It is skipped on Windows, where the mode
+// bits Stat reports carry no ACL information, so a check based on them
+// would only produce a false sense of assurance; the real answer lives in
+// the file's ACL, which this package has no portable way to read.
+func inspectPermissions(goos, stateDir string) *agent.Finding {
+	if stateDir == "" || goos == "windows" {
+		return nil
+	}
+	for _, name := range []string{stateBundleFile, stateTrustFile} {
+		path := filepath.Join(stateDir, name)
+		info, err := os.Stat(path)
+		if err != nil {
+			// Absent or unreadable is inspectSignature's to report; a
+			// permission warning about a file that is not there would only
+			// be noise.
+			continue
+		}
+		if info.Mode().Perm()&worldWritable != 0 {
+			return &agent.Finding{Level: agent.Warn, Message: fmt.Sprintf(
+				"%s is writable by more than its owner (mode %s): anyone who can rewrite it can control what the signature check trusts",
+				path, info.Mode().Perm())}
+		}
+	}
+	return nil
 }
 
 // topLevelKeys lists the keys of the JSON object in path, sorted, or nothing
