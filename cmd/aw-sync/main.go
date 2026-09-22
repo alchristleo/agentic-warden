@@ -27,13 +27,14 @@ import (
 	"github.com/acme/agent-wrapper/internal/agent"
 	"github.com/acme/agent-wrapper/internal/agent/claude"
 	"github.com/acme/agent-wrapper/internal/agent/codex"
+	"github.com/acme/agent-wrapper/internal/agent/gemini"
 	"github.com/acme/agent-wrapper/internal/sync"
 )
 
 const usage = `aw-sync keeps this machine's agent configuration in step with the control plane.
 
 Usage:
-  aw-sync enroll --server URL [--token T] [--name HOST] [--agents claude,codex] [--force] [--state-dir DIR]
+  aw-sync enroll --server URL [--token T] [--name HOST] [--agents claude,codex,gemini] [--force] [--state-dir DIR]
   aw-sync once [--state-dir DIR] [--root agent=DIR ...]
   aw-sync status [--json] [--state-dir DIR]
   aw-sync help
@@ -88,7 +89,7 @@ func helpOr(err error, stdout io.Writer) error {
 // implement agent.Renderer are offered to enroll.
 func newRegistry() (*agent.Registry, error) {
 	reg := &agent.Registry{}
-	for _, a := range []agent.Adapter{claude.New(), codex.New()} {
+	for _, a := range []agent.Adapter{claude.New(), codex.New(), gemini.New()} {
 		if err := reg.Register(a); err != nil {
 			return nil, err
 		}

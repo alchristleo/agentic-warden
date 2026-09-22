@@ -206,12 +206,17 @@ const e2ePolicy = `{
   "rules": [
     {"name": "baseline", "agents": {
       "claude": {"managed": {"model": "sonnet"}},
-      "codex": {"managed": {"allowed_sandbox_modes": ["read-only", "workspace-write"]}}
+      "codex": {"managed": {"allowed_sandbox_modes": ["read-only", "workspace-write"]}},
+      "gemini": {"managed": {
+        "settings": {"admin": {"secureModeEnabled": true}},
+        "policies": [{"toolName": "run_shell_command", "commandPrefix": "rm -rf", "decision": "deny", "priority": 100}]
+      }}
     }},
     {"name": "platform", "match": {"groups": ["platform"]}, "agents": {"claude": {"managed": {"model": "opus"}}}},
     {"name": "payments", "match": {"repos": ["github.com/acme/payments*"]}, "agents": {
       "claude": {"managed": {"permissions": {"deny": ["Bash(curl *)"]}}},
-      "codex": {"managed": {"allowed_sandbox_modes": ["read-only"]}}
+      "codex": {"managed": {"allowed_sandbox_modes": ["read-only"]}},
+      "gemini": {"managed": {"policies": [{"toolName": "*", "decision": "deny", "priority": 999}]}}
     }}
   ]
 }`
@@ -242,11 +247,12 @@ func TestEnrollOnceStatusAndOutage(t *testing.T) {
 	stateDir := filepath.Join(t.TempDir(), "state")
 	claudeRoot := filepath.Join(t.TempDir(), "claude-root")
 	codexRoot := filepath.Join(t.TempDir(), "codex-root")
+	geminiRoot := filepath.Join(t.TempDir(), "gemini-root")
 
 	// Enroll, with the token in the environment so it never hits argv.
 	token := mintToken(t, s, "alice@acme.com")
 	stdout, stderr, code := runSync(t, []string{"AW_SYNC_TOKEN=" + token},
-		"enroll", "--server", s.url, "--name", "e2e-host", "--agents", "claude,codex", "--state-dir", stateDir)
+		"enroll", "--server", s.url, "--name", "e2e-host", "--agents", "claude,codex,gemini", "--state-dir", stateDir)
 	if code != 0 {
 		t.Fatalf("enroll exited %d: %s%s", code, stdout, stderr)
 	}
@@ -279,7 +285,7 @@ func TestEnrollOnceStatusAndOutage(t *testing.T) {
 	if err := json.Unmarshal([]byte(stdout), &freshReport); err != nil {
 		t.Fatalf("status --json is not JSON: %v\n%s", err, stdout)
 	}
-	if !freshReport.Enrolled || freshReport.MachineID == "" || len(freshReport.Agents) != 2 || freshReport.Agents[0] != "claude" || freshReport.Agents[1] != "codex" {
+	if !freshReport.Enrolled || freshReport.MachineID == "" || len(freshReport.Agents) != 3 || freshReport.Agents[0] != "claude" || freshReport.Agents[1] != "codex" || freshReport.Agents[2] != "gemini" {
 		t.Errorf("status right after enroll = %+v", freshReport)
 	}
 	if runtime.GOOS != "windows" && os.Geteuid() != 0 {
@@ -305,7 +311,7 @@ func TestEnrollOnceStatusAndOutage(t *testing.T) {
 	}
 
 	// The first cycle renders both Claude files.
-	stdout, stderr, code = runSync(t, nil, "once", "--state-dir", stateDir, "--root", "claude="+claudeRoot, "--root", "codex="+codexRoot)
+	stdout, stderr, code = runSync(t, nil, "once", "--state-dir", stateDir, "--root", "claude="+claudeRoot, "--root", "codex="+codexRoot, "--root", "gemini="+geminiRoot)
 	if code != 0 {
 		t.Fatalf("once exited %d: %s%s", code, stdout, stderr)
 	}
@@ -347,6 +353,29 @@ func TestEnrollOnceStatusAndOutage(t *testing.T) {
 		t.Error("a TOML file carries its revision in the header; no .aw-revision sibling is written")
 	}
 
+	// Gemini gets both files: settings.json with its revision sibling, and
+	// the admin policy file with the revision in its header. The repo-scoped
+	// payments rule is absent from both and named in the note.
+	settings, err := os.ReadFile(filepath.Join(geminiRoot, "settings.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(settings), `"secureModeEnabled": true`) {
+		t.Errorf("settings.json =\n%s", settings)
+	}
+	if got, _ := os.ReadFile(filepath.Join(geminiRoot, "settings.json.aw-revision")); string(got) != "2026-09-21.e2e\n" {
+		t.Errorf("settings.json.aw-revision = %q; a JSON file carries its revision in a sibling", got)
+	}
+	policies, err := os.ReadFile(filepath.Join(geminiRoot, "policies", "50-agent-wrapper.toml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.HasPrefix(string(policies), "# Managed by aw-sync from policy revision 2026-09-21.e2e.") ||
+		!strings.Contains(string(policies), "priority = 100\n") ||
+		strings.Contains(string(policies), "priority = 999") {
+		t.Errorf("50-agent-wrapper.toml =\n%s", policies)
+	}
+
 	// aw-policy resolves the rendered bundle per launch and needs no
 	// server: outside a repository the platform rule sets the model and
 	// the payments deny stays out; inside a payments repository it joins.
@@ -371,7 +400,7 @@ func TestEnrollOnceStatusAndOutage(t *testing.T) {
 	}
 
 	// A second cycle is a 304 no-op.
-	stdout, _, code = runSync(t, nil, "once", "--state-dir", stateDir, "--root", "claude="+claudeRoot, "--root", "codex="+codexRoot)
+	stdout, _, code = runSync(t, nil, "once", "--state-dir", stateDir, "--root", "claude="+claudeRoot, "--root", "codex="+codexRoot, "--root", "gemini="+geminiRoot)
 	if code != 0 || !strings.Contains(stdout, "unchanged") {
 		t.Errorf("second once: exit %d, stdout %q; want an unchanged report", code, stdout)
 	}
@@ -392,11 +421,12 @@ func TestEnrollOnceStatusAndOutage(t *testing.T) {
 	if err := json.Unmarshal([]byte(stdout), &report); err != nil {
 		t.Fatalf("status --json is not JSON: %v\n%s", err, stdout)
 	}
-	if !report.Enrolled || report.Version != "2026-09-21.e2e" || report.Drift || report.Error != "" || len(report.Files) != 3 {
+	if !report.Enrolled || report.Version != "2026-09-21.e2e" || report.Drift || report.Error != "" || len(report.Files) != 5 {
 		t.Errorf("report = %+v", report)
 	}
-	if notes := strings.Join(report.Notes, "\n"); !strings.Contains(notes, "repo-scoped rule") || !strings.Contains(notes, "payments") {
-		t.Errorf("report.Notes = %q; want the dropped payments rule reported", report.Notes)
+	if notes := strings.Join(report.Notes, "\n"); !strings.Contains(notes, "repo-scoped rule") || !strings.Contains(notes, "payments") ||
+		!strings.Contains(notes, "codex:") || !strings.Contains(notes, "gemini:") {
+		t.Errorf("report.Notes = %q; want the dropped payments rule reported by both static-file renderers", report.Notes)
 	}
 
 	// Drift is reported, then repaired by the next cycle even though the
@@ -410,7 +440,7 @@ func TestEnrollOnceStatusAndOutage(t *testing.T) {
 	if !strings.Contains(stdout, "drift") {
 		t.Errorf("status does not report drift:\n%s", stdout)
 	}
-	stdout, stderr, code = runSync(t, nil, "once", "--state-dir", stateDir, "--root", "claude="+claudeRoot, "--root", "codex="+codexRoot)
+	stdout, stderr, code = runSync(t, nil, "once", "--state-dir", stateDir, "--root", "claude="+claudeRoot, "--root", "codex="+codexRoot, "--root", "gemini="+geminiRoot)
 	if code != 0 {
 		t.Fatalf("once after drift exited %d: %s%s", code, stdout, stderr)
 	}
@@ -430,7 +460,7 @@ func TestEnrollOnceStatusAndOutage(t *testing.T) {
 
 	// The server goes away: the cycle fails, the files stay.
 	s.stop()
-	stdout, stderr, code = runSync(t, nil, "once", "--state-dir", stateDir, "--root", "claude="+claudeRoot, "--root", "codex="+codexRoot)
+	stdout, stderr, code = runSync(t, nil, "once", "--state-dir", stateDir, "--root", "claude="+claudeRoot, "--root", "codex="+codexRoot, "--root", "gemini="+geminiRoot)
 	if code != 1 {
 		t.Errorf("once during an outage exited %d, want 1: %s%s", code, stdout, stderr)
 	}
@@ -439,6 +469,9 @@ func TestEnrollOnceStatusAndOutage(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(codexRoot, "requirements.toml")); err != nil {
 		t.Error("an outage removed requirements.toml")
+	}
+	if _, err := os.Stat(filepath.Join(geminiRoot, "policies", "50-agent-wrapper.toml")); err != nil {
+		t.Error("an outage removed the Gemini policy file")
 	}
 	if got, _ := os.ReadFile(bundlePath); string(got) != "{}\n" {
 		t.Error("an outage rewrote the bundle; a failed fetch must leave files as they are")

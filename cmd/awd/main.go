@@ -28,6 +28,7 @@ import (
 
 	"github.com/acme/agent-wrapper/internal/agent/claude/schema"
 	"github.com/acme/agent-wrapper/internal/agent/codex/requirements"
+	"github.com/acme/agent-wrapper/internal/agent/gemini/managed"
 	"github.com/acme/agent-wrapper/internal/config"
 	"github.com/acme/agent-wrapper/internal/handler"
 	"github.com/acme/agent-wrapper/internal/model"
@@ -239,14 +240,18 @@ func apply(argv []string) error {
 }
 
 // managedValidator runs every agent's own check over a rule's managed
-// settings: Claude's settings schema and Codex's requirements allowlist.
-// Each ignores the agents it does not know, so adding an agent is adding a
-// line here.
-func managedValidator(agentName string, managed map[string]any) error {
-	if err := schema.ForAgent(agentName, managed); err != nil {
+// settings: Claude's settings schema, Codex's requirements allowlist and
+// Gemini's managed-document rules. Each ignores the agents it does not
+// know, so adding an agent is adding a line here. The parameter is doc,
+// not managed, so the Gemini package name is not shadowed.
+func managedValidator(agentName string, doc map[string]any) error {
+	if err := schema.ForAgent(agentName, doc); err != nil {
 		return err
 	}
-	return requirements.ForAgent(agentName, managed)
+	if err := requirements.ForAgent(agentName, doc); err != nil {
+		return err
+	}
+	return managed.ForAgent(agentName, doc)
 }
 
 func appliedBy() string {

@@ -5,7 +5,8 @@ each developer's session gets the slice of it that applies to them, targeted by
 group and by repository.
 
 Status: early. Claude Code is the only agent `aw` launches; `aw-sync` also
-renders Codex's `requirements.toml`.
+renders Codex's `requirements.toml` and Gemini's system settings and admin
+policy.
 
 ## Why this exists
 
@@ -72,6 +73,7 @@ detects the collision, and reports the bundle and aw-sync's last cycle.
     internal/agent/   Adapter interface, registry, Prepare/Launch/Exec
     internal/agent/claude/schema/  vendored settings schema and validation
     internal/agent/codex/  Codex adapter: requirements.toml renderer and key allowlist
+    internal/agent/gemini/  Gemini adapter: settings.json and admin policy renderer, key allowlist
     internal/policyhelper/  what aw-policy does: read the bundle, compile, validate, emit
     internal/sync/    the sync cycle: fetch the bundle, render, write all-or-nothing
     internal/policy/  rules, targeting, compilation, YAML/JSON authoring
@@ -113,8 +115,10 @@ server and the CLI. Then enroll a machine and fetch its bundle:
 The bundle is every rule that could apply to that user, with repository
 matchers still in it; the machine resolves those per session. `aw-sync` does
 the enrolling and the rendering on a real machine. For Codex it writes
-`/etc/codex/requirements.toml` from the bundle's `codex` entries; rules scoped
-to a repository cannot live in a static file and are reported by
+`/etc/codex/requirements.toml` from the bundle's `codex` entries, and for
+Gemini `/etc/gemini-cli/settings.json` and
+`/etc/gemini-cli/policies/50-agent-wrapper.toml` from the `gemini` entries;
+rules scoped to a repository cannot live in a static file and are reported by
 `aw-sync status`. See `deploy/aw-sync/README.md` for installing it.
 
 Fetch what a given developer would get:

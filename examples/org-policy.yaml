@@ -39,6 +39,24 @@ rules:
               - pattern: [{token: rm}]
                 decision: forbidden
                 justification: Use git clean -fd instead.
+      # Gemini reads a system settings.json (overrides every user setting)
+      # and an admin policy directory; aw-sync writes one file in each.
+      # tools.exclude and mcp.allowed union across rules, mcpServers merge
+      # by name, other settings replace, and policies accumulate. Every
+      # policy rule needs toolName, decision and an integer priority 0-999.
+      gemini:
+        managed:
+          settings:
+            admin:
+              secureModeEnabled: true
+            tools:
+              exclude: [web_fetch]
+          policies:
+            - toolName: run_shell_command
+              commandPrefix: rm -rf
+              decision: deny
+              priority: 100
+              denyMessage: Use git clean -fd instead.
 
   # Group membership comes from identity-provider claims and compares exactly.
   - name: platform-team

@@ -288,6 +288,40 @@ func TestApplyRejectsCodexRequirementsWithAnUnknownKey(t *testing.T) {
 	}
 }
 
+func TestApplyRejectsAGeminiPolicyRuleWithoutAPriority(t *testing.T) {
+	// A Gemini rule goes through the same gate as a Claude or Codex one.
+	// Gemini's own loader refuses a policy file whose rule lacks a
+	// priority, so the whole file would be ignored on every machine; apply
+	// and the server both stop it in front of the author.
+	s := startServer(t)
+	path := writePolicy(t, "version: v1\nrules:\n  - name: baseline\n    agents:\n      gemini:\n        managed:\n          policies:\n            - toolName: run_shell_command\n              decision: deny\n")
+
+	out, code := runAwd(t, "apply", path, "--url", s.url)
+
+	if code == 0 {
+		t.Fatalf("apply exited 0, want non-zero for a Gemini rule without a priority: %s", out)
+	}
+	if !strings.Contains(out, "policies[0].priority") {
+		t.Errorf("output %q does not name the offending field", out)
+	}
+
+	body := `{"version":"v2","rules":[{"name":"b","agents":{"gemini":{"managed":{"policies":[{"toolName":"*","decision":"deny"}]}}}}]}`
+	req, err := http.NewRequest(http.MethodPost, s.url+"/v1/policy/revisions", strings.NewReader(body))
+	if err != nil {
+		t.Fatal(err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+e2eAdminToken)
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusUnprocessableEntity {
+		t.Errorf("server status = %d, want 422", resp.StatusCode)
+	}
+}
+
 func TestApplyWithoutTheAdminTokenIsRefused(t *testing.T) {
 	s := startServer(t)
 	path := writePolicy(t, policyYAML)
