@@ -71,3 +71,41 @@ func TestBuildFailsWhenTheBinaryIsMissing(t *testing.T) {
 		t.Error("Build = nil error; want the missing binary reported")
 	}
 }
+
+func TestBuildTurnsTheLaunchDocumentIntoConfigOverrides(t *testing.T) {
+	env := fakeBinary(t)
+
+	launch, err := codex.New().Build(context.Background(), agent.BuildOptions{
+		Env:  env,
+		Args: []string{"--model", "gpt-5"},
+		Settings: agent.Settings{Launch: map[string]any{
+			"sandbox_mode":    "read-only",
+			"approval_policy": "untrusted",
+		}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Sorted overrides first, the developer's arguments last so an explicit
+	// -c on the command line wins.
+	want := `-c approval_policy="untrusted" -c sandbox_mode="read-only" --model gpt-5`
+	if got := strings.Join(launch.Args, " "); got != want {
+		t.Errorf("args = %q, want %q", got, want)
+	}
+	notes := strings.Join(launch.Notes, "\n")
+	if !strings.Contains(notes, `-c sandbox_mode="read-only" from launch`) {
+		t.Errorf("notes %q should list each override", launch.Notes)
+	}
+}
+
+func TestBuildWithoutALaunchDocumentInjectsNothing(t *testing.T) {
+	env := fakeBinary(t)
+	launch, err := codex.New().Build(context.Background(), agent.BuildOptions{Env: env, Args: []string{"x"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Join(launch.Args, " ") != "x" {
+		t.Errorf("args = %q; nothing to inject", launch.Args)
+	}
+}
