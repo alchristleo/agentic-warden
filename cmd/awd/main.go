@@ -12,8 +12,10 @@ package main
 import (
 	"bytes"
 	"context"
+	"crypto/ed25519"
 	"encoding/json"
 	"errors"
+	"flag"
 	"fmt"
 	"io"
 	"log/slog"
@@ -33,6 +35,7 @@ import (
 	"github.com/acme/agent-wrapper/internal/handler"
 	"github.com/acme/agent-wrapper/internal/model"
 	"github.com/acme/agent-wrapper/internal/policy"
+	"github.com/acme/agent-wrapper/internal/signing"
 	"github.com/acme/agent-wrapper/internal/store"
 	"sigs.k8s.io/yaml"
 )
@@ -41,6 +44,7 @@ const usage = `awd is the agent-wrapper control plane.
 
 Usage:
   awd serve                        run the API server
+  awd keygen --out FILE            write a new signing key
   awd apply <file> [--url URL]     store a new policy revision
   awd enroll-token <user> [--url URL] [--ttl 24h]   mint a single-use token that enrolls one machine
   awd machines [--url URL]                          list enrolled machines
@@ -50,15 +54,17 @@ Usage:
   awd help
 
 Environment:
-  AWD_ADDR              listen address (default :8080)
-  AWD_DATABASE_URL      Postgres URL; unset means in-memory, for evaluation only
-  AWD_LOG_LEVEL         debug, info, warn, error (default info)
-  AWD_READ_TIMEOUT      per-request read timeout (default 10s)
-  AWD_WRITE_TIMEOUT     per-request write timeout (default 30s)
-  AWD_IDLE_TIMEOUT      keep-alive idle timeout (default 120s)
-  AWD_SHUTDOWN_TIMEOUT  how long in-flight requests may drain (default 30s)
-  AWD_URL               control plane URL used by apply (default http://localhost:8080)
-  AWD_ADMIN_TOKEN       bearer token for apply and machine administration; unset disables them
+  AWD_ADDR                   listen address (default :8080)
+  AWD_DATABASE_URL           Postgres URL; unset means in-memory, for evaluation only
+  AWD_LOG_LEVEL              debug, info, warn, error (default info)
+  AWD_READ_TIMEOUT           per-request read timeout (default 10s)
+  AWD_WRITE_TIMEOUT          per-request write timeout (default 30s)
+  AWD_IDLE_TIMEOUT           keep-alive idle timeout (default 120s)
+  AWD_SHUTDOWN_TIMEOUT       how long in-flight requests may drain (default 30s)
+  AWD_URL                    control plane URL used by apply (default http://localhost:8080)
+  AWD_ADMIN_TOKEN            bearer token for apply and machine administration; unset disables them
+  AWD_SIGNING_KEY            path to the signing key written by keygen; unset means bundles are not signed
+  AWD_SIGNING_KEY_PREVIOUS   path to the key being rotated out, signed over during a rotation
 `
 
 func main() {
@@ -79,6 +85,8 @@ func run(argv []string) error {
 		return nil
 	case "serve":
 		return serve()
+	case "keygen":
+		return keygen(argv[1:])
 	case "apply":
 		return apply(argv[1:])
 	case "enroll-token":
@@ -115,6 +123,31 @@ func serve() error {
 	if cfg.AdminToken == "" {
 		log.Warn("AWD_ADMIN_TOKEN is unset; apply and machine administration are disabled")
 	}
+
+	// Signing is opt-in: a deployment with no key keeps serving exactly as
+	// it did, and every client keeps accepting what it serves.
+	if path := os.Getenv("AWD_SIGNING_KEY"); path != "" {
+		key, err := signing.LoadSeed(path)
+		if err != nil {
+			return err
+		}
+		s := &handler.Signer{Key: key}
+		if previous := os.Getenv("AWD_SIGNING_KEY_PREVIOUS"); previous != "" {
+			// A rotation that cannot vouch for its new key leaves every
+			// machine pinned to a key nothing signs with any more. Refusing
+			// to start says so while it is still one server's problem.
+			old, err := signing.LoadSeed(previous)
+			if err != nil {
+				return fmt.Errorf("awd: AWD_SIGNING_KEY_PREVIOUS: %w", err)
+			}
+			s.Previous = old
+		}
+		h.Signer = s
+		log.Info("signing bundles", "keyId", s.KeyID())
+	} else {
+		log.Warn("bundles are not signed; set AWD_SIGNING_KEY to sign them")
+	}
+
 	srv := &http.Server{
 		Handler:      h.Routes(),
 		ReadTimeout:  cfg.ReadTimeout,
@@ -177,6 +210,30 @@ func openStore(cfg config.Config, log *slog.Logger) (store.Store, error) {
 	}
 	log.Info("connected to Postgres")
 	return pg, nil
+}
+
+// keygen writes a new signing key and prints the public half. It never
+// replaces an existing key: a control plane that quietly started signing
+// with a different key would strand every machine that pinned the old one.
+func keygen(args []string) error {
+	fs := flag.NewFlagSet("keygen", flag.ContinueOnError)
+	out := fs.String("out", "", "where to write the signing key (required)")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	if *out == "" {
+		return errors.New("awd keygen: --out names the file to write")
+	}
+	key, err := signing.Generate()
+	if err != nil {
+		return err
+	}
+	if err := signing.WriteSeed(*out, key); err != nil {
+		return err
+	}
+	pub := key.Public().(ed25519.PublicKey)
+	fmt.Printf("wrote %s\npublic key %s\nkey id     %s\n", *out, signing.FormatPublic(pub), signing.KeyID(pub))
+	return nil
 }
 
 func apply(argv []string) error {
@@ -415,14 +472,18 @@ func machines(argv []string) error {
 		return err
 	}
 	w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
-	fmt.Fprintln(w, "ID\tUSER\tNAME\tOS\tENROLLED\tLAST SEEN\tVERSION")
+	fmt.Fprintln(w, "ID\tUSER\tNAME\tOS\tENROLLED\tLAST SEEN\tVERSION\tKEY")
 	for _, m := range list {
 		lastSeen := "never"
 		if !m.LastSeenAt.IsZero() {
 			lastSeen = m.LastSeenAt.Format(time.RFC3339)
 		}
-		fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\t%s\t%s\n",
-			m.ID, m.User, m.Name, m.OS, m.EnrolledAt.Format(time.RFC3339), lastSeen, m.LastBundleVersion)
+		keyID := m.LastKeyID
+		if keyID == "" {
+			keyID = "-"
+		}
+		fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n",
+			m.ID, m.User, m.Name, m.OS, m.EnrolledAt.Format(time.RFC3339), lastSeen, m.LastBundleVersion, keyID)
 	}
 	return w.Flush()
 }

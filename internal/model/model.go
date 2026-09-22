@@ -101,6 +101,10 @@ type Machine struct {
 	LastSeenAt time.Time `json:"lastSeenAt"`
 	// LastBundleVersion is the policy version served at that fetch.
 	LastBundleVersion string `json:"lastBundleVersion,omitempty"`
+	// LastKeyID is the signing key the machine presented at that fetch, so
+	// an operator can see which machines have picked up a rotation. Empty
+	// for a machine that pins no key.
+	LastKeyID string `json:"lastKeyId,omitempty"`
 }
 
 // EnrollmentToken lets one machine enroll for one user, once, before it

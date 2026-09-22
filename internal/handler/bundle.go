@@ -53,7 +53,7 @@ func (h *Handler) getBundle(w http.ResponseWriter, r *http.Request, machine mode
 
 	// Touching is bookkeeping; a failure is logged, not surfaced, because
 	// the machine still needs its policy.
-	if err := h.store.TouchMachine(r.Context(), machine.ID, h.Now(), bundle.Version); err != nil {
+	if err := h.store.TouchMachine(r.Context(), machine.ID, h.Now(), bundle.Version, r.Header.Get("X-AW-Key-Id")); err != nil {
 		h.log.WarnContext(r.Context(), "recording a bundle fetch", "machine", machine.ID, "err", err)
 	}
 

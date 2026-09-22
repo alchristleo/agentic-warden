@@ -387,14 +387,22 @@ func machineTouch(t *testing.T, s store.Store) {
 		t.Fatal(err)
 	}
 	seen := at.Add(time.Hour)
-	if err := s.TouchMachine(ctx, "m1", seen, "v7"); err != nil {
+	if err := s.TouchMachine(ctx, "m1", seen, "v7", "3f9a1c22b0d41e77"); err != nil {
 		t.Fatalf("TouchMachine: %v", err)
 	}
 	got, _ := s.MachineByCredential(ctx, "c1")
-	if !got.LastSeenAt.Equal(seen) || got.LastBundleVersion != "v7" {
+	if !got.LastSeenAt.Equal(seen) || got.LastBundleVersion != "v7" || got.LastKeyID != "3f9a1c22b0d41e77" {
 		t.Errorf("after touch: %+v", got)
 	}
-	if err := s.TouchMachine(ctx, "missing", seen, "v7"); !errors.Is(err, model.ErrNotFound) {
+	// An unsigned deployment sends no key ID, and a machine that stops
+	// sending one must not appear to be still pinning the old key.
+	if err := s.TouchMachine(ctx, "m1", seen, "v8", ""); err != nil {
+		t.Fatalf("TouchMachine: %v", err)
+	}
+	if got, _ := s.MachineByCredential(ctx, "c1"); got.LastKeyID != "" {
+		t.Fatalf("LastKeyID = %q, want it cleared", got.LastKeyID)
+	}
+	if err := s.TouchMachine(ctx, "missing", seen, "v7", ""); !errors.Is(err, model.ErrNotFound) {
 		t.Errorf("touching an unknown machine: error = %v, want ErrNotFound", err)
 	}
 }

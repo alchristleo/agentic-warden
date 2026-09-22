@@ -225,7 +225,7 @@ func (p *Postgres) PutMachine(ctx context.Context, m model.Machine) error {
 }
 
 const selectMachine = `
-	SELECT id, "user", name, os, credential_hash, enrolled_at, last_seen_at, last_bundle_version
+	SELECT id, "user", name, os, credential_hash, enrolled_at, last_seen_at, last_bundle_version, last_key_id
 	FROM machines`
 
 // MachineByCredential finds a machine by credential hash.
@@ -241,11 +241,12 @@ func (p *Postgres) MachineByCredential(ctx context.Context, hash string) (model.
 	return machines[0], nil
 }
 
-// TouchMachine records a fetch.
-func (p *Postgres) TouchMachine(ctx context.Context, id string, seenAt time.Time, bundleVersion string) error {
+// TouchMachine records a fetch. keyID is stored exactly as given, empty
+// included, so a machine that stops presenting a key stops reporting one.
+func (p *Postgres) TouchMachine(ctx context.Context, id string, seenAt time.Time, bundleVersion, keyID string) error {
 	tag, err := p.pool.Exec(ctx,
-		`UPDATE machines SET last_seen_at = $2, last_bundle_version = $3 WHERE id = $1`,
-		id, seenAt, bundleVersion)
+		`UPDATE machines SET last_seen_at = $2, last_bundle_version = $3, last_key_id = $4 WHERE id = $1`,
+		id, seenAt, bundleVersion, keyID)
 	if err != nil {
 		return fmt.Errorf("store: touching machine %q: %w", id, err)
 	}
@@ -288,7 +289,7 @@ func collectMachines(rows pgx.Rows) ([]model.Machine, error) {
 			m        model.Machine
 			lastSeen *time.Time
 		)
-		if err := rows.Scan(&m.ID, &m.User, &m.Name, &m.OS, &m.CredentialHash, &m.EnrolledAt, &lastSeen, &m.LastBundleVersion); err != nil {
+		if err := rows.Scan(&m.ID, &m.User, &m.Name, &m.OS, &m.CredentialHash, &m.EnrolledAt, &lastSeen, &m.LastBundleVersion, &m.LastKeyID); err != nil {
 			return nil, fmt.Errorf("store: reading a machine: %w", err)
 		}
 		if lastSeen != nil {
