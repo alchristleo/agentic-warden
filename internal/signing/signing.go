@@ -98,33 +98,40 @@ const signatureLine = "aw-ed25519"
 // deployment can tell it apart from an absent one. keyID is set whenever the
 // trust file itself was readable and parsed, even if a later step failed,
 // so a caller can still say which key the bundle should have matched.
-func VerifyFiles(trustPath, bundlePath, sigPath string) (keyID string, trustMissing bool, err error) {
+//
+// The verified bytes are returned, not just the path they came from, and a
+// caller that goes on to use the bundle must use them. Whoever could swap
+// the file could swap it again between this read and the caller's own, and
+// then what was proved is not what is applied; there is no way to close
+// that window from the caller's side, because the proof is over bytes, not
+// over a path.
+func VerifyFiles(trustPath, bundlePath, sigPath string) (verified []byte, keyID string, trustMissing bool, err error) {
 	trust, err := os.ReadFile(trustPath)
 	if errors.Is(err, os.ErrNotExist) {
-		return "", true, nil
+		return nil, "", true, nil
 	}
 	if err != nil {
-		return "", false, fmt.Errorf("the trusted key %s is unreadable: %w", trustPath, err)
+		return nil, "", false, fmt.Errorf("the trusted key %s is unreadable: %w", trustPath, err)
 	}
 	key, err := ParsePublic(string(trust))
 	if err != nil {
-		return "", false, fmt.Errorf("the trusted key %s is unreadable: %w", trustPath, err)
+		return nil, "", false, fmt.Errorf("the trusted key %s is unreadable: %w", trustPath, err)
 	}
 	keyID = KeyID(key)
 
 	body, err := os.ReadFile(bundlePath)
 	if err != nil {
-		return keyID, false, fmt.Errorf("the signed bundle is unreadable: %w", err)
+		return nil, keyID, false, fmt.Errorf("the signed bundle is unreadable: %w", err)
 	}
 	line, err := os.ReadFile(sigPath)
 	if err != nil {
-		return keyID, false, fmt.Errorf("no signature beside %s", bundlePath)
+		return nil, keyID, false, fmt.Errorf("no signature beside %s", bundlePath)
 	}
 	fields := strings.Fields(string(line))
 	if len(fields) != 3 || fields[0] != signatureLine || !Verify(key, body, fields[2]) {
-		return keyID, false, fmt.Errorf("%s is not signed by key %s", bundlePath, keyID)
+		return nil, keyID, false, fmt.Errorf("%s is not signed by key %s", bundlePath, keyID)
 	}
-	return keyID, false, nil
+	return body, keyID, false, nil
 }
 
 // LoadSeed reads a private key from a file that only its owner may read.

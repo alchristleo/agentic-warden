@@ -425,3 +425,49 @@ func TestNoTrustFileBehavesExactlyAsBefore(t *testing.T) {
 		t.Errorf("source/exit = %q/%d, want %q/%d", with.Source, with.ExitCode, without.Source, without.ExitCode)
 	}
 }
+
+func TestVerifyBundleReturnsTheBytesItVerified(t *testing.T) {
+	// The proof is over bytes, not over a path. Handing back only the path
+	// leaves a window: whoever could write the file once — the whole reason
+	// the signature is checked here — can write it again between the check
+	// and the caller's own read, and the bytes that reach Claude Code are
+	// then bytes nobody signed. The verdict and the bytes travel together so
+	// that no caller has a second read to lose the race with.
+	stateDir := writeSignedState(t, bundle)
+
+	path, verified, note, ok := policyhelper.VerifyBundle(stateDir, filepath.Join(t.TempDir(), "unused-fallback.json"))
+
+	if !ok || note != "" {
+		t.Fatalf("VerifyBundle = %q, %v on a well-signed state directory", note, ok)
+	}
+	if string(verified) != bundle {
+		t.Fatalf("VerifyBundle returned %d bytes; want the %d it checked", len(verified), len(bundle))
+	}
+	// A writer wins the race here, after the check. What the caller holds is
+	// still what was proved.
+	if err := os.WriteFile(path, []byte(`{"version":"swapped","rules":[]}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if string(verified) != bundle {
+		t.Error("the verified bytes followed the file; they must be the ones that checked out")
+	}
+}
+
+func TestVerifyBundleReturnsNoBytesForAnUnsignedDeployment(t *testing.T) {
+	// Nothing was verified, so there are no verified bytes to hand back and
+	// the caller reads the fallback itself, exactly as it did before signing
+	// existed. Returning the file's contents here would quietly make an
+	// unverified read look like a verified one.
+	fallback := writeBundle(t, bundle)
+	stateDir := t.TempDir()
+	writeStateFile(t, stateDir, sync.BundleFile, bundle)
+
+	path, verified, note, ok := policyhelper.VerifyBundle(stateDir, fallback)
+
+	if !ok || note != "" || path != fallback {
+		t.Fatalf("VerifyBundle = %q, %q, %v; an unsigned deployment yields the fallback", path, note, ok)
+	}
+	if verified != nil {
+		t.Errorf("VerifyBundle returned %d bytes for a deployment it verified nothing in", len(verified))
+	}
+}

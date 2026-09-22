@@ -83,9 +83,10 @@ func (a *Adapter) Inspect(env []string) []agent.Finding {
 
 	findings = append(findings, inspectBundle(systemDir))
 	findings = append(findings, inspectSignature(a.StateDir))
-	if warn := inspectPermissions(a.goos(), a.StateDir); warn != nil {
+	if warn := inspectPin(a.StateDir); warn != nil {
 		findings = append(findings, *warn)
 	}
+	findings = append(findings, inspectOwnership(a.goos(), a.StateDir)...)
 
 	if skipper := firstSet(env, fetchSkippers); skipper != "" {
 		findings = append(findings, agent.Finding{Level: agent.OK,
@@ -227,7 +228,7 @@ func inspectSignature(stateDir string) agent.Finding {
 	bundlePath := filepath.Join(stateDir, stateBundleFile)
 	sigPath := filepath.Join(stateDir, stateSignatureFile)
 
-	keyID, trustMissing, err := signing.VerifyFiles(trustPath, bundlePath, sigPath)
+	_, keyID, trustMissing, err := signing.VerifyFiles(trustPath, bundlePath, sigPath)
 	switch {
 	case trustMissing:
 		return agent.Finding{Level: agent.OK, Message: "bundle signature: unsigned deployment"}
@@ -249,15 +250,37 @@ func inspectSignature(stateDir string) agent.Finding {
 // account replace what the signature check above trusts.
 const worldWritable = 0o022
 
-// inspectPermissions warns when the bundle or the trust file in stateDir is
-// writable by more than its owner. It is skipped on Windows, where the mode
-// bits Stat reports carry no ACL information, so a check based on them
-// would only produce a false sense of assurance; the real answer lives in
-// the file's ACL, which this package has no portable way to read.
-func inspectPermissions(goos, stateDir string) *agent.Finding {
-	if stateDir == "" || goos == "windows" {
+// rootUID is the only owner a state-directory file may have. aw-sync runs as
+// root and writes these files itself, so any other owner means something
+// other than aw-sync put them there or was given the power to.
+const rootUID = 0
+
+// inspectOwnership reports who, besides root, can rewrite the bundle or the
+// trust file in stateDir. The mode bits are half the question and the owner
+// is the other half: a deploy that chowns the state directory to an account
+// a developer controls lets that developer delete all three files, generate
+// a key of their own, and write a bundle that verifies perfectly against it.
+// The signature check would report "verified" about the developer's own
+// policy, which is the one outcome this feature exists to prevent, so
+// ownership has to be checked where it can be.
+//
+// On Windows it cannot be. The mode bits Stat reports there carry no ACL
+// information, there is no uid behind the file, and the ACL that actually
+// decides who may write it is reachable only through APIs this build does
+// not carry. That is reported as unchecked rather than passed over in
+// silence: a doctor that prints nothing about ownership reads as a doctor
+// that looked and found nothing wrong, and C:\ProgramData subtrees are
+// precisely where inherited ACLs tend to be looser than a deploy assumed.
+func inspectOwnership(goos, stateDir string) []agent.Finding {
+	if stateDir == "" {
 		return nil
 	}
+	if goos == "windows" {
+		return []agent.Finding{{Level: agent.Warn, Message: fmt.Sprintf(
+			"ownership of the files in %s is unchecked on Windows: their ACLs decide who may rewrite what the signature check trusts, and `aw doctor` cannot read an ACL; confirm by hand that only administrators may write there",
+			stateDir)}}
+	}
+	var findings []agent.Finding
 	for _, name := range []string{stateBundleFile, stateTrustFile} {
 		path := filepath.Join(stateDir, name)
 		info, err := os.Stat(path)
@@ -268,12 +291,49 @@ func inspectPermissions(goos, stateDir string) *agent.Finding {
 			continue
 		}
 		if info.Mode().Perm()&worldWritable != 0 {
-			return &agent.Finding{Level: agent.Warn, Message: fmt.Sprintf(
+			findings = append(findings, agent.Finding{Level: agent.Warn, Message: fmt.Sprintf(
 				"%s is writable by more than its owner (mode %s): anyone who can rewrite it can control what the signature check trusts",
-				path, info.Mode().Perm())}
+				path, info.Mode().Perm())})
+		}
+		if uid, known := ownerUID(info); known && uid != rootUID {
+			findings = append(findings, agent.Finding{Level: agent.Warn, Message: fmt.Sprintf(
+				"%s is owned by uid %d, not root: its owner can replace the file and the key it is checked against together, and the check would still report verified",
+				path, uid)})
 		}
 	}
-	return nil
+	return findings
+}
+
+// inspectPin warns about a machine whose enrollment pinned no signing key:
+// it verifies nothing on the fetch path, which is what makes a rollout safe
+// but also what leaves it unprotected. The spec calls for this warning by
+// name.
+//
+// The pin itself lives in machine.json, which is 0600 and root-owned, and
+// doctor runs as the developer, so the state is derived from what a
+// developer can see: aw-sync has written a bundle into the state directory
+// but no trust key beside it. That derivation is sound because a pinned
+// machine refuses a cycle it cannot verify, so a bundle without a trust file
+// can only be an unpinned machine's. What it cannot tell apart is a machine
+// enrolled before signing existed from one enrolled against a control plane
+// that does not sign at all; both are an empty pin, both are fixed by
+// re-enrolling once awd has a key, and the message is written for both.
+func inspectPin(stateDir string) *agent.Finding {
+	if stateDir == "" {
+		return nil
+	}
+	if _, err := os.Stat(filepath.Join(stateDir, stateTrustFile)); !errors.Is(err, os.ErrNotExist) {
+		// A trust file that is there, or that cannot be statted for some
+		// other reason, is inspectSignature's to judge.
+		return nil
+	}
+	if _, err := os.Stat(filepath.Join(stateDir, stateBundleFile)); err != nil {
+		// No bundle either: aw-sync has not run here, which inspectBundle
+		// already reports. Nothing yet says anything about a pin.
+		return nil
+	}
+	return &agent.Finding{Level: agent.Warn,
+		Message: "enrolled before bundle signing; re-enroll to pin a key"}
 }
 
 // topLevelKeys lists the keys of the JSON object in path, sorted, or nothing

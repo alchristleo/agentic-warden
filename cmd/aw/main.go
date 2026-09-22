@@ -186,16 +186,23 @@ func resolvePolicy(opts options, workDir string) (*policy.Document, policySource
 	}
 	stateDir := stateDirFor()
 	path := filepath.Join(stateDir, sync.BundleFile)
-	verifiedPath, note, ok := policyhelper.VerifyBundle(stateDir, path)
+	verifiedPath, raw, note, ok := policyhelper.VerifyBundle(stateDir, path)
 	if !ok {
 		return nil, policySource{}, errors.New(note)
 	}
-	raw, err := os.ReadFile(verifiedPath)
-	if errors.Is(err, os.ErrNotExist) {
-		return nil, policySource{Kind: "none", Note: "no policy: aw-sync has not written " + verifiedPath}, nil
-	}
-	if err != nil {
-		return nil, policySource{}, fmt.Errorf("reading %s: %w", verifiedPath, err)
+	// raw is nil only for an unsigned deployment, where there is nothing to
+	// re-read against. Where a signature was checked, the checked bytes are
+	// the ones compiled: reading the file again would let whoever can write
+	// it swap in different bytes between the proof and the use.
+	if raw == nil {
+		var err error
+		raw, err = os.ReadFile(verifiedPath)
+		if errors.Is(err, os.ErrNotExist) {
+			return nil, policySource{Kind: "none", Note: "no policy: aw-sync has not written " + verifiedPath}, nil
+		}
+		if err != nil {
+			return nil, policySource{}, fmt.Errorf("reading %s: %w", verifiedPath, err)
+		}
 	}
 	var bundle policy.Bundle
 	if err := json.Unmarshal(raw, &bundle); err != nil {
@@ -330,6 +337,12 @@ func doctor(registry *agent.Registry, opts options, args []string) error {
 		}
 		if inspector, ok := adapter.(agent.Inspector); ok {
 			status.Findings = inspector.Inspect(nil)
+			// The claude adapter is the one this command hands a state
+			// directory to, and so the only one whose findings can be about
+			// a directory that enforces nothing.
+			if warn := redirectedStateDir(); name == claude.Name && warn != nil {
+				status.Findings = append(status.Findings, *warn)
+			}
 		}
 		launch, err := agent.Prepare(context.Background(), registry, agent.Options{
 			Agent:    name,
@@ -360,6 +373,24 @@ func doctor(registry *agent.Registry, opts options, args []string) error {
 	}
 	printReport(out)
 	return nil
+}
+
+// redirectedStateDir warns that this report describes a state directory the
+// developer chose. Leaving AW_SYNC_STATE_DIR ungated in `aw` is deliberate —
+// this wrapper is a convenience a developer can bypass outright, so honouring
+// it costs nothing — but aw-policy, which Claude Code runs and which actually
+// enforces, refuses the variable in a release build and always reads the OS
+// default. Without this note doctor can report `bundle signature: verified`
+// about a directory nothing enforces from while the real one has been failing
+// for weeks, which is the one thing doctor exists to prevent.
+func redirectedStateDir() *agent.Finding {
+	dir := os.Getenv("AW_SYNC_STATE_DIR")
+	if dir == "" {
+		return nil
+	}
+	return &agent.Finding{Level: agent.Warn, Message: fmt.Sprintf(
+		"AW_SYNC_STATE_DIR points this report at %s: the bundle-signature finding above describes that directory, not %s, which is where aw-policy reads the bundle it enforces at session start",
+		dir, sync.StateDir(runtime.GOOS))}
 }
 
 // syncSection reads aw-sync's state directory as the developer. A missing

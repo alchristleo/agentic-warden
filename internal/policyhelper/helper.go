@@ -117,13 +117,13 @@ func Run(cfg Config) (result Result) {
 	result.Notes = notes
 
 	var managed map[string]any
-	bundlePath, note, ok := VerifyBundle(cfg.StateDir, cfg.BundlePath)
+	bundlePath, verified, note, ok := VerifyBundle(cfg.StateDir, cfg.BundlePath)
 	if !ok {
 		result.note("%s", note)
 		result.Source = SourceNone
 		result.Output = envelope(nil)
 	} else {
-		bundle, err := loadBundle(bundlePath)
+		bundle, err := loadBundle(bundlePath, verified)
 		if err == nil {
 			subject.Groups = bundle.Groups
 			managed, err = compile(bundle, subject.Repo)
@@ -196,56 +196,67 @@ func resolveSubject(cfg Config) (policy.Subject, []string) {
 	return subject, nil
 }
 
-// VerifyBundle reports which bundle file to compile from. An unsigned
-// deployment — no trust file in stateDir — yields fallback and no note, so a
-// machine that has never seen a signature behaves exactly as it did before
-// signing existed. A note with ok false means signing is configured and the
-// proof does not hold; the caller emits the no-policy envelope rather than
-// compile from bytes that did not check out. Only a missing trust file reads
-// as unsigned: a trust file present but unreadable for some other reason
-// (permission denied, for instance) is a broken deployment, and folding it
-// into the unsigned case would make this function fail open exactly where
-// its job is to fail closed.
+// VerifyBundle reports which bundle file to compile from, and the bytes of
+// it whose signature checked out. An unsigned deployment — no trust file in
+// stateDir — yields fallback, nil bytes and no note, so a machine that has
+// never seen a signature behaves exactly as it did before signing existed. A
+// note with ok false means signing is configured and the proof does not
+// hold; the caller emits the no-policy envelope rather than compile from
+// bytes that did not check out. Only a missing trust file reads as unsigned:
+// a trust file present but unreadable for some other reason (permission
+// denied, for instance) is a broken deployment, and folding it into the
+// unsigned case would make this function fail open exactly where its job is
+// to fail closed.
+//
+// A caller that gets bytes back must compile from those bytes. Re-reading
+// path would reopen the window the signature exists to close: the account
+// that could write the file once can write it again between the check and
+// the read, and the second file is the one that would be applied.
 //
 // The read-three-files-and-parse-the-signature-line work is
 // signing.VerifyFiles, shared with the claude adapter's doctor finding; this
-// function only turns that into the path-and-note shape aw-policy wants.
-func VerifyBundle(stateDir, fallback string) (path string, note string, ok bool) {
+// function only turns that into the shape aw-policy wants.
+func VerifyBundle(stateDir, fallback string) (path string, verified []byte, note string, ok bool) {
 	if stateDir == "" {
-		return fallback, "", true
+		return fallback, nil, "", true
 	}
 	trustPath := filepath.Join(stateDir, sync.TrustFile)
 	bundlePath := filepath.Join(stateDir, sync.BundleFile)
 	sigPath := filepath.Join(stateDir, sync.SignatureFile)
-	_, trustMissing, err := signing.VerifyFiles(trustPath, bundlePath, sigPath)
+	body, _, trustMissing, err := signing.VerifyFiles(trustPath, bundlePath, sigPath)
 	if trustMissing {
 		// No trust file at all is the unsigned case. Anything else reading
 		// it — permission denied, a directory in its place — is a broken
 		// deployment, not an absent one, and must not be mistaken for
 		// "signing was never turned on here".
-		return fallback, "", true
+		return fallback, nil, "", true
 	}
 	if err != nil {
-		return "", err.Error(), false
+		return "", nil, err.Error(), false
 	}
-	return bundlePath, "", true
+	return bundlePath, body, "", true
 }
 
-// loadBundle reads what aw-sync left. Every problem is one error: the
-// caller does nothing different for a missing file than for a broken one,
-// and the message says which it was.
-func loadBundle(path string) (*policy.Bundle, error) {
+// loadBundle parses what aw-sync left. verified, when it is not nil, holds
+// the bytes whose signature already checked out, and they are parsed as they
+// stand: reading path again would mean compiling something no one proved.
+// Every problem is one error: the caller does nothing different for a
+// missing file than for a broken one, and the message says which it was.
+func loadBundle(path string, verified []byte) (*policy.Bundle, error) {
 	if path == "" {
 		return nil, errors.New("no bundle path configured")
 	}
-	f, err := os.Open(path)
-	if err != nil {
-		return nil, fmt.Errorf("bundle %s: %w", path, err)
-	}
-	defer f.Close()
-	raw, err := io.ReadAll(io.LimitReader(f, maxBundle+1))
-	if err != nil {
-		return nil, fmt.Errorf("reading bundle %s: %w", path, err)
+	raw := verified
+	if raw == nil {
+		f, err := os.Open(path)
+		if err != nil {
+			return nil, fmt.Errorf("bundle %s: %w", path, err)
+		}
+		defer f.Close()
+		raw, err = io.ReadAll(io.LimitReader(f, maxBundle+1))
+		if err != nil {
+			return nil, fmt.Errorf("reading bundle %s: %w", path, err)
+		}
 	}
 	if len(raw) > maxBundle {
 		return nil, fmt.Errorf("bundle %s exceeds %d bytes", path, maxBundle)

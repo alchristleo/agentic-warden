@@ -436,3 +436,95 @@ func TestInspectDoesNotWarnWhenTheStateFilesAreOwnerOnly(t *testing.T) {
 		t.Errorf("findings %+v should not warn about ordinary owner-writable, world-readable files", findings)
 	}
 }
+
+func TestInspectWarnsWhenTheTrustFileIsNotOwnedByRoot(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("there are no uids on Windows; ownership there is reported as unchecked")
+	}
+	if os.Getuid() == 0 {
+		t.Skip("this test needs a non-root owner, and everything this run writes is root's")
+	}
+	// The mode bits are impeccable — 0644, writable only by its owner — and
+	// the signature verifies. The problem is who the owner is: a deploy that
+	// chowned the state directory lets that account delete all three files,
+	// generate a key of its own and write a bundle that verifies perfectly
+	// against it, which doctor would otherwise report as "verified".
+	in := newInspection(t)
+	stateDir := t.TempDir()
+	in.adapter.StateDir = stateDir
+	in.writeSignedState(t, stateDir, signedBundle)
+	trustPath := filepath.Join(stateDir, "aw-trust.pub")
+	if err := os.Chmod(trustPath, 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	findings := in.adapter.Inspect(nil)
+
+	if !findingsWith(findings, agent.OK, "bundle signature: verified (key ") {
+		t.Fatalf("findings %+v should still verify; the point of the test is that verification alone is not enough", findings)
+	}
+	if !findingsWith(findings, agent.Warn, trustPath) || !findingsWith(findings, agent.Warn, "not root") {
+		t.Errorf("findings %+v should warn that %s is owned by someone other than root", findings, trustPath)
+	}
+}
+
+func TestInspectReportsOwnershipAsUncheckedOnWindows(t *testing.T) {
+	// Windows has no uid behind the file and an ACL this build cannot read,
+	// so the honest answer is "unknown". Reporting nothing would read as a
+	// check that ran and passed, which on a C:\ProgramData subtree with
+	// inherited ACLs is exactly the wrong thing to tell an operator.
+	in := newInspection(t)
+	stateDir := t.TempDir()
+	in.adapter.StateDir = stateDir
+	in.adapter.GOOS = "windows"
+	in.writeSignedState(t, stateDir, signedBundle)
+
+	findings := in.adapter.Inspect(nil)
+
+	if !findingsWith(findings, agent.Warn, "unchecked on Windows") {
+		t.Errorf("findings %+v should say plainly that ownership is unchecked on Windows", findings)
+	}
+}
+
+func TestInspectWarnsWhenNoKeyIsPinned(t *testing.T) {
+	// machine.json is 0600 and doctor runs as the developer, so the empty
+	// pin is derived from what a developer can see: aw-sync has left a
+	// bundle in the state directory but no trust key beside it.
+	in := newInspection(t)
+	stateDir := t.TempDir()
+	in.adapter.StateDir = stateDir
+	in.write(t, filepath.Join(stateDir, "aw-bundle.json"), signedBundle)
+
+	findings := in.adapter.Inspect(nil)
+
+	if !findingsWith(findings, agent.Warn, "enrolled before bundle signing; re-enroll to pin a key") {
+		t.Errorf("findings %+v should warn about a machine that pins no signing key", findings)
+	}
+}
+
+func TestInspectDoesNotWarnAboutThePinOnASignedMachine(t *testing.T) {
+	in := newInspection(t)
+	stateDir := t.TempDir()
+	in.adapter.StateDir = stateDir
+	in.writeSignedState(t, stateDir, signedBundle)
+
+	findings := in.adapter.Inspect(nil)
+
+	if findingsWith(findings, agent.Warn, "re-enroll to pin a key") {
+		t.Errorf("findings %+v warn about the pin on a machine that has one", findings)
+	}
+}
+
+func TestInspectDoesNotWarnAboutThePinBeforeAwSyncHasRun(t *testing.T) {
+	// No bundle either: that is a machine aw-sync has not reached, which
+	// inspectBundle already reports, and nothing yet says anything about
+	// whether it pinned a key.
+	in := newInspection(t)
+	in.adapter.StateDir = t.TempDir()
+
+	findings := in.adapter.Inspect(nil)
+
+	if findingsWith(findings, agent.Warn, "re-enroll to pin a key") {
+		t.Errorf("findings %+v warn about a pin on a machine aw-sync has never run on", findings)
+	}
+}

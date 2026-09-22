@@ -466,7 +466,7 @@ func TestDoctorReportsAVerifiedBundleSignature(t *testing.T) {
 	if !strings.Contains(report.Policy, "2026-09-22.e2e") {
 		t.Errorf("policy = %q; want the verified bundle's version", report.Policy)
 	}
-	var sawVerified bool
+	var sawVerified, sawRedirect bool
 	for _, a := range report.Agents {
 		if a.Name != "claude" {
 			continue
@@ -475,10 +475,19 @@ func TestDoctorReportsAVerifiedBundleSignature(t *testing.T) {
 			if f.Level == "ok" && strings.Contains(f.Message, "bundle signature: verified (key ") {
 				sawVerified = true
 			}
+			if f.Level == "warn" && strings.Contains(f.Message, "AW_SYNC_STATE_DIR") {
+				sawRedirect = true
+			}
 		}
 	}
 	if !sawVerified {
 		t.Errorf("claude's findings should report a verified bundle signature:\n%s", out)
+	}
+	// This very report is the shape the note is for: a "verified" about a
+	// directory the environment pointed doctor at, while aw-policy goes on
+	// reading the OS default.
+	if !sawRedirect {
+		t.Errorf("doctor reported on a redirected state directory without saying so:\n%s", out)
 	}
 }
 

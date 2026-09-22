@@ -9,6 +9,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/acme/agent-wrapper/internal/agent"
+	"github.com/acme/agent-wrapper/internal/agent/claude"
 	"github.com/acme/agent-wrapper/internal/signing"
 	"github.com/acme/agent-wrapper/internal/sync"
 )
@@ -183,5 +185,58 @@ func TestAgeIsHumanReadable(t *testing.T) {
 		if got := age(at, now); got != want {
 			t.Errorf("age(%v) = %q, want %q", at, got, want)
 		}
+	}
+}
+
+func TestTheClaudeAdapterLooksForTheFilenamesAwSyncWrites(t *testing.T) {
+	// internal/agent/claude cannot import internal/sync — sync imports it
+	// for SystemDir — so it carries its own copies of the three state-
+	// directory filenames. Nothing in either package would notice them
+	// drifting apart; what would notice is a fleet where doctor reports an
+	// unsigned deployment on a machine that has been signing all along. This
+	// package imports both, so it is where the two can be held together:
+	// writeSignedBundle lays the files down under sync's names, and the
+	// adapter has to find all three under its own.
+	stateDir := t.TempDir()
+	writeSignedBundle(t, stateDir, signedTestBundle)
+	adapter := claude.New()
+	adapter.SystemDir = t.TempDir()
+	adapter.ConfigDir = t.TempDir()
+	adapter.StateDir = stateDir
+
+	findings := adapter.Inspect([]string{})
+
+	var verified bool
+	for _, f := range findings {
+		if f.Level == agent.OK && strings.Contains(f.Message, "bundle signature: verified (key ") {
+			verified = true
+		}
+	}
+	if !verified {
+		t.Errorf("findings %+v; the adapter's filenames have drifted from sync.TrustFile, sync.BundleFile or sync.SignatureFile", findings)
+	}
+}
+
+func TestDoctorNotesThatAwSyncStateDirRedirectsTheReport(t *testing.T) {
+	// The variable stays ungated in `aw` on purpose, but aw-policy ignores
+	// it, so a report from a directory of the developer's choosing must not
+	// read as a report about what is enforced.
+	t.Setenv("AW_SYNC_STATE_DIR", t.TempDir())
+
+	warn := redirectedStateDir()
+
+	if warn == nil {
+		t.Fatal("doctor said nothing about reporting on a redirected state directory")
+	}
+	if warn.Level != agent.Warn || !strings.Contains(warn.Message, "AW_SYNC_STATE_DIR") || !strings.Contains(warn.Message, "aw-policy") {
+		t.Errorf("finding = %+v; it should name the variable and say aw-policy reads elsewhere", warn)
+	}
+}
+
+func TestDoctorSaysNothingAboutTheStateDirWhenItIsNotRedirected(t *testing.T) {
+	t.Setenv("AW_SYNC_STATE_DIR", "")
+
+	if warn := redirectedStateDir(); warn != nil {
+		t.Errorf("finding = %+v on a machine using the OS default; that is the ordinary case and needs no note", warn)
 	}
 }
