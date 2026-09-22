@@ -356,3 +356,37 @@ func TestGeminiRulesMergeWithGeminiSemantics(t *testing.T) {
 		t.Errorf("policies = %v; want both rules appended in order", policies)
 	}
 }
+
+func TestLaunchMergesByKeyAcrossRules(t *testing.T) {
+	// launch is the per-launch document for agents whose launch channel is
+	// not their managed file; tables merge by key and scalars replace, so a
+	// repo rule can tighten one setting without restating the baseline.
+	rs := &policy.RuleSet{Rules: []policy.Rule{
+		{Name: "baseline", Agents: map[string]policy.AgentConfig{"codex": {Launch: map[string]any{
+			"sandbox_mode":    "workspace-write",
+			"approval_policy": "on-request",
+			"mcp_servers":     map[string]any{"docs": map[string]any{"command": "codex-mcp"}},
+		}}}},
+		{Name: "payments", Match: policy.Match{Repos: []string{"github.com/acme/payments*"}},
+			Agents: map[string]policy.AgentConfig{"codex": {Launch: map[string]any{
+				"sandbox_mode": "read-only",
+				"mcp_servers":  map[string]any{"jira": map[string]any{"url": "https://jira/mcp"}},
+			}}}},
+	}}
+
+	launch := rs.Compile(policy.Subject{Repo: "github.com/acme/payments-api"}).Agent("codex").Launch
+
+	if launch["sandbox_mode"] != "read-only" || launch["approval_policy"] != "on-request" {
+		t.Errorf("launch = %v; want the repo rule's scalar over the baseline's and the untouched one kept", launch)
+	}
+	servers, _ := launch["mcp_servers"].(map[string]any)
+	if _, docs := servers["docs"]; !docs {
+		t.Error("mcp_servers lost docs; tables merge by key")
+	}
+	if _, jira := servers["jira"]; !jira {
+		t.Error("mcp_servers lost jira; tables merge by key")
+	}
+	if outside := rs.Compile(policy.Subject{}).Agent("codex").Launch; outside["sandbox_mode"] != "workspace-write" {
+		t.Errorf("outside the repo launch = %v; the repo rule must not apply", outside)
+	}
+}

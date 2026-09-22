@@ -21,6 +21,12 @@ type AgentConfig struct {
 	Env map[string]string `json:"env,omitempty"`
 	// ForceEnv makes Env replace values the developer already exports.
 	ForceEnv bool `json:"forceEnv,omitempty"`
+	// Launch is the document the agent's wrapper applies per launch, in the
+	// agent's launch-time schema, for an agent whose launch channel takes a
+	// different shape from its managed file. Codex's requirements.toml and
+	// its config.toml are two schemas; Launch is the second. Claude and
+	// Gemini apply Managed at launch and have no use for it.
+	Launch map[string]any `json:"launch,omitempty"`
 }
 
 // Document is a complete policy, keyed by agent name.

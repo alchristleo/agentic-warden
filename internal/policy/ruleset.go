@@ -62,6 +62,9 @@ func (rs *RuleSet) Validate(validators ...ManagedValidator) error {
 			if agentName == "" {
 				return fmt.Errorf("rule %q configures an agent with no name", rule.Name)
 			}
+			if config.Launch != nil && agentName != "codex" {
+				return fmt.Errorf("rule %q, agent %q: launch is not supported; %s applies managed at launch", rule.Name, agentName, agentName)
+			}
 			for _, validate := range validators {
 				if err := validate(agentName, config.Managed); err != nil {
 					return fmt.Errorf("rule %q, agent %q: %w", rule.Name, agentName, err)

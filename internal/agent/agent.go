@@ -32,6 +32,10 @@ type Settings struct {
 	// ForceEnv makes Env replace values the developer already exports. The
 	// zero value leaves the developer's environment winning.
 	ForceEnv bool
+	// Launch is the per-launch document for adapters whose launch channel
+	// is not their managed file; Codex turns it into -c overrides. Adapters
+	// that have no such channel ignore it.
+	Launch map[string]any
 }
 
 // BuildOptions carries everything an adapter needs to compute a launch.

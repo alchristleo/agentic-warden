@@ -211,3 +211,23 @@ func TestLoadRuleSetPassesValidatorsThrough(t *testing.T) {
 		t.Errorf("validator ran %d times, want once per agent config (2)", calls)
 	}
 }
+
+func TestLaunchIsAcceptedForCodexAlone(t *testing.T) {
+	// Claude and Gemini apply their managed document at launch; a launch
+	// entry for them would be silently ignored, which an author must hear.
+	ok := &policy.RuleSet{Version: "v1", Rules: []policy.Rule{
+		{Name: "b", Agents: map[string]policy.AgentConfig{"codex": {Launch: map[string]any{"sandbox_mode": "read-only"}}}},
+	}}
+	if err := ok.Validate(); err != nil {
+		t.Errorf("codex launch: %v; want nil", err)
+	}
+	for _, agentName := range []string{"claude", "gemini"} {
+		bad := &policy.RuleSet{Version: "v1", Rules: []policy.Rule{
+			{Name: "b", Agents: map[string]policy.AgentConfig{agentName: {Launch: map[string]any{"x": 1}}}},
+		}}
+		err := bad.Validate()
+		if err == nil || !strings.Contains(err.Error(), `rule "b"`) || !strings.Contains(err.Error(), agentName) || !strings.Contains(err.Error(), "launch") {
+			t.Errorf("%s launch: err = %v; want the rule, the agent and launch named", agentName, err)
+		}
+	}
+}

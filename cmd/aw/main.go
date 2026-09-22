@@ -131,6 +131,7 @@ func settingsFor(doc *policy.Document, agentName string) agent.Settings {
 		Managed:  config.Managed,
 		Env:      config.Env,
 		ForceEnv: config.ForceEnv,
+		Launch:   config.Launch,
 	}
 }
 

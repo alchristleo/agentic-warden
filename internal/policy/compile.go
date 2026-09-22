@@ -144,6 +144,13 @@ func (d *Document) mergeAgent(agentName string, config AgentConfig) {
 	// environment to win, a later rule cannot quietly relax it.
 	current.ForceEnv = current.ForceEnv || config.ForceEnv
 
+	if config.Launch != nil {
+		// No agent-specific union paths: the launch document is a plain
+		// configuration where a later rule's value is the one that holds.
+		merged, _ := merge.JSON(cloneMap(current.Launch), config.Launch, merge.Rules{}).(map[string]any)
+		current.Launch = merged
+	}
+
 	d.Agents[agentName] = current
 }
 
