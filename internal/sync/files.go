@@ -26,6 +26,13 @@ const (
 	// BundleFile is the fetched bundle, every agent's rules with matchers
 	// intact, left in the state directory for `aw` to compile per launch.
 	BundleFile = "aw-bundle.json"
+	// SignatureFile proves BundleFile came from the control plane. It holds
+	// one line: the algorithm, the key ID, and the signature.
+	SignatureFile = "aw-bundle.json.sig"
+	// TrustFile is the public key BundleFile is signed with. It exists
+	// because aw-policy runs as the developer and cannot read machine.json,
+	// which is 0600 and holds the machine credential.
+	TrustFile = "aw-trust.pub"
 )
 
 // ErrNotEnrolled means there is no machine.json: `aw-sync enroll` has not

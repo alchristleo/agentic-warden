@@ -2,6 +2,7 @@ package sync
 
 import (
 	"context"
+	"crypto/ed25519"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -18,6 +19,7 @@ import (
 
 	"github.com/acme/agent-wrapper/internal/agent"
 	"github.com/acme/agent-wrapper/internal/cache"
+	"github.com/acme/agent-wrapper/internal/signing"
 )
 
 // revisionSuffix names the sibling written beside every rendered JSON file,
@@ -132,9 +134,15 @@ func Run(ctx context.Context, cfg Config) Result {
 	}
 
 	client := &Client{Server: machine.Server, HTTP: cfg.HTTP}
-	// The pinned key and rollover persistence belong to the task that stores
-	// them in machine.json; until then every fetch verifies nothing.
-	fetched, err := client.Fetch(ctx, machine.Credential, etag, nil)
+	var pinned ed25519.PublicKey
+	if machine.PublicKey != "" {
+		key, err := signing.ParsePublic(machine.PublicKey)
+		if err != nil {
+			return cfg.fail(state, notes, nil, nil, fmt.Errorf("sync: the pinned key in machine.json: %w", err))
+		}
+		pinned = key
+	}
+	fetched, err := client.Fetch(ctx, machine.Credential, etag, pinned)
 	if err != nil {
 		return cfg.fail(state, notes, nil, nil, err)
 	}
@@ -178,13 +186,20 @@ func Run(ctx context.Context, cfg Config) Result {
 		}
 	}
 
-	// The full bundle goes beside state.json so `aw` can compile it for the
-	// repository a session runs in, whatever agents this machine enrolled.
-	bundleJSON, err := json.MarshalIndent(fetched.Bundle, "", "  ")
-	if err != nil {
-		return cfg.fail(state, notes, nil, nil, fmt.Errorf("sync: encoding the bundle: %w", err))
+	// The signature covers the bytes the server sent, so those bytes go to
+	// disk unchanged. Re-encoding here would produce a file no verifier
+	// could check.
+	planned = append(planned, plannedFile{path: filepath.Join(cfg.StateDir, BundleFile), content: fetched.Raw, mode: 0o644})
+	if fetched.Signature != "" && pinned != nil {
+		verified := pinned
+		if fetched.Rollover != nil {
+			verified = fetched.Rollover.PublicKey
+		}
+		planned = append(planned,
+			plannedFile{path: filepath.Join(cfg.StateDir, SignatureFile), content: []byte(fmt.Sprintf("aw-ed25519 %s %s\n", signing.KeyID(verified), fetched.Signature)), mode: 0o644},
+			plannedFile{path: filepath.Join(cfg.StateDir, TrustFile), content: []byte(signing.FormatPublic(verified) + "\n"), mode: 0o644},
+		)
 	}
-	planned = append(planned, plannedFile{path: filepath.Join(cfg.StateDir, BundleFile), content: append(bundleJSON, '\n'), mode: 0o644})
 
 	version := fetched.Bundle.Version
 	written := make([]string, 0, len(planned))
@@ -204,6 +219,17 @@ func Run(ctx context.Context, cfg Config) Result {
 			if err := cache.ReplaceMode(p.path+revisionSuffix, []byte(revisionLine(version)), 0o644); err != nil {
 				return cfg.fail(state, notes, files, written, fmt.Errorf("sync: writing %s: %w", p.path+revisionSuffix, err))
 			}
+		}
+	}
+
+	if fetched.Rollover != nil {
+		// The pin moves only after the cycle's files are on disk: a machine
+		// that crashed mid-cycle repins on the next one, from a statement
+		// the old key still signs.
+		machine.PublicKey = signing.FormatPublic(fetched.Rollover.PublicKey)
+		machine.KeyID = fetched.Rollover.KeyID
+		if err := SaveMachine(cfg.StateDir, machine); err != nil {
+			notes = append(notes, "the new signing key could not be pinned: "+err.Error())
 		}
 	}
 
