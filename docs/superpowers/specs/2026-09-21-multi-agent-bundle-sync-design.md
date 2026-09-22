@@ -65,7 +65,9 @@ policy on a shared host is out of scope for v1.
 
 `RuleSet` gains `groups: {user: [group, ...]}`, authored in the same YAML and
 versioned with the rules. The client never sees claims. An identity-provider
-sync later replaces the map without touching clients or the bundle format.
+sync later replaces the map without touching clients or the bundle format
+(designed 2026-09-22 in `2026-09-22-idp-group-sync-design.md`: a pushed
+snapshot that unions with this map rather than replacing it).
 
 ### Policy compilation split (`internal/policy`)
 
