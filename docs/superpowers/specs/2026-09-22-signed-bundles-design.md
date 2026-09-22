@@ -94,11 +94,14 @@ would break every machine until it re-enrolled. Instead:
 
 1. The operator generates a new seed, points `AWD_SIGNING_KEY` at it and
    `AWD_SIGNING_KEY_PREVIOUS` at the old one.
-2. awd adds a third response header, `X-AW-Key-Rollover`: the statement
+2. awd adds a third response header, `X-AW-Key-Rollover`, carrying two
+   base64 fields separated by one space: the statement, and the previous
+   key's signature over it. A header value holds no newlines, so the
+   statement is base64 encoded whole. Decoded, it is three lines:
 
-       aw-key-rollover-v1\n<new key id>\n<new public key>
-
-   signed **by the previous key**, base64, alongside the statement itself.
+       aw-key-rollover-v1
+       <new key id>
+       aw-ed25519:<new public key>
 3. `aw-sync` verifies that statement with its pinned key. On success it
    repins `machine.json` to the new key, then verifies the bundle with the
    new key. On failure it ignores the header; the bundle then fails its own
@@ -120,7 +123,12 @@ rest of the cycle:
 | --- | --- |
 | `<agent system dir>/aw-bundle.json.sig` | one line, `aw-ed25519 <key id> <base64 signature>` |
 | `<state dir>/aw-bundle.json.sig` | the same, for the launch adapters' copy |
-| `<system dir>/aw-trust.pub` (0644) | `aw-ed25519:<base64>`, the pinned public key |
+| `<agent system dir>/aw-trust.pub` (0644) | `aw-ed25519:<base64>`, the pinned public key |
+| `<state dir>/aw-trust.pub` (0644) | the same, beside the launch adapters' copy |
+
+"Agent system dir" is each enrolled agent's root, the same directory that
+already receives that agent's `aw-bundle.json` or rendered files, so a
+verifier finds the key beside the file it is checking.
 
 `aw-trust.pub` exists because `aw-policy` runs as the developer and cannot
 read the 0600 `machine.json`. A cycle that cannot verify writes none of
