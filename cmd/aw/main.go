@@ -15,15 +15,20 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
+	"path/filepath"
 	"runtime"
 	"strings"
 	"time"
 
 	"github.com/acme/agent-wrapper/internal/agent"
 	"github.com/acme/agent-wrapper/internal/agent/claude"
+	"github.com/acme/agent-wrapper/internal/agent/codex"
+	"github.com/acme/agent-wrapper/internal/agent/gemini"
 	"github.com/acme/agent-wrapper/internal/policy"
+	"github.com/acme/agent-wrapper/internal/repo"
 	"github.com/acme/agent-wrapper/internal/sync"
 )
 
@@ -58,8 +63,10 @@ func run(argv []string) error {
 	}
 
 	registry := &agent.Registry{}
-	if err := registry.Register(claude.New()); err != nil {
-		return err
+	for _, a := range []agent.Adapter{claude.New(), codex.New(), gemini.New()} {
+		if err := registry.Register(a); err != nil {
+			return err
+		}
 	}
 
 	if len(rest) == 0 {
@@ -115,14 +122,84 @@ func parseFlags(argv []string) (options, []string, error) {
 	return opts, argv[i:], nil
 }
 
-// loadPolicy reads the configured policy. A policy that was named but cannot
-// be read is an error: silently launching without the organization's
-// configuration would be worse than refusing.
-func loadPolicy(opts options) (*policy.Document, error) {
-	if opts.policyPath == "" {
-		return nil, nil
+// policySource says where the policy a launch applies came from, for
+// doctor and for the compiled-for note on every launch.
+type policySource struct {
+	// Path is the document or bundle file, empty when there was none.
+	Path string
+	// Kind is "document", "bundle" or "none".
+	Kind string
+	// Version is the bundle's revision, bundle only.
+	Version string
+	// Repo is the repository the bundle was compiled for, bundle only;
+	// empty means none was detected.
+	Repo string
+	// Note explains a missing policy.
+	Note string
+}
+
+// String is doctor's one-line rendering.
+func (s policySource) String() string {
+	switch s.Kind {
+	case "document":
+		return s.Path + " (document)"
+	case "bundle":
+		return fmt.Sprintf("%s (bundle %s, repo %s)", s.Path, orNone(s.Version), orNone(s.Repo))
 	}
-	return policy.Load(opts.policyPath)
+	return "none"
+}
+
+// resolvePolicy finds the policy for a session run in workDir: an explicit
+// document wins; otherwise aw-sync's bundle, compiled for the repository
+// workDir is in. A policy that was named or written but cannot be read is
+// an error: launching without the organization's configuration when one
+// was meant to apply would be worse than refusing. No bundle at all is not
+// an error, only a note, so a machine aw-sync has not reached still runs.
+func resolvePolicy(opts options, workDir string) (*policy.Document, policySource, error) {
+	if opts.policyPath != "" {
+		doc, err := policy.Load(opts.policyPath)
+		if err != nil {
+			return nil, policySource{}, err
+		}
+		return doc, policySource{Path: opts.policyPath, Kind: "document"}, nil
+	}
+	path := filepath.Join(stateDirFor(), sync.BundleFile)
+	raw, err := os.ReadFile(path)
+	if errors.Is(err, os.ErrNotExist) {
+		return nil, policySource{Kind: "none", Note: "no policy: aw-sync has not written " + path}, nil
+	}
+	if err != nil {
+		return nil, policySource{}, fmt.Errorf("reading %s: %w", path, err)
+	}
+	var bundle policy.Bundle
+	if err := json.Unmarshal(raw, &bundle); err != nil {
+		return nil, policySource{}, fmt.Errorf("%s is not a valid bundle: %w", path, err)
+	}
+	repoURL, err := repo.Detect(workDir)
+	if err != nil {
+		return nil, policySource{}, fmt.Errorf("detecting the repository of %s: %w", workDir, err)
+	}
+	return bundle.Compile(repoURL), policySource{Path: path, Kind: "bundle", Version: bundle.Version, Repo: repoURL}, nil
+}
+
+// stateDirFor is aw-sync's state directory: the OS default, or
+// AW_SYNC_STATE_DIR for tests and unusual installs.
+func stateDirFor() string {
+	if dir := os.Getenv("AW_SYNC_STATE_DIR"); dir != "" {
+		return dir
+	}
+	return sync.StateDir(runtime.GOOS)
+}
+
+// compiledFor is the note every launch carries about its policy.
+func compiledFor(src policySource) string {
+	if src.Kind != "bundle" {
+		return ""
+	}
+	if src.Repo == "" {
+		return "policy compiled for no repository"
+	}
+	return "policy compiled for " + src.Repo
 }
 
 func settingsFor(doc *policy.Document, agentName string) agent.Settings {
@@ -136,26 +213,42 @@ func settingsFor(doc *policy.Document, agentName string) agent.Settings {
 }
 
 func launch(registry *agent.Registry, opts options, agentName string, args []string) error {
-	doc, err := loadPolicy(opts)
-	if err != nil {
-		return err
-	}
 	// Lookup first so an unknown agent reports the agents this binary knows,
 	// rather than whatever the policy happens to be missing.
 	if _, err := registry.Lookup(agentName); err != nil {
 		return err
 	}
-	return agent.Run(context.Background(), registry, agent.Options{
+	cwd, err := os.Getwd()
+	if err != nil {
+		return err
+	}
+	doc, src, err := resolvePolicy(opts, cwd)
+	if err != nil {
+		return err
+	}
+	prepared, err := agent.Prepare(context.Background(), registry, agent.Options{
 		Agent:    agentName,
 		Args:     args,
 		Settings: settingsFor(doc, agentName),
 	})
+	if err != nil {
+		return err
+	}
+	if note := compiledFor(src); note != "" {
+		prepared.Notes = append(prepared.Notes, note)
+	}
+	if src.Note != "" {
+		prepared.Notes = append(prepared.Notes, src.Note)
+	}
+	return prepared.Exec(agent.ExecOptions{Stdin: os.Stdin, Stdout: os.Stdout, Stderr: os.Stderr})
 }
 
 // report is the machine-readable shape of doctor's output.
 type report struct {
 	Wrapper string `json:"wrapper"`
-	Policy  string `json:"policy,omitempty"`
+	Policy  string `json:"policy"`
+	// PolicyNote says why there is no policy, when there is none.
+	PolicyNote string `json:"policyNote,omitempty"`
 	// SyncStateDir is where aw-sync's state was looked for.
 	SyncStateDir string `json:"syncStateDir"`
 	// Sync is aw-sync's own status, read as the developer from its state
@@ -184,16 +277,17 @@ type agentStatus struct {
 func doctor(registry *agent.Registry, opts options, args []string) error {
 	asJSON := len(args) > 0 && args[0] == "--json"
 
-	doc, err := loadPolicy(opts)
+	cwd, err := os.Getwd()
+	if err != nil {
+		return err
+	}
+	doc, src, err := resolvePolicy(opts, cwd)
 	if err != nil {
 		return err
 	}
 
-	stateDir := os.Getenv("AW_SYNC_STATE_DIR")
-	if stateDir == "" {
-		stateDir = sync.StateDir(runtime.GOOS)
-	}
-	out := report{Wrapper: "aw", Policy: opts.policyPath, SyncStateDir: stateDir}
+	stateDir := stateDirFor()
+	out := report{Wrapper: "aw", Policy: src.String(), PolicyNote: src.Note, SyncStateDir: stateDir}
 	out.Sync, out.SyncError = syncSection(stateDir)
 	for _, name := range registry.Names() {
 		status := agentStatus{Name: name}
@@ -223,6 +317,9 @@ func doctor(registry *agent.Registry, opts options, args []string) error {
 			continue
 		}
 		status.Launch = launch
+		if note := compiledFor(src); note != "" {
+			launch.Notes = append(launch.Notes, note)
+		}
 		status.Env = addedEnv(os.Environ(), launch.Env)
 		// The full environment is noise in a report; the diff above is the
 		// part a reader needs.
@@ -273,8 +370,9 @@ func age(at, now time.Time) string {
 
 func printReport(r report) {
 	fmt.Printf("wrapper: %s\n", r.Wrapper)
-	if r.Policy != "" {
-		fmt.Printf("policy:  %s\n", r.Policy)
+	fmt.Printf("policy:  %s\n", r.Policy)
+	if r.PolicyNote != "" {
+		fmt.Printf("  %s\n", r.PolicyNote)
 	}
 	fmt.Printf("sync:    %s\n", r.SyncStateDir)
 	switch {

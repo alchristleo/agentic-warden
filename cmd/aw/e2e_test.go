@@ -79,8 +79,10 @@ func TestAgentsListsWhatTheBinaryCanLaunch(t *testing.T) {
 	if code != 0 {
 		t.Fatalf("exit code = %d, want 0. output:\n%s", code, out)
 	}
-	if !strings.Contains(out, "claude") {
-		t.Errorf("output %q does not list claude", out)
+	for _, name := range []string{"claude", "codex", "gemini"} {
+		if !strings.Contains(out, name) {
+			t.Errorf("output %q does not list %s", out, name)
+		}
 	}
 }
 
@@ -251,6 +253,117 @@ func TestAMissingPolicyFileIsReportedRatherThanIgnored(t *testing.T) {
 	}
 	if !strings.Contains(out, missing) {
 		t.Errorf("error %q does not name the missing policy file", out)
+	}
+}
+
+// gitRepo makes dir a repository whose origin is url, so repo.Detect finds it.
+func gitRepo(t *testing.T, dir, url string) {
+	t.Helper()
+	for _, args := range [][]string{{"init", "-q"}, {"remote", "add", "origin", url}} {
+		cmd := exec.Command("git", args...)
+		cmd.Dir = dir
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("git %v: %v\n%s", args, err, out)
+		}
+	}
+}
+
+const e2eBundle = `{
+  "version": "2026-09-22.e2e",
+  "groups": ["platform"],
+  "rules": [
+    {"name": "baseline", "agents": {
+      "claude": {"managed": {"model": "sonnet"}},
+      "codex": {"launch": {"sandbox_mode": "workspace-write"}},
+      "gemini": {"managed": {"settings": {"admin": {"secureModeEnabled": true}}}}
+    }},
+    {"name": "payments", "match": {"repos": ["github.com/acme/payments*"]}, "agents": {
+      "codex": {"launch": {"sandbox_mode": "read-only"}},
+      "gemini": {"managed": {"policies": [{"toolName": "run_shell_command", "decision": "deny", "priority": 100}]}}
+    }}
+  ]
+}`
+
+func TestDoctorCompilesTheBundleForTheRepositoryItRunsIn(t *testing.T) {
+	binDir := t.TempDir()
+	fakeAgent(t, binDir, "claude", "exit 0")
+	fakeAgent(t, binDir, "codex", "exit 0")
+	fakeAgent(t, binDir, "gemini", "exit 0")
+	stateDir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(stateDir, "aw-bundle.json"), []byte(e2eBundle), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	work := t.TempDir()
+	gitRepo(t, work, "https://github.com/acme/payments-api.git")
+
+	cmd := exec.Command(awBinary(t), "doctor", "--json")
+	cmd.Dir = work
+	cmd.Env = append(baseEnv(t, binDir), "AW_SYNC_STATE_DIR="+stateDir)
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("doctor: %v\n%s", err, out)
+	}
+
+	var report struct {
+		Policy string `json:"policy"`
+		Agents []struct {
+			Name   string `json:"name"`
+			Launch struct {
+				Args  []string `json:"args"`
+				Notes []string `json:"notes"`
+			} `json:"launch"`
+		} `json:"agents"`
+	}
+	if err := json.Unmarshal(out, &report); err != nil {
+		t.Fatalf("doctor --json: %v\n%s", err, out)
+	}
+	if !strings.Contains(report.Policy, "2026-09-22.e2e") || !strings.Contains(report.Policy, "github.com/acme/payments-api") {
+		t.Errorf("policy = %q; want the bundle version and the detected repository", report.Policy)
+	}
+	names := make([]string, 0, 3)
+	for _, a := range report.Agents {
+		names = append(names, a.Name)
+		switch a.Name {
+		case "codex":
+			if args := strings.Join(a.Launch.Args, " "); args != `-c sandbox_mode="read-only"` {
+				t.Errorf("codex args = %q; want the payments rule's override", args)
+			}
+		}
+		if !strings.Contains(strings.Join(a.Launch.Notes, "\n"), "policy compiled for github.com/acme/payments-api") {
+			t.Errorf("%s notes %q lack the compiled-for note", a.Name, a.Launch.Notes)
+		}
+	}
+	if strings.Join(names, ",") != "claude,codex,gemini" {
+		t.Errorf("agents = %v", names)
+	}
+}
+
+func TestDoctorSaysWhenThereIsNoBundle(t *testing.T) {
+	binDir := t.TempDir()
+	fakeAgent(t, binDir, "claude", "exit 0")
+
+	out, code := run(t, append(baseEnv(t, binDir), "AW_SYNC_STATE_DIR="+t.TempDir()), "doctor")
+
+	if code != 0 {
+		t.Fatalf("exit code = %d\n%s", code, out)
+	}
+	if !strings.Contains(out, "policy:  none") || !strings.Contains(out, "aw-sync has not written") {
+		t.Errorf("output should report no policy and why:\n%s", out)
+	}
+}
+
+func TestAnUnreadableBundleRefusesToLaunch(t *testing.T) {
+	binDir := t.TempDir()
+	fakeAgent(t, binDir, "claude", "exit 0")
+	stateDir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(stateDir, "aw-bundle.json"), []byte("{not json"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	out, code := run(t, append(baseEnv(t, binDir), "AW_SYNC_STATE_DIR="+stateDir), "claude")
+
+	if code == 0 || !strings.Contains(out, "aw-bundle.json") {
+		t.Errorf("exit %d, output %q; a bundle that was meant to apply and cannot be read must refuse the launch", code, out)
 	}
 }
 

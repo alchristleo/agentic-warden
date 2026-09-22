@@ -78,3 +78,8 @@ rules:
           permissions:
             deny:
               - Bash(curl *)
+      # launch is Codex's per-launch config.toml layer, applied by aw codex;
+      # managed is requirements.toml, applied machine-wide by aw-sync.
+      codex:
+        launch:
+          sandbox_mode: read-only

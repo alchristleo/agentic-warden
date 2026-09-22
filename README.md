@@ -32,6 +32,26 @@ line, the project and the user.
 That matters because the helper runs on `claude`, not on `aw claude`. A
 developer who bypasses the wrapper is still governed.
 
+`aw codex` and `aw gemini` apply the rules scoped to the repository you are
+in, which the machine-wide files cannot carry. `aw` reads the bundle
+`aw-sync` leaves in its state directory, compiles it for the repository
+`.git/config` names, and hands each agent the result through its own
+launch-time channel: Codex gets `-c key=value` overrides from the rule's
+`launch` document (its `config.toml` schema; `managed` stays
+`requirements.toml`), and Gemini gets a settings file generated for the
+session with `GEMINI_CLI_SYSTEM_SETTINGS_PATH` pinned to it, repo-scoped
+`policies` included via `policyPaths`. This layer is advisory: bare
+`codex` or `gemini` sees the machine-wide files alone. `aw doctor` shows
+the compiled result per agent and which repository it was compiled for.
+
+One Gemini limitation: rules delivered through `policyPaths` load at
+Gemini's user tier, below the admin tier where `aw-sync`'s machine-wide
+policy file lives, and Gemini ignores admin-tier supplements once that
+directory has any file. A machine-wide rule that names a tool therefore
+outranks a repo-scoped rule for the same tool. Keep machine-wide
+`policies` to what must hold everywhere and let repo rules tighten the
+rest.
+
 A release build of the helper reads only the system directory. The
 `AW_POLICY_BUNDLE` and `AW_POLICY_CONFIG` overrides the tests use exist
 only under `-tags awtest`; a release build ignores them and says so on
@@ -65,7 +85,7 @@ detects the collision, and reports the bundle and aw-sync's last cycle.
 
 ## Layout
 
-    cmd/aw/           wrapper CLI: run an agent, doctor, agents
+    cmd/aw/           wrapper CLI: run an agent with the bundle compiled for its repository, doctor, agents
     cmd/aw-policy/    the policyHelper executable, offline
     cmd/aw-sync/      root-side sync: enroll, render every agent's files
     cmd/awd/          control plane: serve, apply
