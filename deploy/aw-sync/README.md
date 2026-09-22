@@ -95,6 +95,41 @@ developers can check it too.
 Rendered files are root-owned and world-readable. A user who can edit them
 already has root; `once` rewrites drift unconditionally.
 
+## Signing the bundle
+
+Signing lives on the control plane, not here: `awd keygen --out
+/etc/agent-wrapper/signing.key` writes a 0600 Ed25519 seed and prints its
+public key and key ID, and refuses to overwrite a key that is already
+there. `AWD_SIGNING_KEY` names that file to `awd`, which signs every
+bundle it serves from then on; leave it unset and bundles stay unsigned,
+which is exactly today's behaviour. `AWD_SIGNING_KEY_PREVIOUS` names the
+key being rotated out — set but unreadable, `awd` refuses to start, so a
+half-configured rotation can never pass for a finished one. A machine pins
+whichever key it saw at enrollment and keeps trusting it across a
+rotation, so none of this needs a machine to re-enroll.
+
+Turning signing back off is safe too: unset `AWD_SIGNING_KEY`, re-enroll
+the machine so its pin is empty again, and the next cycle removes the
+`aw-bundle.json.sig` and `aw-trust.pub` it left behind. Without that
+removal `aw-policy` would go on checking every bundle against a key the
+control plane no longer signs with, and fail every session.
+
+## Rotating the signing key
+
+1. `awd keygen --out /etc/agent-wrapper/signing-2.key` on the control
+   plane.
+2. Set `AWD_SIGNING_KEY=/etc/agent-wrapper/signing-2.key` and
+   `AWD_SIGNING_KEY_PREVIOUS=/etc/agent-wrapper/signing.key`, and restart
+   `awd`. Every already-enrolled machine still verifies against the old
+   key, sees the rollover statement `awd` now signs with it, and repins
+   itself to the new key on its next cycle — including a cycle the server
+   answers 304, which on a fleet whose policy is stable is every cycle.
+3. Watch `awd machines` until every row's KEY column shows the new key ID
+   — that is what tells you the rotation has actually reached every
+   machine, not just the control plane.
+4. Drop `AWD_SIGNING_KEY_PREVIOUS`, restart `awd`, and archive the old
+   key; nothing verifies against it anymore.
+
 ## Revoking a machine
 
     awd revoke <machine-id> --url https://awd.example.com

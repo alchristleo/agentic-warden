@@ -1,13 +1,18 @@
 package main_test
 
 import (
+	"crypto/ed25519"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/acme/agent-wrapper/internal/signing"
+	"github.com/acme/agent-wrapper/internal/sync"
 )
 
 // awBinary builds the CLI once and returns its path.
@@ -410,4 +415,119 @@ func TestDoctorReportsAwSyncState(t *testing.T) {
 	if !strings.Contains(text, "version v7") || !strings.Contains(text, "control plane unreachable") {
 		t.Errorf("plain doctor output should show the last sync and its error:\n%s", text)
 	}
+}
+
+// writeSignedState builds a state directory the way aw-sync leaves one on a
+// machine whose enrollment pinned a signing key: the bundle, its signature,
+// and the public key it verifies against.
+func writeSignedState(t *testing.T, dir, body string) {
+	t.Helper()
+	key, err := signing.Generate()
+	if err != nil {
+		t.Fatal(err)
+	}
+	pub := key.Public().(ed25519.PublicKey)
+	if err := os.WriteFile(filepath.Join(dir, sync.TrustFile), []byte(signing.FormatPublic(pub)+"\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, sync.BundleFile), []byte(body), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	line := fmt.Sprintf("aw-ed25519 %s %s\n", signing.KeyID(pub), signing.Sign(key, []byte(body)))
+	if err := os.WriteFile(filepath.Join(dir, sync.SignatureFile), []byte(line), 0o644); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestDoctorReportsAVerifiedBundleSignature(t *testing.T) {
+	binDir := t.TempDir()
+	fakeAgent(t, binDir, "claude", "exit 0")
+	stateDir := t.TempDir()
+	writeSignedState(t, stateDir, e2eBundle)
+
+	out, code := run(t, append(baseEnv(t, binDir), "AW_SYNC_STATE_DIR="+stateDir), "doctor", "--json")
+
+	if code != 0 {
+		t.Fatalf("exit code = %d, want 0. output:\n%s", code, out)
+	}
+	var report struct {
+		Policy string `json:"policy"`
+		Agents []struct {
+			Name     string `json:"name"`
+			Findings []struct {
+				Level   string `json:"level"`
+				Message string `json:"message"`
+			} `json:"findings"`
+		} `json:"agents"`
+	}
+	if err := json.Unmarshal([]byte(out), &report); err != nil {
+		t.Fatalf("doctor --json is not valid JSON: %v\n%s", err, out)
+	}
+	if !strings.Contains(report.Policy, "2026-09-22.e2e") {
+		t.Errorf("policy = %q; want the verified bundle's version", report.Policy)
+	}
+	var sawVerified, sawRedirect bool
+	for _, a := range report.Agents {
+		if a.Name != "claude" {
+			continue
+		}
+		for _, f := range a.Findings {
+			if f.Level == "ok" && strings.Contains(f.Message, "bundle signature: verified (key ") {
+				sawVerified = true
+			}
+			if f.Level == "warn" && strings.Contains(f.Message, "AW_SYNC_STATE_DIR") {
+				sawRedirect = true
+			}
+		}
+	}
+	if !sawVerified {
+		t.Errorf("claude's findings should report a verified bundle signature:\n%s", out)
+	}
+	// This very report is the shape the note is for: a "verified" about a
+	// directory the environment pointed doctor at, while aw-policy goes on
+	// reading the OS default.
+	if !sawRedirect {
+		t.Errorf("doctor reported on a redirected state directory without saying so:\n%s", out)
+	}
+}
+
+func TestATamperedBundleRefusesToLaunch(t *testing.T) {
+	binDir := t.TempDir()
+	fakeAgent(t, binDir, "codex", "echo should-not-run")
+	stateDir := t.TempDir()
+	writeSignedState(t, stateDir, e2eBundle)
+	tamperByte(t, filepath.Join(stateDir, sync.BundleFile))
+
+	out, code := run(t, append(baseEnv(t, binDir), "AW_SYNC_STATE_DIR="+stateDir), "codex")
+
+	if code == 0 {
+		t.Fatalf("exit code = 0, want non-zero for a bundle whose signature does not check out. output:\n%s", out)
+	}
+	if strings.Contains(out, "should-not-run") {
+		t.Errorf("codex ran despite the unverifiable bundle:\n%s", out)
+	}
+	if !strings.Contains(out, sync.BundleFile) {
+		t.Errorf("error %q should name the bundle file that failed to verify", out)
+	}
+}
+
+// tamperByte changes one digit of path, invalidating any signature over its
+// former contents while leaving the file valid JSON and valid UTF-8, so a
+// test using it exercises the signature check rather than a parse failure.
+func tamperByte(t *testing.T, path string) {
+	t.Helper()
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i, b := range raw {
+		if b >= '0' && b <= '9' {
+			raw[i] = '0' + (b-'0'+1)%10
+			if err := os.WriteFile(path, raw, 0o644); err != nil {
+				t.Fatal(err)
+			}
+			return
+		}
+	}
+	t.Fatalf("tamperByte: %s has no digit to change", path)
 }

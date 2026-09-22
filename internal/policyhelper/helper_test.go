@@ -1,7 +1,9 @@
 package policyhelper_test
 
 import (
+	"crypto/ed25519"
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -9,6 +11,8 @@ import (
 	"time"
 
 	"github.com/acme/agent-wrapper/internal/policyhelper"
+	"github.com/acme/agent-wrapper/internal/signing"
+	"github.com/acme/agent-wrapper/internal/sync"
 )
 
 // bundle is what aw-sync leaves for a user in the platform group: a
@@ -40,6 +44,44 @@ func writeBundle(t *testing.T, body string) string {
 		t.Fatal(err)
 	}
 	return path
+}
+
+// writeSignedState builds a state directory the way aw-sync leaves one: the
+// bundle, its signature, and the public key it verifies against.
+func writeSignedState(t *testing.T, body string) string {
+	t.Helper()
+	key, err := signing.Generate()
+	if err != nil {
+		t.Fatal(err)
+	}
+	pub := key.Public().(ed25519.PublicKey)
+	dir := t.TempDir()
+	writeStateFile(t, dir, sync.TrustFile, signing.FormatPublic(pub)+"\n")
+	writeStateFile(t, dir, sync.BundleFile, body)
+	line := fmt.Sprintf("aw-ed25519 %s %s\n", signing.KeyID(pub), signing.Sign(key, []byte(body)))
+	writeStateFile(t, dir, sync.SignatureFile, line)
+	return dir
+}
+
+func writeStateFile(t *testing.T, dir, name, body string) {
+	t.Helper()
+	if err := os.WriteFile(filepath.Join(dir, name), []byte(body), 0o644); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// tamperByte flips one byte of path, invalidating any signature over its
+// former contents without touching its length.
+func tamperByte(t *testing.T, path string) {
+	t.Helper()
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw[0] ^= 0xff
+	if err := os.WriteFile(path, raw, 0o644); err != nil {
+		t.Fatal(err)
+	}
 }
 
 func config(t *testing.T, bundlePath string) policyhelper.Config {
@@ -257,5 +299,175 @@ func TestNoAuditDirMeansNoAuditAndNoFailure(t *testing.T) {
 
 	if r := policyhelper.Run(cfg); r.ExitCode != 0 || r.Source != policyhelper.SourceBundle {
 		t.Errorf("exit = %d source = %q; auditing is best effort", r.ExitCode, r.Source)
+	}
+}
+
+func TestRunCompilesFromTheSignedBundle(t *testing.T) {
+	cfg := config(t, filepath.Join(t.TempDir(), "unused-fallback.json"))
+	cfg.StateDir = writeSignedState(t, bundle)
+	// RepoOverride sidesteps repo detection so the only notes possible are
+	// about the signature, which is what this test is checking.
+	cfg.RepoOverride = "github.com/acme/other"
+
+	r := policyhelper.Run(cfg)
+
+	if r.ExitCode != 0 {
+		t.Fatalf("exit = %d, want 0; notes %q", r.ExitCode, r.Notes)
+	}
+	if r.Source != policyhelper.SourceBundle {
+		t.Errorf("source = %q, want bundle", r.Source)
+	}
+	if got := denies(t, managedOf(t, r)); len(got) != 1 || got[0] != "Read(./.env)" {
+		t.Errorf("deny = %q; the signed bundle's baseline rule should apply", got)
+	}
+	if len(r.Notes) != 0 {
+		t.Errorf("notes = %q, want none: the signature checks out", r.Notes)
+	}
+}
+
+func TestRunRefusesATamperedBundle(t *testing.T) {
+	stateDir := writeSignedState(t, bundle)
+	tamperByte(t, filepath.Join(stateDir, sync.BundleFile))
+	cfg := config(t, filepath.Join(t.TempDir(), "unused-fallback.json"))
+	cfg.StateDir = stateDir
+
+	r := policyhelper.Run(cfg)
+
+	if r.ExitCode != 0 {
+		t.Errorf("exit = %d, want 0: a bad signature must not brick an otherwise unpoliced launch", r.ExitCode)
+	}
+	if string(r.Output) != "{}\n" {
+		t.Errorf("output = %q, want the empty envelope", r.Output)
+	}
+	if !hasNote(r, filepath.Join(stateDir, sync.BundleFile)) {
+		t.Errorf("notes %q should name the bundle that failed to verify", r.Notes)
+	}
+}
+
+func TestRunRefusesAMissingSignature(t *testing.T) {
+	stateDir := writeSignedState(t, bundle)
+	if err := os.Remove(filepath.Join(stateDir, sync.SignatureFile)); err != nil {
+		t.Fatal(err)
+	}
+	cfg := config(t, filepath.Join(t.TempDir(), "unused-fallback.json"))
+	cfg.StateDir = stateDir
+
+	r := policyhelper.Run(cfg)
+
+	if r.ExitCode != 0 {
+		t.Errorf("exit = %d, want 0", r.ExitCode)
+	}
+	if string(r.Output) != "{}\n" {
+		t.Errorf("output = %q, want the empty envelope", r.Output)
+	}
+	if !hasNote(r, filepath.Join(stateDir, sync.BundleFile)) {
+		t.Errorf("notes %q should name the bundle left without a signature", r.Notes)
+	}
+}
+
+func TestRequireBundleTurnsAFailureIntoAnError(t *testing.T) {
+	stateDir := writeSignedState(t, bundle)
+	tamperByte(t, filepath.Join(stateDir, sync.BundleFile))
+	cfg := config(t, filepath.Join(t.TempDir(), "unused-fallback.json"))
+	cfg.StateDir = stateDir
+	cfg.RequireBundle = true
+
+	r := policyhelper.Run(cfg)
+
+	if r.ExitCode != 1 {
+		t.Errorf("exit = %d, want 1: a failed signature is not a usable bundle", r.ExitCode)
+	}
+	if string(r.Output) != "{}\n" {
+		t.Errorf("output = %q; a valid envelope is printed even when refusing", r.Output)
+	}
+}
+
+func TestRunRefusesAnUnreadableTrustFile(t *testing.T) {
+	// A trust file that exists but cannot be read (permission denied, here)
+	// is a broken deployment, not an absent one; folding it into the
+	// unsigned case would make VerifyBundle fail open exactly where its job
+	// is to fail closed.
+	stateDir := writeSignedState(t, bundle)
+	trustPath := filepath.Join(stateDir, sync.TrustFile)
+	if err := os.Chmod(trustPath, 0o000); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { os.Chmod(trustPath, 0o644) }) // TempDir cleanup needs to read it back
+	cfg := config(t, filepath.Join(t.TempDir(), "unused-fallback.json"))
+	cfg.StateDir = stateDir
+
+	r := policyhelper.Run(cfg)
+
+	if r.ExitCode != 0 {
+		t.Errorf("exit = %d, want 0: an unreadable trust file must not brick an otherwise unpoliced launch", r.ExitCode)
+	}
+	if string(r.Output) != "{}\n" {
+		t.Errorf("output = %q, want the empty envelope", r.Output)
+	}
+	if !hasNote(r, trustPath) {
+		t.Errorf("notes %q should name the unreadable trust file", r.Notes)
+	}
+}
+
+func TestNoTrustFileBehavesExactlyAsBefore(t *testing.T) {
+	bundlePath := writeBundle(t, bundle)
+	without := policyhelper.Run(config(t, bundlePath))
+
+	cfg := config(t, bundlePath)
+	cfg.StateDir = t.TempDir() // no trust file: an unsigned deployment
+
+	with := policyhelper.Run(cfg)
+
+	if string(with.Output) != string(without.Output) {
+		t.Errorf("output = %q, want byte-identical to the pre-signing path %q", with.Output, without.Output)
+	}
+	if with.Source != without.Source || with.ExitCode != without.ExitCode {
+		t.Errorf("source/exit = %q/%d, want %q/%d", with.Source, with.ExitCode, without.Source, without.ExitCode)
+	}
+}
+
+func TestVerifyBundleReturnsTheBytesItVerified(t *testing.T) {
+	// The proof is over bytes, not over a path. Handing back only the path
+	// leaves a window: whoever could write the file once — the whole reason
+	// the signature is checked here — can write it again between the check
+	// and the caller's own read, and the bytes that reach Claude Code are
+	// then bytes nobody signed. The verdict and the bytes travel together so
+	// that no caller has a second read to lose the race with.
+	stateDir := writeSignedState(t, bundle)
+
+	path, verified, note, ok := policyhelper.VerifyBundle(stateDir, filepath.Join(t.TempDir(), "unused-fallback.json"))
+
+	if !ok || note != "" {
+		t.Fatalf("VerifyBundle = %q, %v on a well-signed state directory", note, ok)
+	}
+	if string(verified) != bundle {
+		t.Fatalf("VerifyBundle returned %d bytes; want the %d it checked", len(verified), len(bundle))
+	}
+	// A writer wins the race here, after the check. What the caller holds is
+	// still what was proved.
+	if err := os.WriteFile(path, []byte(`{"version":"swapped","rules":[]}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if string(verified) != bundle {
+		t.Error("the verified bytes followed the file; they must be the ones that checked out")
+	}
+}
+
+func TestVerifyBundleReturnsNoBytesForAnUnsignedDeployment(t *testing.T) {
+	// Nothing was verified, so there are no verified bytes to hand back and
+	// the caller reads the fallback itself, exactly as it did before signing
+	// existed. Returning the file's contents here would quietly make an
+	// unverified read look like a verified one.
+	fallback := writeBundle(t, bundle)
+	stateDir := t.TempDir()
+	writeStateFile(t, stateDir, sync.BundleFile, bundle)
+
+	path, verified, note, ok := policyhelper.VerifyBundle(stateDir, fallback)
+
+	if !ok || note != "" || path != fallback {
+		t.Fatalf("VerifyBundle = %q, %q, %v; an unsigned deployment yields the fallback", path, note, ok)
+	}
+	if verified != nil {
+		t.Errorf("VerifyBundle returned %d bytes for a deployment it verified nothing in", len(verified))
 	}
 }

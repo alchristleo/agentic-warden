@@ -1,6 +1,6 @@
 # Signed bundles: Ed25519 over the bundle, pinned at enrollment
 
-Date: 2026-09-22. Status: designed. Extends
+Date: 2026-09-22. Status: implemented 2026-09-22 (main 691bfd5). Extends
 `2026-09-21-multi-agent-bundle-sync-design.md`, whose "Out of scope" listed
 signed bundles with "machine credential over TLS is the v1 integrity
 story". This adds the second half: proof, carried by the bytes themselves,
@@ -64,8 +64,10 @@ stdlib implementation, and no parameter choices to get wrong.
 
 The signature covers the bytes the server writes, so no canonicalization
 question arises. A 304 carries neither header: there is no body, and the
-machine keeps the bundle and signature it already verified. Signing costs
-roughly 50µs per response, so there is nothing to cache.
+machine keeps the bundle and signature it already verified. It does carry
+`X-AW-Key-Rollover` when one is configured — see "Rotation" below, where
+the reason is that a 304 is the only answer a stable fleet ever gets.
+Signing costs roughly 50µs per response, so there is nothing to cache.
 
 ## Pinning at enrollment
 
@@ -104,8 +106,16 @@ would break every machine until it re-enrolled. Instead:
        aw-ed25519:<new public key>
 3. `aw-sync` verifies that statement with its pinned key. On success it
    repins `machine.json` to the new key, then verifies the bundle with the
-   new key. On failure it ignores the header; the bundle then fails its own
-   check and the cycle exits 1.
+   new key. On failure the cycle exits 1.
+
+   The statement is self-contained — signed by the outgoing key, silent
+   about the body — so it rides a 304 as well as a 200, and `aw-sync`
+   repins on either. It has to: an organization whose policy is not
+   changing gets a 304 on every cycle, and a rotation that could only
+   finish on changed bundle bytes would never finish there at all. On a
+   304 the on-disk `aw-bundle.json.sig` and `aw-trust.pub` are left alone,
+   since they still describe the bundle the machine holds; the first
+   changed bundle rewrites both under the new key.
 4. When `awd machines` shows every machine on the new key ID, the operator
    drops `AWD_SIGNING_KEY_PREVIOUS`.
 
@@ -144,6 +154,15 @@ there as the developer — so every verifier can reach it.
 read the 0600 `machine.json`. A cycle that cannot verify writes none of
 these files, as it writes none of the others.
 
+The reverse is part of the same handling: a cycle on a machine with no
+pinned key removes any `aw-bundle.json.sig` and `aw-trust.pub` it finds,
+and drops them from `state.json`. Signing turned off on `awd`, or a
+machine re-enrolled against a server that does not sign, would otherwise
+leave `aw-policy` checking every bundle against a key nothing signs with
+— exit 1 on every session under `requireBundle`, forever. The removal is
+planned with the writes, all-or-nothing with them, and a cycle whose
+files are stale drops its etag so a 304 cannot skip the removal.
+
 ## aw-policy and the launch adapters
 
 `policyhelper.Run` gains one step before compiling. It looks for
@@ -176,8 +195,25 @@ The Claude inspection reports one more line:
     bundle signature: FAILED — /var/lib/agent-wrapper/aw-bundle.json does not match key 3f9a1c22b0d41e77
 
 A failure is an Error finding. Warn findings: `aw-trust.pub` or the bundle
-writable by anyone but root (mode and owner on POSIX, ACL on Windows), and
-a machine with an empty pin.
+writable by anyone but root — mode and owner on POSIX — and a machine with
+an empty pin.
+
+On Windows, ownership is **unchecked**, and the finding says so. There is
+no uid behind the file, the mode bits Go reports carry no ACL information,
+and reading the ACL that actually decides needs Windows APIs this build
+does not carry. Reporting the unknown is the point: a doctor that printed
+nothing about ownership would read as one that checked and found nothing
+wrong, which on a `C:\ProgramData` subtree is the opposite of the truth.
+The README says the same, so the documentation does not promise a check
+the code does not perform.
+
+The empty-pin warning is derived, not read: `machine.json` is 0600 and
+doctor runs as the developer, so the signal is a bundle in the state
+directory with no `aw-trust.pub` beside it. A pinned machine refuses any
+cycle it cannot verify, so that combination can only be an unpinned
+machine. It cannot tell a machine enrolled before signing existed from one
+enrolled against a control plane that does not sign; both are an empty pin
+and both are fixed by re-enrolling once `awd` has a key.
 
 ## What this does not buy
 
@@ -211,7 +247,8 @@ it can do.
 | awd | `AWD_SIGNING_KEY_PREVIOUS` set but unreadable | refuses to start |
 | aw-sync | signature absent while a key is pinned | error, nothing written, exit 1 |
 | aw-sync | signature present and verification fails | error, nothing written, exit 1 |
-| aw-sync | rollover statement fails under the pinned key | header ignored; the bundle then fails its own check, exit 1 |
+| aw-sync | rollover statement fails under the pinned key | error, nothing written, exit 1 |
+| aw-sync | no key pinned, stale `.sig`/`aw-trust.pub` on disk | both removed as part of the cycle's files |
 | aw-sync | no key pinned (enrolled before signing) | no verification; doctor warns |
 | aw-policy | `.sig` missing or bad with `aw-trust.pub` present | `{}` + note + audit; exit 1 under `requireBundle` |
 | aw-policy | no `aw-trust.pub` | today's behaviour exactly |
@@ -236,16 +273,24 @@ Three deploys, each safe on its own and in this order:
   the rollover statement verifies under the previous key; enroll returns
   `publicKey` and `keyId`.
 - `sync`: a good signature applies; a tampered body writes nothing; a
-  rollover repins `machine.json` and then applies; an unpinned machine
+  rollover repins `machine.json` and then applies; a rollover carried by a
+  304 repins too, leaving the signature and trust files as they are; a
+  machine with no pin has any stale `.sig` and `aw-trust.pub` removed, even
+  on a cycle the server would answer 304; an unpinned machine
   skips verification; `<state dir>/aw-bundle.json` holds the served bytes
   byte for byte, and its recorded hash is the hash of those bytes; the two
   new planned files appear in `state.json` and drift is detected on each.
 - `cmd/aw-policy` e2e: a good signature applies; a flipped byte yields `{}`
   with a note; `requireBundle` turns that into exit 1; with no
   `aw-trust.pub` the behaviour is byte-identical to today.
-- `internal/agent/claude`: the three doctor states plus the
-  non-root-writable warning.
-- `cmd/aw` e2e: `aw codex` refuses to launch on a bad state-dir signature.
+- `internal/agent/claude`: the three doctor states, the non-root-writable
+  warning, a trust file owned by someone other than root although its mode
+  is impeccable, ownership reported as unchecked under `GOOS=windows`, and
+  the empty-pin warning.
+- `cmd/aw` e2e: `aw codex` refuses to launch on a bad state-dir signature;
+  doctor says it is reporting on a redirected state directory when
+  `AW_SYNC_STATE_DIR` is set; the claude adapter's own copies of the three
+  filenames still match `internal/sync`'s.
 - `GOOS=darwin` and `GOOS=windows` builds.
 
 ## Documentation

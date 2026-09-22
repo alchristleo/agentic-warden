@@ -2,13 +2,18 @@ package main_test
 
 import (
 	"bytes"
+	"crypto/ed25519"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/acme/agent-wrapper/internal/signing"
+	"github.com/acme/agent-wrapper/internal/sync"
 )
 
 // built is the helper as the tests need it: with -tags awtest, so fixtures
@@ -64,6 +69,30 @@ func runBinary(t *testing.T, binary string, args []string, env ...string) (stdou
 	default:
 		t.Fatalf("running %s: %v", binary, err)
 		return "", "", 0
+	}
+}
+
+// writeSignedState builds a state directory the way aw-sync leaves one: the
+// bundle, its signature, and the public key it verifies against.
+func writeSignedState(t *testing.T, body string) string {
+	t.Helper()
+	key, err := signing.Generate()
+	if err != nil {
+		t.Fatal(err)
+	}
+	pub := key.Public().(ed25519.PublicKey)
+	dir := t.TempDir()
+	writeInto(t, dir, sync.TrustFile, signing.FormatPublic(pub)+"\n")
+	writeInto(t, dir, sync.BundleFile, body)
+	line := fmt.Sprintf("aw-ed25519 %s %s\n", signing.KeyID(pub), signing.Sign(key, []byte(body)))
+	writeInto(t, dir, sync.SignatureFile, line)
+	return dir
+}
+
+func writeInto(t *testing.T, dir, name, body string) {
+	t.Helper()
+	if err := os.WriteFile(filepath.Join(dir, name), []byte(body), 0o644); err != nil {
+		t.Fatal(err)
 	}
 }
 
@@ -192,6 +221,30 @@ func TestAReleaseBuildIgnoresTheEnvironmentOverrides(t *testing.T) {
 	}
 }
 
+func TestAReleaseBuildIgnoresASelfSignedStateDirectory(t *testing.T) {
+	// This is the bypass a gap in the gating would open: without it, a
+	// non-root developer could generate their own keypair, sign whatever
+	// managed settings they liked with it, and point AW_SYNC_STATE_DIR at
+	// the result. This binary is what Claude Code trusts without question,
+	// so honouring that variable in a release build would let the
+	// developer's own bundle stand in for the control plane's. A release
+	// build must use the OS state directory, which the developer does not
+	// own, whatever AW_SYNC_STATE_DIR says.
+	stateDir := writeSignedState(t, `{"version":"attacker","groups":[],"rules":[{"name":"mine","agents":{"claude":{"managed":{"model":"attacker-chosen"}}}}]}`)
+
+	stdout, stderr, code := runBinary(t, release, nil, "AW_SYNC_STATE_DIR="+stateDir)
+
+	if code != 0 {
+		t.Fatalf("exit = %d, want 0; stderr: %s", code, stderr)
+	}
+	if managed, _ := decode(t, stdout)["managedSettings"].(map[string]any); managed["model"] == "attacker-chosen" {
+		t.Errorf("stdout = %s; a release build applied a self-signed bundle from a developer-chosen state directory", stdout)
+	}
+	if !strings.Contains(stderr, "AW_SYNC_STATE_DIR") || !strings.Contains(stderr, "ignores it") {
+		t.Errorf("stderr %q should say AW_SYNC_STATE_DIR is set and ignored", stderr)
+	}
+}
+
 func TestBuildInfoTellsTheTwoBuildsApart(t *testing.T) {
 	stdout, _, code := runBinary(t, release, []string{"build-info"})
 	if code != 0 || stdout != "env-overrides=off\n" {
@@ -213,4 +266,100 @@ func TestAnUnrecognisedArgumentStillRunsTheHelper(t *testing.T) {
 		t.Errorf("exit = %d, want 0", code)
 	}
 	decode(t, stdout)
+}
+
+// signedBundle is a rendered aw-bundle.json distinguishable from the
+// fallback fixture "bundle" above, so a test can tell which one the helper
+// actually compiled from.
+const signedBundle = `{"version":"v2","groups":["platform"],"rules":[{"name":"baseline","agents":{"claude":{"managed":{"model":"signed-bundle"}}}}]}`
+
+func TestASignedStateDirectoryIsCompiledInsteadOfTheFallback(t *testing.T) {
+	stateDir := writeSignedState(t, signedBundle)
+	bundlePath := writeFile(t, "aw-bundle.json", bundle) // the narrowed fallback; must be ignored
+
+	stdout, stderr, code := run(t,
+		"AW_POLICY_BUNDLE="+bundlePath,
+		"AW_POLICY_CONFIG="+filepath.Join(t.TempDir(), "absent.json"),
+		"AW_SYNC_STATE_DIR="+stateDir)
+
+	if code != 0 {
+		t.Fatalf("exit = %d, want 0; stderr: %s", code, stderr)
+	}
+	managed, _ := decode(t, stdout)["managedSettings"].(map[string]any)
+	if managed["model"] != "signed-bundle" {
+		t.Errorf("managedSettings = %v, want the signed bundle's rule, not the fallback's", managed)
+	}
+	if stderr != "" {
+		t.Errorf("stderr = %q; a valid signature is not worth a note", stderr)
+	}
+}
+
+func TestATamperedSignedBundleProducesAnEmptyEnvelope(t *testing.T) {
+	stateDir := writeSignedState(t, signedBundle)
+	raw, err := os.ReadFile(filepath.Join(stateDir, sync.BundleFile))
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw[0] ^= 0xff
+	if err := os.WriteFile(filepath.Join(stateDir, sync.BundleFile), raw, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	bundlePath := writeFile(t, "aw-bundle.json", bundle)
+
+	stdout, stderr, code := run(t,
+		"AW_POLICY_BUNDLE="+bundlePath,
+		"AW_POLICY_CONFIG="+filepath.Join(t.TempDir(), "absent.json"),
+		"AW_SYNC_STATE_DIR="+stateDir)
+
+	if code != 0 {
+		t.Fatalf("exit = %d, want 0; a bad signature must not brick the launch; stderr: %s", code, stderr)
+	}
+	if _, has := decode(t, stdout)["managedSettings"]; has {
+		t.Errorf("stdout = %s, want an envelope without managedSettings", stdout)
+	}
+	if !strings.Contains(stderr, sync.BundleFile) {
+		t.Errorf("stderr %q should name the bundle that failed to verify", stderr)
+	}
+}
+
+func TestATamperedSignedBundleFailsClosedUnderRequireBundle(t *testing.T) {
+	stateDir := writeSignedState(t, signedBundle)
+	raw, err := os.ReadFile(filepath.Join(stateDir, sync.BundleFile))
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw[0] ^= 0xff
+	if err := os.WriteFile(filepath.Join(stateDir, sync.BundleFile), raw, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	bundlePath := writeFile(t, "aw-bundle.json", bundle)
+	cfg := writeFile(t, "aw-policy.json", `{"requireBundle":true}`)
+
+	_, stderr, code := run(t,
+		"AW_POLICY_BUNDLE="+bundlePath,
+		"AW_POLICY_CONFIG="+cfg,
+		"AW_SYNC_STATE_DIR="+stateDir)
+
+	if code == 0 {
+		t.Fatal("exit = 0, want non-zero: the signature does not check out")
+	}
+	if stderr == "" {
+		t.Error("stderr is empty; Claude Code shows it as the reason for refusing to start")
+	}
+}
+
+func TestAStateDirectoryWithoutATrustFileBehavesExactlyAsBefore(t *testing.T) {
+	bundlePath := writeFile(t, "aw-bundle.json", bundle)
+	cfgPath := filepath.Join(t.TempDir(), "absent.json")
+
+	withoutState, _, withoutCode := run(t, "AW_POLICY_BUNDLE="+bundlePath, "AW_POLICY_CONFIG="+cfgPath)
+	withState, _, withCode := run(t,
+		"AW_POLICY_BUNDLE="+bundlePath,
+		"AW_POLICY_CONFIG="+cfgPath,
+		"AW_SYNC_STATE_DIR="+t.TempDir()) // no trust file: an unsigned deployment
+
+	if withState != withoutState || withCode != withoutCode {
+		t.Errorf("with an unsigned state directory: stdout = %q code = %d, want byte-identical to no state directory at all: stdout = %q code = %d",
+			withState, withCode, withoutState, withoutCode)
+	}
 }

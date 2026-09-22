@@ -37,6 +37,7 @@ import (
 
 	"github.com/acme/agent-wrapper/internal/agent/claude"
 	"github.com/acme/agent-wrapper/internal/policyhelper"
+	"github.com/acme/agent-wrapper/internal/sync"
 )
 
 // configEnv names the configuration file explicitly. It is honoured only
@@ -45,6 +46,19 @@ const configEnv = "AW_POLICY_CONFIG"
 
 // bundleEnv names the bundle file explicitly, under the same rule.
 const bundleEnv = "AW_POLICY_BUNDLE"
+
+// stateDirEnv names aw-sync's state directory, for tests and unusual
+// installs. It is gated by allowEnv exactly like bundleEnv and configEnv,
+// not merely reported like `aw doctor`'s reading of the same variable:
+// VerifyBundle reads the trust key, the bundle, and the signature all from
+// this one directory, so a release build that honoured a developer's own
+// AW_SYNC_STATE_DIR would let any non-root developer generate a keypair,
+// sign a bundle of their own choosing with it, and have this binary — the
+// thing Claude Code trusts without question — apply it as though the
+// organization's control plane had produced it. A release build must
+// always use the OS default, which is root-owned and out of a developer's
+// reach.
+const stateDirEnv = "AW_SYNC_STATE_DIR"
 
 // buildInfoArg is the one argument the helper answers instead of running.
 const buildInfoArg = "build-info"
@@ -104,13 +118,17 @@ func run(stdout, stderr io.Writer, getenv func(string) string, allowEnv bool) (c
 
 // loadConfig locates the bundle and reads the optional configuration file.
 // Problems are notes, not errors: the helper runs on with the defaults.
-// allowEnv is false in a release build: the two environment variables are
+// allowEnv is false in a release build: the three environment variables are
 // then not consulted at all, and a set one earns a note so the developer
 // who set it learns it did nothing rather than wondering why.
 func loadConfig(getenv func(string) string, allowEnv bool) (policyhelper.Config, []string) {
 	var notes []string
 	systemDir := claude.SystemDir(runtime.GOOS)
-	cfg := policyhelper.Config{BundlePath: filepath.Join(systemDir, claude.BundleFile)}
+	stateDir := sync.StateDir(runtime.GOOS)
+	cfg := policyhelper.Config{
+		BundlePath: filepath.Join(systemDir, claude.BundleFile),
+		StateDir:   stateDir,
+	}
 	path := filepath.Join(systemDir, "aw-policy.json")
 	if allowEnv {
 		if p := getenv(bundleEnv); p != "" {
@@ -119,11 +137,17 @@ func loadConfig(getenv func(string) string, allowEnv bool) (policyhelper.Config,
 		if p := getenv(configEnv); p != "" {
 			path = p
 		}
+		if p := getenv(stateDirEnv); p != "" {
+			cfg.StateDir = p
+		}
 	} else {
 		for _, name := range []string{bundleEnv, configEnv} {
 			if getenv(name) != "" {
 				notes = append(notes, fmt.Sprintf("%s is set but this build ignores it; the bundle and configuration are read from %s only", name, systemDir))
 			}
+		}
+		if getenv(stateDirEnv) != "" {
+			notes = append(notes, fmt.Sprintf("%s is set but this build ignores it; the state directory is %s only", stateDirEnv, stateDir))
 		}
 	}
 	raw, err := os.ReadFile(path)

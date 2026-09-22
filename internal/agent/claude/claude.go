@@ -56,6 +56,14 @@ type Adapter struct {
 	// SystemDir overrides the directory Claude Code reads managed settings
 	// from on this OS.
 	SystemDir string
+	// StateDir is aw-sync's own state directory, where the trust key, the
+	// bundle and its signature live — not this agent's SystemDir, which
+	// holds a narrowed, re-encoded copy of the bundle that a signature over
+	// the original bytes cannot check. Empty disables the signature check
+	// and reports it as an unsigned deployment, which is what a test aimed
+	// at Inspect's other findings wants, and what a caller that never sets
+	// this field gets by default.
+	StateDir string
 	// ConfigDir overrides ~/.claude, or $CLAUDE_CONFIG_DIR.
 	ConfigDir string
 	// GOOS overrides the operating system the adapter renders and inspects

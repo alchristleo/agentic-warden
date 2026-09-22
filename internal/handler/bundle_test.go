@@ -1,12 +1,18 @@
 package handler_test
 
 import (
+	"crypto/ed25519"
 	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
+	"github.com/acme/agent-wrapper/internal/handler"
 	"github.com/acme/agent-wrapper/internal/policy"
+	"github.com/acme/agent-wrapper/internal/signing"
+	"github.com/acme/agent-wrapper/internal/store"
 )
 
 const groupedRuleSet = `{
@@ -214,6 +220,121 @@ func TestBundleGroupsAreTheUnionOfAuthoredAndSynced(t *testing.T) {
 	}
 	if want := []string{"baseline", "platform", "mobile", "payments"}; !equal(names, want) {
 		t.Errorf("rules = %v, want %v", names, want)
+	}
+}
+
+// newSignedServer builds a server the way newServer does, but returns it
+// already armed with the given Signer so a test can exercise the signing
+// headers without reaching past the package boundary the other tests use.
+func newSignedServer(t *testing.T, signer *handler.Signer) *httptest.Server {
+	t.Helper()
+	h := handler.New(store.NewMemory(), nil)
+	h.AdminToken = adminToken
+	h.Now = func() time.Time { return time.Date(2026, 9, 20, 12, 0, 0, 0, time.UTC) }
+	h.Signer = signer
+	srv := httptest.NewServer(h.Routes())
+	t.Cleanup(srv.Close)
+	return srv
+}
+
+func TestBundleCarriesASignature(t *testing.T) {
+	key, _ := signing.Generate()
+	srv := newSignedServer(t, &handler.Signer{Key: key})
+	_, alice := enroll(t, srv, mintToken(t, srv, "alice@acme.com"))
+
+	resp := fetchBundle(t, srv, alice, nil)
+
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d", resp.StatusCode)
+	}
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	pub := key.Public().(ed25519.PublicKey)
+	if got := resp.Header.Get("X-AW-Key-Id"); got != signing.KeyID(pub) {
+		t.Fatalf("X-AW-Key-Id = %q, want %q", got, signing.KeyID(pub))
+	}
+	if !signing.Verify(pub, body, resp.Header.Get("X-AW-Signature")) {
+		t.Fatal("the signature does not verify over the response body")
+	}
+	if resp.Header.Get("X-AW-Key-Rollover") != "" {
+		t.Fatal("a rollover header appeared with no previous key configured")
+	}
+}
+
+func TestUnsignedDeploymentSendsNoSignatureHeaders(t *testing.T) {
+	srv := newServer(t)
+	_, alice := enroll(t, srv, mintToken(t, srv, "alice@acme.com"))
+
+	resp := fetchBundle(t, srv, alice, nil)
+
+	for _, name := range []string{"X-AW-Signature", "X-AW-Key-Id", "X-AW-Key-Rollover"} {
+		if resp.Header.Get(name) != "" {
+			t.Errorf("%s was sent by an unsigned deployment", name)
+		}
+	}
+}
+
+func TestNotModifiedCarriesNoSignature(t *testing.T) {
+	key, _ := signing.Generate()
+	srv := newSignedServer(t, &handler.Signer{Key: key})
+	_, alice := enroll(t, srv, mintToken(t, srv, "alice@acme.com"))
+	first := fetchBundle(t, srv, alice, nil)
+
+	second := fetchBundle(t, srv, alice, http.Header{"If-None-Match": {first.Header.Get("ETag")}})
+
+	if second.StatusCode != http.StatusNotModified {
+		t.Fatalf("status = %d, want 304", second.StatusCode)
+	}
+	if second.Header.Get("X-AW-Signature") != "" {
+		t.Fatal("a 304 carried a signature; there is no body to sign")
+	}
+}
+
+func TestRolloverHeaderIsSignedByThePreviousKey(t *testing.T) {
+	previous, _ := signing.Generate()
+	current, _ := signing.Generate()
+	srv := newSignedServer(t, &handler.Signer{Key: current, Previous: previous})
+	_, alice := enroll(t, srv, mintToken(t, srv, "alice@acme.com"))
+
+	resp := fetchBundle(t, srv, alice, nil)
+
+	got, err := signing.VerifyRollover(previous.Public().(ed25519.PublicKey), resp.Header.Get("X-AW-Key-Rollover"))
+	if err != nil {
+		t.Fatalf("VerifyRollover: %v", err)
+	}
+	if !got.PublicKey.Equal(current.Public().(ed25519.PublicKey)) {
+		t.Fatal("the rollover announces the wrong key")
+	}
+}
+
+func TestNotModifiedStillCarriesTheRollover(t *testing.T) {
+	// A fleet whose policy is stable answers 304 to every cycle. If the
+	// rollover rode only on a changed bundle, no machine there would ever
+	// repin, and the operator who then retires the previous key strands the
+	// lot of them. The statement is signed by the outgoing key and says
+	// nothing about the body, so a 304 can carry it honestly.
+	previous, _ := signing.Generate()
+	current, _ := signing.Generate()
+	srv := newSignedServer(t, &handler.Signer{Key: current, Previous: previous})
+	_, alice := enroll(t, srv, mintToken(t, srv, "alice@acme.com"))
+	first := fetchBundle(t, srv, alice, nil)
+
+	second := fetchBundle(t, srv, alice, http.Header{"If-None-Match": {first.Header.Get("ETag")}})
+
+	if second.StatusCode != http.StatusNotModified {
+		t.Fatalf("status = %d, want 304", second.StatusCode)
+	}
+	got, err := signing.VerifyRollover(previous.Public().(ed25519.PublicKey), second.Header.Get("X-AW-Key-Rollover"))
+	if err != nil {
+		t.Fatalf("VerifyRollover on a 304: %v", err)
+	}
+	if !got.PublicKey.Equal(current.Public().(ed25519.PublicKey)) {
+		t.Fatal("the rollover on the 304 announces the wrong key")
+	}
+	if second.Header.Get("X-AW-Signature") != "" {
+		t.Error("a 304 carried a signature; there is still no body to sign")
 	}
 }
 

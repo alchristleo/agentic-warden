@@ -30,6 +30,7 @@ import (
 	"github.com/acme/agent-wrapper/internal/agent/codex"
 	"github.com/acme/agent-wrapper/internal/agent/gemini"
 	"github.com/acme/agent-wrapper/internal/policy"
+	"github.com/acme/agent-wrapper/internal/policyhelper"
 	"github.com/acme/agent-wrapper/internal/repo"
 	"github.com/acme/agent-wrapper/internal/sync"
 )
@@ -64,8 +65,16 @@ func run(argv []string) error {
 		return err
 	}
 
+	// The claude adapter reports the signing state as one of its Inspect
+	// findings, and doing that means telling it where aw-sync's state
+	// directory is; every other adapter and code path below reaches it
+	// through stateDirFor(), so this is the one place that has to say so
+	// explicitly.
+	claudeAdapter := claude.New()
+	claudeAdapter.StateDir = stateDirFor()
+
 	registry := &agent.Registry{}
-	for _, a := range []agent.Adapter{claude.New(), codex.New(), gemini.New()} {
+	for _, a := range []agent.Adapter{claudeAdapter, codex.New(), gemini.New()} {
 		if err := registry.Register(a); err != nil {
 			return err
 		}
@@ -157,6 +166,16 @@ func (s policySource) String() string {
 // an error: launching without the organization's configuration when one
 // was meant to apply would be worse than refusing. No bundle at all is not
 // an error, only a note, so a machine aw-sync has not reached still runs.
+//
+// When aw-sync's state directory carries a trust key, the bundle must
+// verify against it before this function will use it: for aw, the bundle is
+// the only input, so one that fails verification is a refusal to launch,
+// named in the returned error, not a fallback to something weaker. A
+// machine with no trust file is an unsigned deployment and this behaves
+// exactly as it did before signing existed. This check is this wrapper
+// being careful about what it reads, not an enforcement boundary: a
+// developer can always bypass `aw` and run the agent directly, which is why
+// the real enforcement lives in the agent's own managed-settings tier.
 func resolvePolicy(opts options, workDir string) (*policy.Document, policySource, error) {
 	if opts.policyPath != "" {
 		doc, err := policy.Load(opts.policyPath)
@@ -165,23 +184,35 @@ func resolvePolicy(opts options, workDir string) (*policy.Document, policySource
 		}
 		return doc, policySource{Path: opts.policyPath, Kind: "document"}, nil
 	}
-	path := filepath.Join(stateDirFor(), sync.BundleFile)
-	raw, err := os.ReadFile(path)
-	if errors.Is(err, os.ErrNotExist) {
-		return nil, policySource{Kind: "none", Note: "no policy: aw-sync has not written " + path}, nil
+	stateDir := stateDirFor()
+	path := filepath.Join(stateDir, sync.BundleFile)
+	verifiedPath, raw, note, ok := policyhelper.VerifyBundle(stateDir, path)
+	if !ok {
+		return nil, policySource{}, errors.New(note)
 	}
-	if err != nil {
-		return nil, policySource{}, fmt.Errorf("reading %s: %w", path, err)
+	// raw is nil only for an unsigned deployment, where there is nothing to
+	// re-read against. Where a signature was checked, the checked bytes are
+	// the ones compiled: reading the file again would let whoever can write
+	// it swap in different bytes between the proof and the use.
+	if raw == nil {
+		var err error
+		raw, err = os.ReadFile(verifiedPath)
+		if errors.Is(err, os.ErrNotExist) {
+			return nil, policySource{Kind: "none", Note: "no policy: aw-sync has not written " + verifiedPath}, nil
+		}
+		if err != nil {
+			return nil, policySource{}, fmt.Errorf("reading %s: %w", verifiedPath, err)
+		}
 	}
 	var bundle policy.Bundle
 	if err := json.Unmarshal(raw, &bundle); err != nil {
-		return nil, policySource{}, fmt.Errorf("%s is not a valid bundle: %w", path, err)
+		return nil, policySource{}, fmt.Errorf("%s is not a valid bundle: %w", verifiedPath, err)
 	}
 	repoURL, err := repo.Detect(workDir)
 	if err != nil {
 		return nil, policySource{}, fmt.Errorf("detecting the repository of %s: %w", workDir, err)
 	}
-	return bundle.Compile(repoURL), policySource{Path: path, Kind: "bundle", Version: bundle.Version, Repo: repoURL}, nil
+	return bundle.Compile(repoURL), policySource{Path: verifiedPath, Kind: "bundle", Version: bundle.Version, Repo: repoURL}, nil
 }
 
 // stateDirFor is aw-sync's state directory: the OS default, or
@@ -306,6 +337,12 @@ func doctor(registry *agent.Registry, opts options, args []string) error {
 		}
 		if inspector, ok := adapter.(agent.Inspector); ok {
 			status.Findings = inspector.Inspect(nil)
+			// The claude adapter is the one this command hands a state
+			// directory to, and so the only one whose findings can be about
+			// a directory that enforces nothing.
+			if warn := redirectedStateDir(); name == claude.Name && warn != nil {
+				status.Findings = append(status.Findings, *warn)
+			}
 		}
 		launch, err := agent.Prepare(context.Background(), registry, agent.Options{
 			Agent:    name,
@@ -336,6 +373,24 @@ func doctor(registry *agent.Registry, opts options, args []string) error {
 	}
 	printReport(out)
 	return nil
+}
+
+// redirectedStateDir warns that this report describes a state directory the
+// developer chose. Leaving AW_SYNC_STATE_DIR ungated in `aw` is deliberate —
+// this wrapper is a convenience a developer can bypass outright, so honouring
+// it costs nothing — but aw-policy, which Claude Code runs and which actually
+// enforces, refuses the variable in a release build and always reads the OS
+// default. Without this note doctor can report `bundle signature: verified`
+// about a directory nothing enforces from while the real one has been failing
+// for weeks, which is the one thing doctor exists to prevent.
+func redirectedStateDir() *agent.Finding {
+	dir := os.Getenv("AW_SYNC_STATE_DIR")
+	if dir == "" {
+		return nil
+	}
+	return &agent.Finding{Level: agent.Warn, Message: fmt.Sprintf(
+		"AW_SYNC_STATE_DIR points this report at %s: the bundle-signature finding above describes that directory, not %s, which is where aw-policy reads the bundle it enforces at session start",
+		dir, sync.StateDir(runtime.GOOS))}
 }
 
 // syncSection reads aw-sync's state directory as the developer. A missing

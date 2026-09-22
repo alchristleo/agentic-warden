@@ -14,6 +14,8 @@ import (
 	"syscall"
 	"testing"
 	"time"
+
+	"github.com/acme/agent-wrapper/internal/signing"
 )
 
 var built string
@@ -48,8 +50,15 @@ type server struct {
 
 func startServer(t *testing.T) *server {
 	t.Helper()
+	return startServerEnv(t, nil)
+}
+
+// startServerEnv starts awd on an ephemeral port with extra environment on
+// top of the process's own, for tests that need AWD_SIGNING_KEY set.
+func startServerEnv(t *testing.T, extra []string) *server {
+	t.Helper()
 	cmd := exec.Command(built, "serve")
-	cmd.Env = append(os.Environ(), "AWD_ADDR=127.0.0.1:0", "AWD_LOG_LEVEL=error", "AWD_ADMIN_TOKEN="+e2eAdminToken)
+	cmd.Env = append(append(os.Environ(), "AWD_ADDR=127.0.0.1:0", "AWD_LOG_LEVEL=error", "AWD_ADMIN_TOKEN="+e2eAdminToken), extra...)
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
 		t.Fatalf("stdout pipe: %v", err)
@@ -599,6 +608,77 @@ func TestGroupsApplyThenTheBundleShowsTheUnion(t *testing.T) {
 	summary, code := runAwd(t, "groups", "--url", s.url)
 	if code != 0 || !strings.Contains(summary, "okta-export") || !strings.Contains(summary, "users: 2") {
 		t.Errorf("groups exited %d: %s", code, summary)
+	}
+}
+
+func TestKeygenThenServeSignsTheBundle(t *testing.T) {
+	keyPath := filepath.Join(t.TempDir(), "signing.key")
+
+	out, code := runAwd(t, "keygen", "--out", keyPath)
+	if code != 0 {
+		t.Fatalf("keygen exited %d: %s", code, out)
+	}
+	var pubLine string
+	for _, line := range strings.Split(out, "\n") {
+		if strings.HasPrefix(line, "public key ") {
+			pubLine = strings.TrimPrefix(line, "public key ")
+		}
+	}
+	pub, err := signing.ParsePublic(pubLine)
+	if err != nil {
+		t.Fatalf("keygen printed an unparsable public key %q: %v", pubLine, err)
+	}
+
+	// keygen never overwrites: a control plane that quietly started signing
+	// with a different key would strand every machine pinned to the old one.
+	if _, code := runAwd(t, "keygen", "--out", keyPath); code == 0 {
+		t.Fatal("keygen over an existing file exited 0, want non-zero")
+	}
+
+	s := startServerEnv(t, []string{"AWD_SIGNING_KEY=" + keyPath})
+	if out, code := runAwd(t, "apply", writePolicy(t, policyYAML), "--url", s.url); code != 0 {
+		t.Fatalf("apply: %s", out)
+	}
+
+	out, code = runAwd(t, "enroll-token", "alice@acme.com", "--url", s.url)
+	if code != 0 {
+		t.Fatalf("enroll-token exited %d: %s", code, out)
+	}
+	token := strings.TrimSpace(out)
+
+	resp, err := http.Post(s.url+"/v1/machines/enroll", "application/json",
+		strings.NewReader(`{"token":"`+token+`","name":"e2e-host","os":"linux"}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	var enrolled struct {
+		Credential string `json:"credential"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&enrolled); err != nil {
+		t.Fatal(err)
+	}
+
+	req, _ := http.NewRequest(http.MethodGet, s.url+"/v1/bundle", nil)
+	req.Header.Set("Authorization", "Bearer "+enrolled.Credential)
+	bundleResp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer bundleResp.Body.Close()
+	body, err := io.ReadAll(bundleResp.Body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sig := bundleResp.Header.Get("X-AW-Signature")
+	if sig == "" {
+		t.Fatal("response carries no X-AW-Signature")
+	}
+	if !signing.Verify(pub, body, sig) {
+		t.Error("X-AW-Signature does not verify against the key keygen printed")
+	}
+	if got := bundleResp.Header.Get("X-AW-Key-Id"); got != signing.KeyID(pub) {
+		t.Errorf("X-AW-Key-Id = %q, want %q", got, signing.KeyID(pub))
 	}
 }
 

@@ -1,7 +1,9 @@
 package sync_test
 
 import (
+	"bytes"
 	"context"
+	"crypto/ed25519"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -19,6 +21,7 @@ import (
 	"github.com/acme/agent-wrapper/internal/agent/claude"
 	"github.com/acme/agent-wrapper/internal/model"
 	"github.com/acme/agent-wrapper/internal/policy"
+	"github.com/acme/agent-wrapper/internal/signing"
 	"github.com/acme/agent-wrapper/internal/sync"
 )
 
@@ -80,6 +83,55 @@ func enrolled(t *testing.T, f *fakeAwd, reg *agent.Registry, agents ...string) (
 		StateDir: stateDir,
 		GOOS:     "linux",
 		Roots:    map[string]string{"claude": root, "broken": filepath.Join(t.TempDir(), "broken-root")},
+		Registry: reg,
+		Now:      func() time.Time { return now },
+	}, root
+}
+
+// newSignedFakeAwd serves body signed by signer, checking the bearer
+// credential the way the real control plane does. When announcer is
+// non-nil, the response also carries a rollover statement announcing
+// signer's key, signed by announcer — the shape a control plane mid-
+// rotation sends.
+func newSignedFakeAwd(t *testing.T, credential string, body []byte, signer ed25519.PrivateKey, announcer ed25519.PrivateKey) *httptest.Server {
+	t.Helper()
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("Authorization") != "Bearer "+credential {
+			http.Error(w, `{"error":"unauthorized"}`, http.StatusUnauthorized)
+			return
+		}
+		w.Header().Set("X-AW-Signature", signing.Sign(signer, body))
+		w.Header().Set("X-AW-Key-Id", signing.KeyID(signer.Public().(ed25519.PublicKey)))
+		if announcer != nil {
+			w.Header().Set("X-AW-Key-Rollover", signing.SignRollover(announcer, signer.Public().(ed25519.PublicKey)))
+		}
+		w.Header().Set("ETag", `"e1"`)
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write(body)
+	}))
+	t.Cleanup(srv.Close)
+	return srv
+}
+
+// enrolledSigned is enrolled's counterpart for a machine that pins a signing
+// key, so a signed test does not have to rebuild machine.json by hand.
+func enrolledSigned(t *testing.T, srv *httptest.Server, reg *agent.Registry, pinned ed25519.PublicKey, agents ...string) (sync.Config, string) {
+	t.Helper()
+	stateDir := filepath.Join(t.TempDir(), "state")
+	m := sync.Machine{Server: srv.URL, MachineID: "m1", Credential: "cred", Agents: agents}
+	if pinned != nil {
+		m.PublicKey = signing.FormatPublic(pinned)
+		m.KeyID = signing.KeyID(pinned)
+	}
+	if err := sync.SaveMachine(stateDir, m); err != nil {
+		t.Fatal(err)
+	}
+	root := filepath.Join(t.TempDir(), "claude-root")
+	now := time.Date(2026, 9, 22, 12, 0, 0, 0, time.UTC)
+	return sync.Config{
+		StateDir: stateDir,
+		GOOS:     "linux",
+		Roots:    map[string]string{"claude": root},
 		Registry: reg,
 		Now:      func() time.Time { return now },
 	}, root
@@ -540,5 +592,292 @@ func TestRunLeavesTheFullBundleInTheStateDirectory(t *testing.T) {
 	}
 	if len(res.Written) != 3 {
 		t.Errorf("Written = %v; want the two Claude files and the state-dir bundle", res.Written)
+	}
+}
+
+func TestRunWritesTheServedBytesAndTheSignature(t *testing.T) {
+	// The served body is deliberately not what json.MarshalIndent would
+	// produce (compact, no trailing newline); the point of the test is that
+	// the signature still verifies against exactly what landed on disk.
+	key, err := signing.Generate()
+	if err != nil {
+		t.Fatal(err)
+	}
+	pub := key.Public().(ed25519.PublicKey)
+	body := []byte(`{"version":"6","user":"a@b.c","rules":[]}`)
+	srv := newSignedFakeAwd(t, "cred", body, key, nil)
+	cfg, _ := enrolledSigned(t, srv, claudeRegistry(t), pub, "claude")
+
+	res := sync.Run(context.Background(), cfg)
+	if res.Err != nil {
+		t.Fatal(res.Err)
+	}
+
+	onDisk, err := os.ReadFile(filepath.Join(cfg.StateDir, sync.BundleFile))
+	if err != nil {
+		t.Fatalf("reading the bundle: %v", err)
+	}
+	if !bytes.Equal(onDisk, body) {
+		t.Fatalf("the bundle on disk is a re-encoding, not the served bytes:\n%s", onDisk)
+	}
+	sig, err := os.ReadFile(filepath.Join(cfg.StateDir, sync.SignatureFile))
+	if err != nil {
+		t.Fatalf("reading the signature: %v", err)
+	}
+	fields := strings.Fields(string(sig))
+	if len(fields) != 3 || fields[0] != "aw-ed25519" {
+		t.Fatalf("signature file = %q", sig)
+	}
+	if !signing.Verify(pub, onDisk, fields[2]) {
+		t.Fatal("the signature on disk does not verify over the bundle on disk")
+	}
+	trust, err := os.ReadFile(filepath.Join(cfg.StateDir, sync.TrustFile))
+	if err != nil {
+		t.Fatalf("reading the trust key: %v", err)
+	}
+	if strings.TrimSpace(string(trust)) != signing.FormatPublic(pub) {
+		t.Fatalf("trust file = %q", trust)
+	}
+	state, _ := sync.LoadState(cfg.StateDir)
+	for _, name := range []string{sync.BundleFile, sync.SignatureFile, sync.TrustFile} {
+		if _, ok := state.Files[filepath.Join(cfg.StateDir, name)]; !ok {
+			t.Errorf("%s is not recorded in state.json, so drift in it goes unnoticed", name)
+		}
+	}
+}
+
+func TestRunWritesNothingWhenVerificationFails(t *testing.T) {
+	key, err := signing.Generate()
+	if err != nil {
+		t.Fatal(err)
+	}
+	wrong, err := signing.Generate()
+	if err != nil {
+		t.Fatal(err)
+	}
+	pub := key.Public().(ed25519.PublicKey)
+	body := []byte(`{"version":"6","user":"a@b.c","rules":[]}`)
+	// Signed by a key nobody pinned: the pinned key below cannot verify it.
+	srv := newSignedFakeAwd(t, "cred", body, wrong, nil)
+	cfg, root := enrolledSigned(t, srv, claudeRegistry(t), pub, "claude")
+
+	res := sync.Run(context.Background(), cfg)
+	if res.Err == nil {
+		t.Fatal("want an error when the bundle is not signed by the pinned key")
+	}
+	if _, err := os.Stat(filepath.Join(root, claude.BundleFile)); !errors.Is(err, os.ErrNotExist) {
+		t.Error("an agent file was written despite failed verification")
+	}
+	if _, err := os.Stat(filepath.Join(cfg.StateDir, sync.BundleFile)); !errors.Is(err, os.ErrNotExist) {
+		t.Error("the bundle file was written despite failed verification")
+	}
+	if _, err := os.Stat(filepath.Join(cfg.StateDir, sync.SignatureFile)); !errors.Is(err, os.ErrNotExist) {
+		t.Error("the signature file was written despite failed verification")
+	}
+}
+
+func TestRunRepinsOnARollover(t *testing.T) {
+	old, err := signing.Generate()
+	if err != nil {
+		t.Fatal(err)
+	}
+	next, err := signing.Generate()
+	if err != nil {
+		t.Fatal(err)
+	}
+	oldPub := old.Public().(ed25519.PublicKey)
+	nextPub := next.Public().(ed25519.PublicKey)
+	body := []byte(`{"version":"7","user":"a@b.c","rules":[]}`)
+	// Signs with the new key, announces it via the one already pinned.
+	srv := newSignedFakeAwd(t, "cred", body, next, old)
+	cfg, _ := enrolledSigned(t, srv, claudeRegistry(t), oldPub, "claude")
+
+	res := sync.Run(context.Background(), cfg)
+	if res.Err != nil {
+		t.Fatal(res.Err)
+	}
+
+	machine, err := sync.LoadMachine(cfg.StateDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if machine.PublicKey != signing.FormatPublic(nextPub) || machine.KeyID != signing.KeyID(nextPub) {
+		t.Errorf("machine = %+v, want repinned to the new key", machine)
+	}
+	trust, err := os.ReadFile(filepath.Join(cfg.StateDir, sync.TrustFile))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.TrimSpace(string(trust)) != signing.FormatPublic(nextPub) {
+		t.Fatalf("trust file = %q, want the new key", trust)
+	}
+}
+
+func TestUnsignedDeploymentWritesNeitherNewFile(t *testing.T) {
+	f := newFakeAwd(t, testBundle())
+	cfg, _ := enrolled(t, f, claudeRegistry(t), "claude") // machine.json pins no key
+
+	res := sync.Run(context.Background(), cfg)
+	if res.Err != nil {
+		t.Fatal(res.Err)
+	}
+	if _, err := os.Stat(filepath.Join(cfg.StateDir, sync.SignatureFile)); !errors.Is(err, os.ErrNotExist) {
+		t.Error("an unsigned deployment wrote a signature file")
+	}
+	if _, err := os.Stat(filepath.Join(cfg.StateDir, sync.TrustFile)); !errors.Is(err, os.ErrNotExist) {
+		t.Error("an unsigned deployment wrote a trust file")
+	}
+	body, err := json.Marshal(testBundle())
+	if err != nil {
+		t.Fatal(err)
+	}
+	onDisk, err := os.ReadFile(filepath.Join(cfg.StateDir, sync.BundleFile))
+	if err != nil {
+		t.Fatalf("reading the bundle: %v", err)
+	}
+	if !bytes.Equal(onDisk, body) {
+		t.Errorf("bundle on disk = %s, want the served bytes verbatim", onDisk)
+	}
+}
+
+func TestRunRepinsOnARolloverCarriedByA304(t *testing.T) {
+	// The fleet this matters on is the ordinary one: policy that does not
+	// change, so every cycle is a 304. A rotation that only moved the pin on
+	// changed bundle bytes would never finish here, and the operator who
+	// then retires the previous key freezes every machine still on it.
+	old, err := signing.Generate()
+	if err != nil {
+		t.Fatal(err)
+	}
+	next, err := signing.Generate()
+	if err != nil {
+		t.Fatal(err)
+	}
+	oldPub := old.Public().(ed25519.PublicKey)
+	nextPub := next.Public().(ed25519.PublicKey)
+	body := []byte(`{"version":"8","user":"a@b.c","rules":[]}`)
+	var rotating atomic.Bool
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		const etag = `"e1"`
+		w.Header().Set("ETag", etag)
+		if rotating.Load() {
+			w.Header().Set("X-AW-Key-Rollover", signing.SignRollover(old, nextPub))
+		}
+		if r.Header.Get("If-None-Match") == etag {
+			w.WriteHeader(http.StatusNotModified)
+			return
+		}
+		w.Header().Set("X-AW-Signature", signing.Sign(old, body))
+		w.Header().Set("X-AW-Key-Id", signing.KeyID(oldPub))
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write(body)
+	}))
+	t.Cleanup(srv.Close)
+	cfg, _ := enrolledSigned(t, srv, claudeRegistry(t), oldPub, "claude")
+	if res := sync.Run(context.Background(), cfg); res.Err != nil {
+		t.Fatalf("the first cycle failed: %v", res.Err)
+	}
+
+	rotating.Store(true)
+	res := sync.Run(context.Background(), cfg)
+
+	if res.Err != nil {
+		t.Fatalf("the rotating cycle failed: %v", res.Err)
+	}
+	if !res.Unchanged {
+		t.Fatalf("the second cycle was not a 304: %+v", res)
+	}
+	machine, err := sync.LoadMachine(cfg.StateDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if machine.PublicKey != signing.FormatPublic(nextPub) || machine.KeyID != signing.KeyID(nextPub) {
+		t.Errorf("machine = %+v; a rollover on a 304 must move the pin, or the rotation never finishes", machine)
+	}
+	// The bundle on disk is still the one the outgoing key signed, so the
+	// trust file beside it must still name that key: rewriting it here would
+	// break the check it exists for. The next changed bundle rewrites both.
+	trust, err := os.ReadFile(filepath.Join(cfg.StateDir, sync.TrustFile))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.TrimSpace(string(trust)) != signing.FormatPublic(oldPub) {
+		t.Errorf("trust file = %q; a 304 wrote no new bundle, so the key its signature was made with must stay", trust)
+	}
+}
+
+func TestRunRemovesTheSigningFilesWhenNoKeyIsPinned(t *testing.T) {
+	// Signing turned off on the control plane, or a machine re-enrolled
+	// against one that never signed: machine.json pins nothing, a fresh
+	// bundle is written, and the trust key and signature left over from
+	// before would otherwise make aw-policy fail every session forever.
+	f := newFakeAwd(t, testBundle())
+	cfg, _ := enrolled(t, f, claudeRegistry(t), "claude")
+	key, err := signing.Generate()
+	if err != nil {
+		t.Fatal(err)
+	}
+	pub := key.Public().(ed25519.PublicKey)
+	sigPath := filepath.Join(cfg.StateDir, sync.SignatureFile)
+	trustPath := filepath.Join(cfg.StateDir, sync.TrustFile)
+	writeFile(t, trustPath, signing.FormatPublic(pub)+"\n")
+	writeFile(t, sigPath, "aw-ed25519 "+signing.KeyID(pub)+" "+signing.Sign(key, []byte("some older bundle"))+"\n")
+
+	res := sync.Run(context.Background(), cfg)
+
+	if res.Err != nil {
+		t.Fatalf("the cycle failed: %v", res.Err)
+	}
+	for _, path := range []string{sigPath, trustPath} {
+		if _, err := os.Stat(path); !errors.Is(err, os.ErrNotExist) {
+			t.Errorf("%s survived a cycle on a machine that pins no key: aw-policy will keep checking against it", path)
+		}
+	}
+	state, err := sync.LoadState(cfg.StateDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, path := range []string{sigPath, trustPath} {
+		if _, ok := state.Files[path]; ok {
+			t.Errorf("state.json still lists %s, so the next cycle reports it as drift forever", path)
+		}
+	}
+}
+
+func TestRunRemovesTheSigningFilesEvenWhenTheBundleIsUnchanged(t *testing.T) {
+	// The removal has to survive a server that would answer 304. On a fleet
+	// whose policy is stable that is every cycle, so a removal that only
+	// happened on changed bytes would never happen at all.
+	f := newFakeAwd(t, testBundle())
+	cfg, _ := enrolled(t, f, claudeRegistry(t), "claude")
+	if res := sync.Run(context.Background(), cfg); res.Err != nil {
+		t.Fatalf("the first cycle failed: %v", res.Err)
+	}
+	key, err := signing.Generate()
+	if err != nil {
+		t.Fatal(err)
+	}
+	trustPath := filepath.Join(cfg.StateDir, sync.TrustFile)
+	writeFile(t, trustPath, signing.FormatPublic(key.Public().(ed25519.PublicKey))+"\n")
+
+	res := sync.Run(context.Background(), cfg)
+
+	if res.Err != nil {
+		t.Fatalf("the second cycle failed: %v", res.Err)
+	}
+	if _, err := os.Stat(trustPath); !errors.Is(err, os.ErrNotExist) {
+		t.Errorf("%s survived a cycle the server would have answered 304", trustPath)
+	}
+}
+
+// writeFile puts body at path, creating the directory, for tests that set up
+// leftovers an earlier deployment would have written.
+func writeFile(t *testing.T, path, body string) {
+	t.Helper()
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
+		t.Fatal(err)
 	}
 }

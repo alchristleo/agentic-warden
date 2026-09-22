@@ -3,6 +3,7 @@ package sync
 import (
 	"bytes"
 	"context"
+	"crypto/ed25519"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -13,6 +14,7 @@ import (
 
 	"github.com/acme/agent-wrapper/internal/model"
 	"github.com/acme/agent-wrapper/internal/policy"
+	"github.com/acme/agent-wrapper/internal/signing"
 )
 
 // maxBundleBytes bounds what is read from the control plane. A bundle is a
@@ -46,6 +48,12 @@ type Enrollment struct {
 	Credential string `json:"credential"`
 	// User is the account this machine's enrollment token was minted for.
 	User string `json:"user"`
+	// PublicKey is the control plane's bundle signing key, pinned here at
+	// the one moment this machine has authenticated to the server with a
+	// token an operator minted. Empty when the server does not sign.
+	PublicKey string `json:"publicKey,omitempty"`
+	// KeyID names that key in listings and headers.
+	KeyID string `json:"keyId,omitempty"`
 }
 
 // Fetched is one answer to a conditional bundle request. Unchanged means
@@ -58,6 +66,19 @@ type Fetched struct {
 	// Unchanged means the server answered 304: the caller's ETag is still
 	// current and Bundle was not sent.
 	Unchanged bool
+	// Raw is the response body exactly as the server wrote it. The
+	// signature covers these bytes, so this — not a re-encoding of Bundle —
+	// is what goes on disk.
+	Raw []byte
+	// Signature is what the server sent, for the caller to store beside the
+	// bundle. Empty for an unsigned deployment. The key it belongs to is not
+	// carried with it: the caller names the key it actually verified under,
+	// which after a rollover is the new one, not whatever header the server
+	// sent.
+	Signature string
+	// Rollover is the new key this fetch repinned to, or nil. The caller
+	// persists it: the verification already happened here.
+	Rollover *signing.Rollover
 }
 
 // Enroll exchanges a single-use token for this machine's credential.
@@ -106,7 +127,7 @@ func (c *Client) Enroll(ctx context.Context, token, name, goos string) (Enrollme
 // Fetch asks for the machine's bundle, revalidating etag when it is not
 // empty. A 401 is reported as model.ErrUnauthorized so the caller can say
 // "revoked" rather than "failed".
-func (c *Client) Fetch(ctx context.Context, credential, etag string) (Fetched, error) {
+func (c *Client) Fetch(ctx context.Context, credential, etag string, pinned ed25519.PublicKey) (Fetched, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.endpoint("/v1/bundle"), nil)
 	if err != nil {
 		return Fetched{}, err
@@ -117,6 +138,12 @@ func (c *Client) Fetch(ctx context.Context, credential, etag string) (Fetched, e
 	if etag != "" {
 		req.Header.Set("If-None-Match", etag)
 	}
+	if pinned != nil {
+		// The control plane records this, so an operator can see which
+		// machines have picked up a rotation and when it is safe to retire
+		// the old key.
+		req.Header.Set("X-AW-Key-Id", signing.KeyID(pinned))
+	}
 	resp, err := c.client().Do(req)
 	if err != nil {
 		return Fetched{}, fmt.Errorf("sync: reaching the control plane at %s: %w", c.Server, err)
@@ -125,7 +152,16 @@ func (c *Client) Fetch(ctx context.Context, credential, etag string) (Fetched, e
 
 	switch resp.StatusCode {
 	case http.StatusNotModified:
-		return Fetched{ETag: etag, Unchanged: true}, nil
+		// A 304 carries no body and no signature, but it can carry a
+		// rollover: the statement is signed by the pinned key and says
+		// nothing about the bundle, so it verifies on its own. Reading it
+		// here is what lets a rotation finish on a fleet whose policy never
+		// changes, where every cycle is a 304.
+		rollover, err := rolloverFrom(resp, pinned)
+		if err != nil {
+			return Fetched{}, err
+		}
+		return Fetched{ETag: etag, Unchanged: true, Rollover: rollover}, nil
 	case http.StatusUnauthorized:
 		return Fetched{}, fmt.Errorf("sync: %w: the control plane rejected this machine's credential; re-enroll", model.ErrUnauthorized)
 	case http.StatusOK:
@@ -141,11 +177,48 @@ func (c *Client) Fetch(ctx context.Context, credential, etag string) (Fetched, e
 	if len(payload) > maxBundleBytes {
 		return Fetched{}, fmt.Errorf("sync: the bundle exceeds %d bytes", maxBundleBytes)
 	}
+	signature := resp.Header.Get("X-AW-Signature")
+	rollover, err := rolloverFrom(resp, pinned)
+	if err != nil {
+		return Fetched{}, err
+	}
+	if pinned != nil {
+		verifier := pinned
+		if rollover != nil {
+			verifier = rollover.PublicKey
+		}
+		if signature == "" {
+			return Fetched{}, errors.New("sync: this machine pins a signing key but the control plane sent no signature")
+		}
+		if !signing.Verify(verifier, payload, signature) {
+			return Fetched{}, fmt.Errorf("sync: the bundle is not signed by key %s", signing.KeyID(verifier))
+		}
+	}
+
 	var bundle policy.Bundle
 	if err := json.Unmarshal(payload, &bundle); err != nil {
 		return Fetched{}, fmt.Errorf("sync: parsing the bundle: %w", err)
 	}
-	return Fetched{Bundle: &bundle, ETag: resp.Header.Get("ETag")}, nil
+	return Fetched{Bundle: &bundle, Raw: payload, Signature: signature, ETag: resp.Header.Get("ETag"), Rollover: rollover}, nil
+}
+
+// rolloverFrom reads the rollover a response announces, checked against the
+// key this machine has pinned. A rollover is the only thing that may move
+// the pin, and only the pinned key can sign one, so trust chains back to
+// enrollment; a machine that pins nothing has nothing to check a statement
+// with and ignores the header entirely. A statement that does not check out
+// is an error rather than a header quietly dropped, because on a 304 there
+// is no bundle whose own failure would otherwise surface it.
+func rolloverFrom(resp *http.Response, pinned ed25519.PublicKey) (*signing.Rollover, error) {
+	header := resp.Header.Get("X-AW-Key-Rollover")
+	if pinned == nil || header == "" {
+		return nil, nil
+	}
+	next, err := signing.VerifyRollover(pinned, header)
+	if err != nil {
+		return nil, fmt.Errorf("sync: %w", err)
+	}
+	return &next, nil
 }
 
 func (c *Client) endpoint(path string) string {

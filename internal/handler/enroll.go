@@ -8,6 +8,7 @@ import (
 
 	"github.com/acme/agent-wrapper/internal/credential"
 	"github.com/acme/agent-wrapper/internal/model"
+	"github.com/acme/agent-wrapper/internal/signing"
 )
 
 // defaultTokenTTL is how long an enrollment token lives unless the request
@@ -98,7 +99,15 @@ func (h *Handler) postEnroll(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	h.log.InfoContext(r.Context(), "machine enrolled", "machine", id, "user", user, "name", req.Name)
-	writeJSON(w, http.StatusCreated, map[string]any{"machineId": id, "credential": plain, "user": user})
+	response := map[string]any{"machineId": id, "credential": plain, "user": user}
+	if h.Signer != nil {
+		// The machine pins this key now, while it is talking to a server it
+		// has just authenticated to with a single-use token. Everything the
+		// machine verifies later chains back to this moment.
+		response["publicKey"] = signing.FormatPublic(h.Signer.Public())
+		response["keyId"] = h.Signer.KeyID()
+	}
+	writeJSON(w, http.StatusCreated, response)
 }
 
 func (h *Handler) getMachines(w http.ResponseWriter, r *http.Request) {

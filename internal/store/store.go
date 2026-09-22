@@ -40,7 +40,10 @@ type Store interface {
 	// or model.ErrNotFound.
 	MachineByCredential(ctx context.Context, hash string) (model.Machine, error)
 	// TouchMachine records a successful bundle fetch, or model.ErrNotFound.
-	TouchMachine(ctx context.Context, id string, seenAt time.Time, bundleVersion string) error
+	// keyID is the signing key the machine presented, empty when it pins
+	// none; it is stored as given, so a machine that stops presenting one
+	// stops reporting one.
+	TouchMachine(ctx context.Context, id string, seenAt time.Time, bundleVersion, keyID string) error
 	// ListMachines returns every machine in enrollment order with its
 	// credential hash cleared: a listing is for operators, and the hash is
 	// the lookup key, not information.

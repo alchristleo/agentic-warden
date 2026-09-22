@@ -2,6 +2,7 @@ package sync
 
 import (
 	"context"
+	"crypto/ed25519"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -18,6 +19,7 @@ import (
 
 	"github.com/acme/agent-wrapper/internal/agent"
 	"github.com/acme/agent-wrapper/internal/cache"
+	"github.com/acme/agent-wrapper/internal/signing"
 )
 
 // revisionSuffix names the sibling written beside every rendered JSON file,
@@ -62,12 +64,18 @@ type Result struct {
 	Err error
 }
 
-// plannedFile is a rendered file resolved to its absolute path, held until
-// every renderer has succeeded.
+// plannedFile is one change to make to the filesystem, resolved to an
+// absolute path and held until every renderer has succeeded: a file to write,
+// or — with remove set, and no content — a file that must no longer be there.
+// A removal is planned alongside the writes rather than done after them so
+// that it obeys the same rule as everything else in a cycle, namely that it
+// happens only once every renderer agreed and that failing it fails the
+// cycle.
 type plannedFile struct {
 	path    string
 	content []byte
 	mode    fs.FileMode
+	remove  bool
 }
 
 // Run performs one cycle: fetch the bundle, render every enrolled agent,
@@ -132,14 +140,57 @@ func Run(ctx context.Context, cfg Config) Result {
 	}
 
 	client := &Client{Server: machine.Server, HTTP: cfg.HTTP}
-	fetched, err := client.Fetch(ctx, machine.Credential, etag)
+	var pinned ed25519.PublicKey
+	if machine.PublicKey != "" {
+		key, err := signing.ParsePublic(machine.PublicKey)
+		if err != nil {
+			return cfg.fail(state, notes, nil, nil, fmt.Errorf("sync: the pinned key in machine.json: %w", err))
+		}
+		pinned = key
+	}
+
+	// Signing turned off on the control plane, or a machine re-enrolled
+	// against one that never signed, leaves a signature and a trust key
+	// behind that nothing would ever remove — and aw-policy goes on checking
+	// every bundle against them, failing every session forever. They are
+	// planned for removal below; the etag goes with them because a cycle the
+	// server answers 304 changes nothing on disk, and on a stable fleet that
+	// is every cycle.
+	var stale []string
+	if pinned == nil {
+		for _, name := range []string{SignatureFile, TrustFile} {
+			path := filepath.Join(cfg.StateDir, name)
+			if _, err := os.Stat(path); err == nil {
+				stale = append(stale, path)
+				notes = append(notes, "no signing key is pinned; removing "+path)
+			}
+		}
+		if len(stale) > 0 {
+			etag = ""
+		}
+	}
+
+	fetched, err := client.Fetch(ctx, machine.Credential, etag, pinned)
 	if err != nil {
 		return cfg.fail(state, notes, nil, nil, err)
 	}
 	if fetched.Unchanged {
+		// A rotation has to be able to finish on a fleet whose policy is
+		// stable, and there every cycle ends here. The signature and the
+		// trust file on disk are deliberately left alone: they describe the
+		// bundle this machine already holds, which the outgoing key signed,
+		// and rewriting either now would break the very check they exist for.
+		// The first changed bundle rewrites both under the new key.
+		var repinned []string
+		if fetched.Rollover != nil {
+			repinned = cfg.repin(machine, *fetched.Rollover)
+		}
 		state.Error = ""
 		state.SyncedAt = cfg.Now().UTC()
 		res := Result{Unchanged: true, Version: state.Version, Written: make([]string, 0), Notes: state.Notes}
+		if len(repinned) > 0 {
+			res.Notes = append(repinned, state.Notes...)
+		}
 		if err := SaveState(cfg.StateDir, state); err != nil {
 			res.Err = err
 		}
@@ -176,18 +227,39 @@ func Run(ctx context.Context, cfg Config) Result {
 		}
 	}
 
-	// The full bundle goes beside state.json so `aw` can compile it for the
-	// repository a session runs in, whatever agents this machine enrolled.
-	bundleJSON, err := json.MarshalIndent(fetched.Bundle, "", "  ")
-	if err != nil {
-		return cfg.fail(state, notes, nil, nil, fmt.Errorf("sync: encoding the bundle: %w", err))
+	// The signature covers the bytes the server sent, so those bytes go to
+	// disk unchanged. Re-encoding here would produce a file no verifier
+	// could check.
+	planned = append(planned, plannedFile{path: filepath.Join(cfg.StateDir, BundleFile), content: fetched.Raw, mode: 0o644})
+	for _, path := range stale {
+		planned = append(planned, plannedFile{path: path, remove: true})
 	}
-	planned = append(planned, plannedFile{path: filepath.Join(cfg.StateDir, BundleFile), content: append(bundleJSON, '\n'), mode: 0o644})
+	if fetched.Signature != "" && pinned != nil {
+		verified := pinned
+		if fetched.Rollover != nil {
+			verified = fetched.Rollover.PublicKey
+		}
+		planned = append(planned,
+			plannedFile{path: filepath.Join(cfg.StateDir, SignatureFile), content: []byte(fmt.Sprintf("aw-ed25519 %s %s\n", signing.KeyID(verified), fetched.Signature)), mode: 0o644},
+			plannedFile{path: filepath.Join(cfg.StateDir, TrustFile), content: []byte(signing.FormatPublic(verified) + "\n"), mode: 0o644},
+		)
+	}
 
 	version := fetched.Bundle.Version
 	written := make([]string, 0, len(planned))
 	files := make(map[string]string, len(planned))
 	for _, p := range planned {
+		if p.remove {
+			// A file that is already gone is the state this asks for, so
+			// only a real failure — a directory that cannot be written, a
+			// file held open — stops the cycle, exactly as a write would.
+			// Nothing is recorded in written or files: what the cycle leaves
+			// behind is what state.json describes, and this is not there.
+			if err := os.Remove(p.path); err != nil && !errors.Is(err, fs.ErrNotExist) {
+				return cfg.fail(state, notes, files, written, fmt.Errorf("sync: removing %s: %w", p.path, err))
+			}
+			continue
+		}
 		if err := cache.ReplaceMode(p.path, p.content, p.mode); err != nil {
 			// Each write is atomic, so what landed is whole; the next cycle
 			// rewrites the rest. written/files describe only what actually
@@ -203,6 +275,13 @@ func Run(ctx context.Context, cfg Config) Result {
 				return cfg.fail(state, notes, files, written, fmt.Errorf("sync: writing %s: %w", p.path+revisionSuffix, err))
 			}
 		}
+	}
+
+	if fetched.Rollover != nil {
+		// The pin moves only after the cycle's files are on disk: a machine
+		// that crashed mid-cycle repins on the next one, from a statement
+		// the old key still signs.
+		notes = append(notes, cfg.repin(machine, *fetched.Rollover)...)
 	}
 
 	if notes == nil {
@@ -224,6 +303,20 @@ func Run(ctx context.Context, cfg Config) Result {
 	}
 	cfg.audit(state, res)
 	return res
+}
+
+// repin moves this machine's pinned key to the one a rollover the fetch
+// already verified announced, and returns the notes the cycle should carry.
+// A save that fails is a note rather than a failed cycle: what is on disk is
+// consistent either way, and the next cycle repins from a statement the
+// outgoing key still signs.
+func (cfg Config) repin(machine Machine, rollover signing.Rollover) []string {
+	machine.PublicKey = signing.FormatPublic(rollover.PublicKey)
+	machine.KeyID = rollover.KeyID
+	if err := SaveMachine(cfg.StateDir, machine); err != nil {
+		return []string{"the new signing key could not be pinned: " + err.Error()}
+	}
+	return nil
 }
 
 // fail records err in the state without touching the last good etag,

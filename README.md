@@ -85,6 +85,65 @@ Server-managed settings from the claude.ai console shadow the helper
 entirely, so an organization uses one channel or the other; `aw doctor`
 detects the collision, and reports the bundle and aw-sync's last cycle.
 
+### Bundle signing
+
+`awd keygen --out PATH` writes a 0600 Ed25519 seed and prints its public key
+and key ID, and refuses to overwrite one that already exists.
+`AWD_SIGNING_KEY` names that seed to `awd`, which then signs every `GET
+/v1/bundle` response over the exact bytes it served: `X-AW-Signature` and
+`X-AW-Key-Id` ride alongside a 200, and neither header rides a 304, because
+there is no body and the machine keeps the bundle it already verified. A
+rollover statement does ride a 304 — it is signed by the outgoing key and
+says nothing about the body, so it stands on its own, and a fleet whose
+policy is stable answers 304 to every cycle and would otherwise never
+finish a rotation.
+Leave the variable unset and bundles are unsigned — an existing deployment
+keeps working exactly as it does today. A machine pins the key it saw at
+enrollment into its own `machine.json` (root-owned, 0600, the same file
+that already holds the machine credential), and every fetch after that is
+verified against the pin before the body is parsed. Only a rollover
+statement signed by the currently pinned key can move that pin, which is
+what lets `AWD_SIGNING_KEY_PREVIOUS` carry a rotation through without
+re-enrolling anyone. On a real machine `aw-sync` writes what it verified —
+`aw-bundle.json` holding the served bytes verbatim, `aw-bundle.json.sig`,
+and `aw-trust.pub`, the pinned key rendered where a developer's
+`aw-policy` can read it — and `aw-policy` checks that trio before it
+compiles anything: no trust file reads as an unsigned deployment and
+today's behaviour, a bad signature reads as the `{}` envelope (or exit 1,
+under `requireBundle`) rather than settings compiled from bytes nobody
+vouched for. `aw`, `aw codex` and `aw gemini` apply the same check against
+their own copy and refuse to launch on a bundle that fails it — for them
+the bundle is the only input, and this refusal is `aw` being careful about
+what it reads, not the enforcement boundary; that still lives in the
+agent's own managed-settings tier, same as everywhere else in this section.
+`aw doctor` reports which of the three states — verified, unsigned, or
+failed — a machine is in, and `awd machines` shows the key ID each machine
+last presented, which is how an operator watches a rotation finish. Doctor
+also warns when the bundle or the trust file is writable by more than its
+owner or owned by anyone but root, since an account that can rewrite both
+can sign a policy of its own and have it verify. **On Windows it warns
+that it cannot tell.** There is no uid behind the file there, and the ACL
+that decides who may write it is not something `aw doctor` reads; the
+finding says so rather than passing over the question in silence, because
+a report that says nothing about ownership reads as one that looked and
+found nothing wrong. On a Windows machine, check the ACLs of the state
+directory by hand.
+
+Signing proves the bytes on disk are the bytes `aw-sync` fetched; it does
+not change who is able to write, chmod, or replace them. The trust anchor
+and the bundle it checks share the same root-owned state directory, so
+against genuine root this is **detection, not prevention**: root can
+replace the binary doing the checking as easily as it can replace the
+bundle sitting beside it. Where it does prevent rather than detect: a
+`C:\ProgramData` subtree whose inherited ACLs let a standard user write
+files the deploy assumed were administrator-only — the tampering is caught
+there, though the loose ACL itself is not something doctor can report; a deploy that chmods or
+chowns the state directory wrongly; a bundle copied between machines,
+restored from a backup, or served by a stale cache; a compromised or
+impersonated `aw-sync`. The fetch path is the one place this is strong
+rather than advisory, because there the anchor is the 0600 `machine.json`,
+not a file sitting next to what it verifies.
+
 ## Layout
 
     cmd/aw/           wrapper CLI: run an agent with the bundle compiled for its repository, doctor, agents

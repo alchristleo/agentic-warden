@@ -145,8 +145,9 @@ func (m *Memory) MachineByCredential(_ context.Context, hash string) (model.Mach
 	return m.machines[id], nil
 }
 
-// TouchMachine records a fetch.
-func (m *Memory) TouchMachine(_ context.Context, id string, seenAt time.Time, bundleVersion string) error {
+// TouchMachine records a fetch. keyID is stored exactly as given, empty
+// included, so a machine that stops presenting a key stops reporting one.
+func (m *Memory) TouchMachine(_ context.Context, id string, seenAt time.Time, bundleVersion, keyID string) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	mc, ok := m.machines[id]
@@ -155,6 +156,7 @@ func (m *Memory) TouchMachine(_ context.Context, id string, seenAt time.Time, bu
 	}
 	mc.LastSeenAt = seenAt
 	mc.LastBundleVersion = bundleVersion
+	mc.LastKeyID = keyID
 	m.machines[id] = mc
 	return nil
 }

@@ -8,6 +8,7 @@ import (
 
 	"github.com/acme/agent-wrapper/internal/model"
 	"github.com/acme/agent-wrapper/internal/policy"
+	"github.com/acme/agent-wrapper/internal/signing"
 )
 
 // getBundle serves the machine's user their slice of the current policy:
@@ -52,15 +53,30 @@ func (h *Handler) getBundle(w http.ResponseWriter, r *http.Request, machine mode
 
 	// Touching is bookkeeping; a failure is logged, not surfaced, because
 	// the machine still needs its policy.
-	if err := h.store.TouchMachine(r.Context(), machine.ID, h.Now(), bundle.Version); err != nil {
+	if err := h.store.TouchMachine(r.Context(), machine.ID, h.Now(), bundle.Version, r.Header.Get("X-AW-Key-Id")); err != nil {
 		h.log.WarnContext(r.Context(), "recording a bundle fetch", "machine", machine.ID, "err", err)
 	}
 
+	// The rollover statement is self-contained and signed by the outgoing
+	// key, so it stands on its own and rides on a 304 as well as on a 200.
+	// It has to: on a fleet whose policy is stable every cycle is a 304, and
+	// a rotation announced only with changed bundle bytes would never finish
+	// there. The operator would then drop the previous key and strand every
+	// machine still pinned to it.
+	if h.Signer != nil && h.Signer.Previous != nil {
+		w.Header().Set("X-AW-Key-Rollover", signing.SignRollover(h.Signer.Previous, h.Signer.Public()))
+	}
 	etag := etagOf(body)
 	w.Header().Set("ETag", etag)
 	if r.Header.Get("If-None-Match") == etag {
+		// A 304 has no body to sign, and the machine still holds the
+		// signature it verified when it first received these bytes.
 		w.WriteHeader(http.StatusNotModified)
 		return
+	}
+	if h.Signer != nil {
+		w.Header().Set("X-AW-Signature", signing.Sign(h.Signer.Key, body))
+		w.Header().Set("X-AW-Key-Id", h.Signer.KeyID())
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)

@@ -6,6 +6,7 @@
 package handler
 
 import (
+	"crypto/ed25519"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -17,6 +18,7 @@ import (
 
 	"github.com/acme/agent-wrapper/internal/model"
 	"github.com/acme/agent-wrapper/internal/policy"
+	"github.com/acme/agent-wrapper/internal/signing"
 	"github.com/acme/agent-wrapper/internal/store"
 )
 
@@ -38,7 +40,27 @@ type Handler struct {
 	// AdminToken is the bearer token administrative routes require. Empty
 	// disables them with a 503; it never leaves them open.
 	AdminToken string
+	// Signer signs every bundle this server serves, so a machine can check
+	// on disk that its policy came from here. Nil is an unsigned
+	// deployment: no headers, and every client behaves as it did before
+	// signing existed.
+	Signer *Signer
 }
+
+// Signer holds the control plane's signing key, and during a rotation the
+// key it is replacing. Previous signs nothing but the rollover statement:
+// its only remaining job is to vouch for its successor to machines that
+// still pin it.
+type Signer struct {
+	Key      ed25519.PrivateKey
+	Previous ed25519.PrivateKey
+}
+
+// Public is the key machines pin.
+func (s *Signer) Public() ed25519.PublicKey { return s.Key.Public().(ed25519.PublicKey) }
+
+// KeyID names that key in headers and listings.
+func (s *Signer) KeyID() string { return signing.KeyID(s.Public()) }
 
 // New builds a Handler. A nil logger falls back to the default one.
 func New(s store.Store, log *slog.Logger) *Handler {

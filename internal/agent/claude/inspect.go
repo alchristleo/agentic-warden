@@ -15,6 +15,25 @@ import (
 
 	"github.com/acme/agent-wrapper/internal/agent"
 	"github.com/acme/agent-wrapper/internal/policy"
+	"github.com/acme/agent-wrapper/internal/signing"
+)
+
+// stateTrustFile, stateBundleFile and stateSignatureFile mirror
+// sync.TrustFile, sync.BundleFile and sync.SignatureFile. This package
+// cannot import internal/sync, which imports this package for SystemDir,
+// nor internal/policyhelper, which imports internal/sync — either would
+// close an import cycle. So the file names are kept in step by hand rather
+// than a shared constant; the actual verification (reading the three files
+// and parsing the signature line) is not duplicated, since it lives in
+// signing.VerifyFiles, which sits below the cycle and which
+// policyhelper.VerifyBundle calls too. stateBundleFile happens to share its
+// value with BundleFile above, but the two name different files: BundleFile
+// is the narrowed copy this adapter renders into the system directory;
+// stateBundleFile is aw-sync's own signed copy in its state directory.
+const (
+	stateTrustFile     = "aw-trust.pub"
+	stateBundleFile    = "aw-bundle.json"
+	stateSignatureFile = "aw-bundle.json.sig"
 )
 
 // remoteSettingsFile is where Claude Code caches server-managed settings.
@@ -63,6 +82,11 @@ func (a *Adapter) Inspect(env []string) []agent.Finding {
 	}
 
 	findings = append(findings, inspectBundle(systemDir))
+	findings = append(findings, inspectSignature(a.StateDir))
+	if warn := inspectPin(a.StateDir); warn != nil {
+		findings = append(findings, *warn)
+	}
+	findings = append(findings, inspectOwnership(a.goos(), a.StateDir)...)
 
 	if skipper := firstSet(env, fetchSkippers); skipper != "" {
 		findings = append(findings, agent.Finding{Level: agent.OK,
@@ -181,6 +205,135 @@ func inspectBundle(systemDir string) agent.Finding {
 	}
 	return agent.Finding{Level: agent.OK,
 		Message: fmt.Sprintf("bundle %s: version %s, %d rule(s) for %d group(s)", path, version, len(bundle.Rules), len(bundle.Groups))}
+}
+
+// inspectSignature reports the state aw-sync's signature check is in, from
+// its own state directory, not from this agent's system directory (which
+// holds a narrowed, re-encoded copy of the bundle that a signature over the
+// original bytes cannot check). Three states, and only a positive failure
+// is an Error: a deployment that does not sign is a choice, not a fault.
+//
+// The read-three-files-and-parse-the-signature-line work is
+// signing.VerifyFiles, shared with policyhelper.VerifyBundle: this package
+// cannot import policyhelper directly, since internal/policyhelper imports
+// internal/sync, which imports this package for SystemDir, but
+// internal/signing sits below that cycle and both callers reach it.
+func inspectSignature(stateDir string) agent.Finding {
+	if stateDir == "" {
+		// No state directory configured reads exactly like a machine with
+		// no trust file: signing was never turned on for this Inspect call.
+		return agent.Finding{Level: agent.OK, Message: "bundle signature: unsigned deployment"}
+	}
+	trustPath := filepath.Join(stateDir, stateTrustFile)
+	bundlePath := filepath.Join(stateDir, stateBundleFile)
+	sigPath := filepath.Join(stateDir, stateSignatureFile)
+
+	_, keyID, trustMissing, err := signing.VerifyFiles(trustPath, bundlePath, sigPath)
+	switch {
+	case trustMissing:
+		return agent.Finding{Level: agent.OK, Message: "bundle signature: unsigned deployment"}
+	case err == nil:
+		return agent.Finding{Level: agent.OK, Message: "bundle signature: verified (key " + keyID + ")"}
+	case keyID == "":
+		// The trust file itself did not check out, so there is no key ID to
+		// report the bundle as mismatching; err already names the file and
+		// says why.
+		return agent.Finding{Level: agent.Error, Message: "bundle signature: FAILED — " + err.Error()}
+	default:
+		return agent.Finding{Level: agent.Error, Message: "bundle signature: FAILED — " + bundlePath + " does not match key " + keyID}
+	}
+}
+
+// worldWritable is the permission-bit mask that, ORed into a file's mode,
+// means someone other than its owner can rewrite it: group or other write
+// access. Either bit on the bundle or the trust file would let a non-root
+// account replace what the signature check above trusts.
+const worldWritable = 0o022
+
+// rootUID is the only owner a state-directory file may have. aw-sync runs as
+// root and writes these files itself, so any other owner means something
+// other than aw-sync put them there or was given the power to.
+const rootUID = 0
+
+// inspectOwnership reports who, besides root, can rewrite the bundle or the
+// trust file in stateDir. The mode bits are half the question and the owner
+// is the other half: a deploy that chowns the state directory to an account
+// a developer controls lets that developer delete all three files, generate
+// a key of their own, and write a bundle that verifies perfectly against it.
+// The signature check would report "verified" about the developer's own
+// policy, which is the one outcome this feature exists to prevent, so
+// ownership has to be checked where it can be.
+//
+// On Windows it cannot be. The mode bits Stat reports there carry no ACL
+// information, there is no uid behind the file, and the ACL that actually
+// decides who may write it is reachable only through APIs this build does
+// not carry. That is reported as unchecked rather than passed over in
+// silence: a doctor that prints nothing about ownership reads as a doctor
+// that looked and found nothing wrong, and C:\ProgramData subtrees are
+// precisely where inherited ACLs tend to be looser than a deploy assumed.
+func inspectOwnership(goos, stateDir string) []agent.Finding {
+	if stateDir == "" {
+		return nil
+	}
+	if goos == "windows" {
+		return []agent.Finding{{Level: agent.Warn, Message: fmt.Sprintf(
+			"ownership of the files in %s is unchecked on Windows: their ACLs decide who may rewrite what the signature check trusts, and `aw doctor` cannot read an ACL; confirm by hand that only administrators may write there",
+			stateDir)}}
+	}
+	var findings []agent.Finding
+	for _, name := range []string{stateBundleFile, stateTrustFile} {
+		path := filepath.Join(stateDir, name)
+		info, err := os.Stat(path)
+		if err != nil {
+			// Absent or unreadable is inspectSignature's to report; a
+			// permission warning about a file that is not there would only
+			// be noise.
+			continue
+		}
+		if info.Mode().Perm()&worldWritable != 0 {
+			findings = append(findings, agent.Finding{Level: agent.Warn, Message: fmt.Sprintf(
+				"%s is writable by more than its owner (mode %s): anyone who can rewrite it can control what the signature check trusts",
+				path, info.Mode().Perm())})
+		}
+		if uid, known := ownerUID(info); known && uid != rootUID {
+			findings = append(findings, agent.Finding{Level: agent.Warn, Message: fmt.Sprintf(
+				"%s is owned by uid %d, not root: its owner can replace the file and the key it is checked against together, and the check would still report verified",
+				path, uid)})
+		}
+	}
+	return findings
+}
+
+// inspectPin warns about a machine whose enrollment pinned no signing key:
+// it verifies nothing on the fetch path, which is what makes a rollout safe
+// but also what leaves it unprotected. The spec calls for this warning by
+// name.
+//
+// The pin itself lives in machine.json, which is 0600 and root-owned, and
+// doctor runs as the developer, so the state is derived from what a
+// developer can see: aw-sync has written a bundle into the state directory
+// but no trust key beside it. That derivation is sound because a pinned
+// machine refuses a cycle it cannot verify, so a bundle without a trust file
+// can only be an unpinned machine's. What it cannot tell apart is a machine
+// enrolled before signing existed from one enrolled against a control plane
+// that does not sign at all; both are an empty pin, both are fixed by
+// re-enrolling once awd has a key, and the message is written for both.
+func inspectPin(stateDir string) *agent.Finding {
+	if stateDir == "" {
+		return nil
+	}
+	if _, err := os.Stat(filepath.Join(stateDir, stateTrustFile)); !errors.Is(err, os.ErrNotExist) {
+		// A trust file that is there, or that cannot be statted for some
+		// other reason, is inspectSignature's to judge.
+		return nil
+	}
+	if _, err := os.Stat(filepath.Join(stateDir, stateBundleFile)); err != nil {
+		// No bundle either: aw-sync has not run here, which inspectBundle
+		// already reports. Nothing yet says anything about a pin.
+		return nil
+	}
+	return &agent.Finding{Level: agent.Warn,
+		Message: "enrolled before bundle signing; re-enroll to pin a key"}
 }
 
 // topLevelKeys lists the keys of the JSON object in path, sorted, or nothing
