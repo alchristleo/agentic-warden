@@ -245,7 +245,7 @@ defaults.
 
 1. Read `<system dir>/aw-bundle.json` (root-owned, 0644; it is the
    organization's policy, not a secret). `AW_POLICY_BUNDLE` overrides the
-   path for tests.
+   path for tests (test builds only; see the 2026-09-22 hardening design).
 2. Missing or unparseable: `{}` envelope, exit 0, note. With `requireBundle`
    in `aw-policy.json`: exit 1. The configuration file is otherwise
    unnecessary.
