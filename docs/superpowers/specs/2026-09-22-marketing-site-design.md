@@ -1,6 +1,7 @@
 # Marketing site: commercialising Agentic Warden
 
-Date: 2026-09-22. Status: **brainstorm paused after section 1 (stack +
+Date: 2026-09-22. Priority: lowest — after signed bundles, SCIM/puller and
+install-timer. Status: **brainstorm paused after section 1 (stack +
 skills approved)**. Sections 2 (pages, content, data flow) and 3 (demo
 form, errors, testing, deploy) still to present and approve; then the spec
 is finalised and a plan written.
