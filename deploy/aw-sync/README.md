@@ -95,6 +95,34 @@ developers can check it too.
 Rendered files are root-owned and world-readable. A user who can edit them
 already has root; `once` rewrites drift unconditionally.
 
+## Signing the bundle
+
+Signing lives on the control plane, not here: `awd keygen --out
+/etc/agent-wrapper/signing.key` writes a 0600 Ed25519 seed and prints its
+public key and key ID, and refuses to overwrite a key that is already
+there. `AWD_SIGNING_KEY` names that file to `awd`, which signs every
+bundle it serves from then on; leave it unset and bundles stay unsigned,
+which is exactly today's behaviour. `AWD_SIGNING_KEY_PREVIOUS` names the
+key being rotated out — set but unreadable, `awd` refuses to start, so a
+half-configured rotation can never pass for a finished one. A machine pins
+whichever key it saw at enrollment and keeps trusting it across a
+rotation, so none of this needs a machine to re-enroll.
+
+## Rotating the signing key
+
+1. `awd keygen --out /etc/agent-wrapper/signing-2.key` on the control
+   plane.
+2. Set `AWD_SIGNING_KEY=/etc/agent-wrapper/signing-2.key` and
+   `AWD_SIGNING_KEY_PREVIOUS=/etc/agent-wrapper/signing.key`, and restart
+   `awd`. Every already-enrolled machine still verifies against the old
+   key, sees the rollover statement `awd` now signs with it, and repins
+   itself to the new key on its next cycle.
+3. Watch `awd machines` until every row's KEY column shows the new key ID
+   — that is what tells you the rotation has actually reached every
+   machine, not just the control plane.
+4. Drop `AWD_SIGNING_KEY_PREVIOUS`, restart `awd`, and archive the old
+   key; nothing verifies against it anymore.
+
 ## Revoking a machine
 
     awd revoke <machine-id> --url https://awd.example.com

@@ -1,6 +1,6 @@
 # Signed bundles: Ed25519 over the bundle, pinned at enrollment
 
-Date: 2026-09-22. Status: designed. Extends
+Date: 2026-09-22. Status: implemented 2026-09-22 (main 691bfd5). Extends
 `2026-09-21-multi-agent-bundle-sync-design.md`, whose "Out of scope" listed
 signed bundles with "machine credential over TLS is the v1 integrity
 story". This adds the second half: proof, carried by the bytes themselves,

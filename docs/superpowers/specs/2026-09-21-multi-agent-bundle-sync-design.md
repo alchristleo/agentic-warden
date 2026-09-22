@@ -314,7 +314,8 @@ One commit each, each leaving the suite green:
 - Launch-time `aw codex` / `aw gemini` adapters for per-repo overlays
   (advisory, bypassable). A later milestone.
 - Identity-provider group sync. The `groups` map is the seam it plugs into.
-- Signed bundles. Machine credential over TLS is the v1 integrity story.
+- Signed bundles. Machine credential over TLS was the v1 integrity story;
+  the second half is `2026-09-22-signed-bundles-design.md`.
 - The semantic (Jev) decision layer. Unchanged: deferred, opt-in, pending the
   vendor's self-hosting answer.
 - Broker and budgets. The Claude apps gateway covers them for Claude; the
