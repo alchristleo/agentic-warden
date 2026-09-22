@@ -541,3 +541,74 @@ rules:
         managed:
           model: haiku
 `
+
+const groupsYAML = `
+source: okta-export
+members:
+  alice@acme.com: [mobile]
+  carol@acme.com: [platform]
+`
+
+func TestGroupsApplyThenTheBundleShowsTheUnion(t *testing.T) {
+	s := startServer(t)
+	if out, code := runAwd(t, "apply", writePolicy(t, groupedPolicyYAML), "--url", s.url); code != 0 {
+		t.Fatalf("apply: %s", out)
+	}
+	path := writePolicy(t, groupsYAML)
+
+	out, code := runAwd(t, "groups", "apply", path, "--url", s.url)
+	if code != 0 || !strings.Contains(out, "okta-export") || !strings.Contains(out, "2 users") {
+		t.Fatalf("groups apply exited %d: %s", code, out)
+	}
+
+	// alice is platform by the policy and mobile by the IdP: both rules apply.
+	out, code = runAwd(t, "enroll-token", "alice@acme.com", "--url", s.url)
+	if code != 0 {
+		t.Fatal(out)
+	}
+	resp, err := http.Post(s.url+"/v1/machines/enroll", "application/json",
+		strings.NewReader(`{"token":"`+strings.TrimSpace(out)+`","name":"h","os":"linux"}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	var enrolled struct {
+		Credential string `json:"credential"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&enrolled); err != nil {
+		t.Fatal(err)
+	}
+	req, _ := http.NewRequest(http.MethodGet, s.url+"/v1/bundle", nil)
+	req.Header.Set("Authorization", "Bearer "+enrolled.Credential)
+	bundleResp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer bundleResp.Body.Close()
+	var bundle struct {
+		Groups []string `json:"groups"`
+		Rules  []struct{ Name string }
+	}
+	if err := json.NewDecoder(bundleResp.Body).Decode(&bundle); err != nil {
+		t.Fatal(err)
+	}
+	if strings.Join(bundle.Groups, ",") != "mobile,platform" || len(bundle.Rules) != 3 {
+		t.Errorf("bundle = %+v, want groups mobile,platform and baseline+platform+mobile rules", bundle)
+	}
+
+	summary, code := runAwd(t, "groups", "--url", s.url)
+	if code != 0 || !strings.Contains(summary, "okta-export") || !strings.Contains(summary, "users: 2") {
+		t.Errorf("groups exited %d: %s", code, summary)
+	}
+}
+
+func TestGroupsWithoutASnapshotSaysSo(t *testing.T) {
+	s := startServer(t)
+	out, code := runAwd(t, "groups", "--url", s.url)
+	if code != 0 || !strings.Contains(out, "no group snapshot") {
+		t.Errorf("exit %d, output %q", code, out)
+	}
+	if out, code := runAwdEnv(t, []string{"AWD_ADMIN_TOKEN="}, "groups", "apply", writePolicy(t, groupsYAML), "--url", s.url); code == 0 {
+		t.Errorf("groups apply without the admin token exited 0: %s", out)
+	}
+}

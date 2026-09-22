@@ -134,6 +134,20 @@ server and the CLI. Then enroll a machine and fetch its bundle:
     # {"machineId":"...","credential":"...","user":"alice@acme.com"}
     curl -s -H 'Authorization: Bearer <credential>' http://127.0.0.1:8080/v1/bundle
 
+Group membership has two sources. The policy's `groups` map is authored and
+reviewed with the rules; it is the manual override. An identity-provider
+snapshot is what the IdP says, posted whole by whatever export the operator
+already trusts:
+
+    awd groups apply examples/groups.yaml --url http://127.0.0.1:8080
+    awd groups --url http://127.0.0.1:8080
+
+A machine's bundle resolves its user's groups as the union of the two, so
+a membership that must go away is removed from the source that added it.
+User keys match the enrolled email exactly; there is no case folding. The
+bundle's ETag covers the resolved rules, so a new snapshot reaches every
+affected machine on its next `aw-sync` cycle.
+
 The bundle is every rule that could apply to that user, with repository
 matchers still in it; the machine resolves those per session. `aw-sync` does
 the enrolling and the rendering on a real machine. For Codex it writes

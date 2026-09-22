@@ -1,0 +1,9 @@
+# An identity-provider membership snapshot, as `awd groups apply` posts it.
+# Keys are users exactly as their machines enrolled them; values are the
+# group names the policy's match.groups refer to. A snapshot replaces the
+# previous one whole and unions with the policy's own groups map, so an
+# entry authored in the policy survives whatever the export says.
+source: okta-export
+members:
+  alice@acme.com: [platform, oncall]
+  bob@acme.com: [mobile]

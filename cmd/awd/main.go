@@ -34,6 +34,7 @@ import (
 	"github.com/acme/agent-wrapper/internal/model"
 	"github.com/acme/agent-wrapper/internal/policy"
 	"github.com/acme/agent-wrapper/internal/store"
+	"sigs.k8s.io/yaml"
 )
 
 const usage = `awd is the agent-wrapper control plane.
@@ -44,6 +45,8 @@ Usage:
   awd enroll-token <user> [--url URL] [--ttl 24h]   mint a single-use token that enrolls one machine
   awd machines [--url URL]                          list enrolled machines
   awd revoke <id> [--url URL]                       revoke a machine's credential
+  awd groups apply FILE [--url URL]   push an identity-provider membership snapshot
+  awd groups [--url URL]              show the current membership snapshot
   awd help
 
 Environment:
@@ -84,6 +87,11 @@ func run(argv []string) error {
 		return machines(argv[1:])
 	case "revoke":
 		return revoke(argv[1:])
+	case "groups":
+		if len(argv) > 1 && argv[1] == "apply" {
+			return groupsApply(argv[2:])
+		}
+		return groups(argv[1:])
 	default:
 		return fmt.Errorf("unknown command %q; run `awd help`", argv[0])
 	}
@@ -328,6 +336,9 @@ func adminRequest(method, url, path string, body any, out any) error {
 	if token := os.Getenv("AWD_ADMIN_TOKEN"); token != "" {
 		req.Header.Set("Authorization", "Bearer "+token)
 	}
+	if who := appliedBy(); who != "" {
+		req.Header.Set("X-Applied-By", who)
+	}
 	client := &http.Client{Timeout: 30 * time.Second}
 	resp, err := client.Do(req)
 	if err != nil {
@@ -399,6 +410,94 @@ func machines(argv []string) error {
 			m.ID, m.User, m.Name, m.OS, m.EnrolledAt.Format(time.RFC3339), lastSeen, m.LastBundleVersion)
 	}
 	return w.Flush()
+}
+
+// groupSummary is what /v1/groups answers with.
+type groupSummary struct {
+	// Source names the exporter that produced the current snapshot.
+	Source string `json:"source"`
+	// AppliedBy is who posted the current snapshot, from the client's environment.
+	AppliedBy string `json:"appliedBy"`
+	// SyncedAt is when the server stored the current snapshot.
+	SyncedAt time.Time `json:"syncedAt"`
+	// Users is the number of distinct member keys in the snapshot.
+	Users int `json:"users"`
+	// Groups is the number of distinct group names across all members.
+	Groups int `json:"groups"`
+}
+
+// groupsApply posts a membership snapshot from a JSON or YAML file. The
+// file is decoded locally first so a malformed export is reported with its
+// path rather than as a status code.
+func groupsApply(argv []string) error {
+	a, err := parseAdminArgs(argv)
+	if err != nil {
+		return err
+	}
+	if len(a.positional) != 1 {
+		return errors.New("groups apply takes one argument: the snapshot file")
+	}
+	raw, err := os.ReadFile(a.positional[0])
+	if err != nil {
+		return err
+	}
+	var body struct {
+		Source  string              `json:"source"`
+		Members map[string][]string `json:"members"`
+	}
+	if err := yaml.UnmarshalStrict(raw, &body); err != nil {
+		return fmt.Errorf("%s: %w", a.positional[0], err)
+	}
+	if body.Members == nil {
+		return fmt.Errorf("%s: no members map", a.positional[0])
+	}
+	var summary groupSummary
+	if err := adminRequest(http.MethodPut, a.url, "/v1/groups", body, &summary); err != nil {
+		return err
+	}
+	fmt.Printf("applied group snapshot from %s: %d users, %d groups\n", orUnknownSource(summary.Source), summary.Users, summary.Groups)
+	return nil
+}
+
+// groups prints the current snapshot's summary; none is a fact, not an error.
+func groups(argv []string) error {
+	a, err := parseAdminArgs(argv)
+	if err != nil {
+		return err
+	}
+	if len(a.positional) != 0 {
+		return errors.New("groups takes no arguments; did you mean `groups apply FILE`?")
+	}
+	var summary groupSummary
+	err = adminRequest(http.MethodGet, a.url, "/v1/groups", nil, &summary)
+	if err != nil {
+		if strings.Contains(err.Error(), "404") {
+			fmt.Println("no group snapshot has been applied; bundles resolve from the policy's groups map alone")
+			return nil
+		}
+		return err
+	}
+	fmt.Printf("source: %s\nsynced: %s\nby: %s\nusers: %d\ngroups: %d\n",
+		orUnknownSource(summary.Source), summary.SyncedAt.Format(time.RFC3339), orNoneString(summary.AppliedBy), summary.Users, summary.Groups)
+	return nil
+}
+
+// orUnknownSource reports a snapshot's source, or a placeholder when the
+// IdP export left it blank, so the CLI's output is never an empty field.
+func orUnknownSource(s string) string {
+	if s == "" {
+		return "(unnamed source)"
+	}
+	return s
+}
+
+// orNoneString reports who applied a snapshot, or a placeholder when the
+// server has none recorded, so the CLI's output is never an empty field.
+func orNoneString(s string) string {
+	if s == "" {
+		return "(none)"
+	}
+	return s
 }
 
 // revoke deletes one machine's credential, so a lost or decommissioned
