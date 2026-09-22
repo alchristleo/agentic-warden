@@ -3,6 +3,7 @@ package sync
 import (
 	"bytes"
 	"context"
+	"crypto/ed25519"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -13,6 +14,7 @@ import (
 
 	"github.com/acme/agent-wrapper/internal/model"
 	"github.com/acme/agent-wrapper/internal/policy"
+	"github.com/acme/agent-wrapper/internal/signing"
 )
 
 // maxBundleBytes bounds what is read from the control plane. A bundle is a
@@ -46,6 +48,12 @@ type Enrollment struct {
 	Credential string `json:"credential"`
 	// User is the account this machine's enrollment token was minted for.
 	User string `json:"user"`
+	// PublicKey is the control plane's bundle signing key, pinned here at
+	// the one moment this machine has authenticated to the server with a
+	// token an operator minted. Empty when the server does not sign.
+	PublicKey string `json:"publicKey,omitempty"`
+	// KeyID names that key in listings and headers.
+	KeyID string `json:"keyId,omitempty"`
 }
 
 // Fetched is one answer to a conditional bundle request. Unchanged means
@@ -58,6 +66,17 @@ type Fetched struct {
 	// Unchanged means the server answered 304: the caller's ETag is still
 	// current and Bundle was not sent.
 	Unchanged bool
+	// Raw is the response body exactly as the server wrote it. The
+	// signature covers these bytes, so this — not a re-encoding of Bundle —
+	// is what goes on disk.
+	Raw []byte
+	// Signature and KeyID are what the server sent, for the caller to store
+	// beside the bundle. Both empty for an unsigned deployment.
+	Signature string
+	KeyID     string
+	// Rollover is the new key this fetch repinned to, or nil. The caller
+	// persists it: the verification already happened here.
+	Rollover *signing.Rollover
 }
 
 // Enroll exchanges a single-use token for this machine's credential.
@@ -106,7 +125,7 @@ func (c *Client) Enroll(ctx context.Context, token, name, goos string) (Enrollme
 // Fetch asks for the machine's bundle, revalidating etag when it is not
 // empty. A 401 is reported as model.ErrUnauthorized so the caller can say
 // "revoked" rather than "failed".
-func (c *Client) Fetch(ctx context.Context, credential, etag string) (Fetched, error) {
+func (c *Client) Fetch(ctx context.Context, credential, etag string, pinned ed25519.PublicKey) (Fetched, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.endpoint("/v1/bundle"), nil)
 	if err != nil {
 		return Fetched{}, err
@@ -116,6 +135,12 @@ func (c *Client) Fetch(ctx context.Context, credential, etag string) (Fetched, e
 	req.Header.Set("User-Agent", "aw-sync")
 	if etag != "" {
 		req.Header.Set("If-None-Match", etag)
+	}
+	if pinned != nil {
+		// The control plane records this, so an operator can see which
+		// machines have picked up a rotation and when it is safe to retire
+		// the old key.
+		req.Header.Set("X-AW-Key-Id", signing.KeyID(pinned))
 	}
 	resp, err := c.client().Do(req)
 	if err != nil {
@@ -141,11 +166,32 @@ func (c *Client) Fetch(ctx context.Context, credential, etag string) (Fetched, e
 	if len(payload) > maxBundleBytes {
 		return Fetched{}, fmt.Errorf("sync: the bundle exceeds %d bytes", maxBundleBytes)
 	}
+	signature := resp.Header.Get("X-AW-Signature")
+	var rollover *signing.Rollover
+	if pinned != nil {
+		verifier := pinned
+		// A rollover is the only thing that may move the pin, and only the
+		// pinned key can sign one, so trust chains back to enrollment.
+		if header := resp.Header.Get("X-AW-Key-Rollover"); header != "" {
+			next, err := signing.VerifyRollover(pinned, header)
+			if err != nil {
+				return Fetched{}, fmt.Errorf("sync: %w", err)
+			}
+			rollover, verifier = &next, next.PublicKey
+		}
+		if signature == "" {
+			return Fetched{}, errors.New("sync: this machine pins a signing key but the control plane sent no signature")
+		}
+		if !signing.Verify(verifier, payload, signature) {
+			return Fetched{}, fmt.Errorf("sync: the bundle is not signed by key %s", signing.KeyID(verifier))
+		}
+	}
+
 	var bundle policy.Bundle
 	if err := json.Unmarshal(payload, &bundle); err != nil {
 		return Fetched{}, fmt.Errorf("sync: parsing the bundle: %w", err)
 	}
-	return Fetched{Bundle: &bundle, ETag: resp.Header.Get("ETag")}, nil
+	return Fetched{Bundle: &bundle, Raw: payload, Signature: signature, KeyID: resp.Header.Get("X-AW-Key-Id"), ETag: resp.Header.Get("ETag"), Rollover: rollover}, nil
 }
 
 func (c *Client) endpoint(path string) string {

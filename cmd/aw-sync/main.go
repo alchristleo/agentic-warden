@@ -199,7 +199,7 @@ func enroll(argv []string, stdout io.Writer) error {
 	if err != nil {
 		return err
 	}
-	machine := sync.Machine{Server: *server, MachineID: e.MachineID, Credential: e.Credential, Agents: selected}
+	machine := sync.Machine{Server: *server, MachineID: e.MachineID, Credential: e.Credential, Agents: selected, PublicKey: e.PublicKey, KeyID: e.KeyID}
 	if err := sync.SaveMachine(*stateDir, machine); err != nil {
 		return fmt.Errorf("%w; the enrollment token was consumed; mint a new one", err)
 	}

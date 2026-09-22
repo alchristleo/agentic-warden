@@ -1,7 +1,9 @@
 package sync_test
 
 import (
+	"bytes"
 	"context"
+	"crypto/ed25519"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -11,6 +13,7 @@ import (
 	"testing"
 
 	"github.com/acme/agent-wrapper/internal/model"
+	"github.com/acme/agent-wrapper/internal/signing"
 	"github.com/acme/agent-wrapper/internal/sync"
 )
 
@@ -93,7 +96,7 @@ func bundleServer(t *testing.T, status int, body string) (*httptest.Server, *htt
 
 func TestFetchSendsTheCredentialAndETag(t *testing.T) {
 	srv, seen := bundleServer(t, http.StatusOK, `{"version":"v2","groups":[],"rules":[]}`)
-	got, err := (&sync.Client{Server: srv.URL}).Fetch(context.Background(), "cred", `"e1"`)
+	got, err := (&sync.Client{Server: srv.URL}).Fetch(context.Background(), "cred", `"e1"`, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -107,7 +110,7 @@ func TestFetchSendsTheCredentialAndETag(t *testing.T) {
 
 func TestFetchOn304IsUnchanged(t *testing.T) {
 	srv, _ := bundleServer(t, http.StatusNotModified, "")
-	got, err := (&sync.Client{Server: srv.URL}).Fetch(context.Background(), "cred", `"e1"`)
+	got, err := (&sync.Client{Server: srv.URL}).Fetch(context.Background(), "cred", `"e1"`, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -118,7 +121,7 @@ func TestFetchOn304IsUnchanged(t *testing.T) {
 
 func TestFetchOn401IsErrUnauthorized(t *testing.T) {
 	srv, _ := bundleServer(t, http.StatusUnauthorized, `{"error":"unauthorized"}`)
-	_, err := (&sync.Client{Server: srv.URL}).Fetch(context.Background(), "cred", "")
+	_, err := (&sync.Client{Server: srv.URL}).Fetch(context.Background(), "cred", "", nil)
 	if !errors.Is(err, model.ErrUnauthorized) {
 		t.Errorf("err = %v, want ErrUnauthorized", err)
 	}
@@ -126,7 +129,7 @@ func TestFetchOn401IsErrUnauthorized(t *testing.T) {
 
 func TestFetchOnServerErrorFails(t *testing.T) {
 	srv, _ := bundleServer(t, http.StatusInternalServerError, "boom")
-	_, err := (&sync.Client{Server: srv.URL}).Fetch(context.Background(), "cred", "")
+	_, err := (&sync.Client{Server: srv.URL}).Fetch(context.Background(), "cred", "", nil)
 	if err == nil || !strings.Contains(err.Error(), "500") {
 		t.Errorf("err = %v, want one naming the status", err)
 	}
@@ -134,7 +137,7 @@ func TestFetchOnServerErrorFails(t *testing.T) {
 
 func TestFetchRejectsAMalformedBundle(t *testing.T) {
 	srv, _ := bundleServer(t, http.StatusOK, `{"version":`)
-	_, err := (&sync.Client{Server: srv.URL}).Fetch(context.Background(), "cred", "")
+	_, err := (&sync.Client{Server: srv.URL}).Fetch(context.Background(), "cred", "", nil)
 	if err == nil {
 		t.Error("want an error for a malformed bundle")
 	}
@@ -144,8 +147,143 @@ func TestFetchWhenTheServerIsDownFails(t *testing.T) {
 	srv, _ := bundleServer(t, http.StatusOK, "{}")
 	url := srv.URL
 	srv.Close()
-	_, err := (&sync.Client{Server: url}).Fetch(context.Background(), "cred", "")
+	_, err := (&sync.Client{Server: url}).Fetch(context.Background(), "cred", "", nil)
 	if err == nil {
 		t.Error("want an error when the control plane is unreachable")
+	}
+}
+
+// signingServer answers every request with body, signed by signer. When
+// announcer is non-nil, the response also carries a rollover statement
+// announcing signer's key, signed by announcer — the shape a control plane
+// mid-rotation sends.
+func signingServer(t *testing.T, signer ed25519.PrivateKey, body []byte, announcer ed25519.PrivateKey) *httptest.Server {
+	t.Helper()
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("X-AW-Signature", signing.Sign(signer, body))
+		w.Header().Set("X-AW-Key-Id", signing.KeyID(signer.Public().(ed25519.PublicKey)))
+		if announcer != nil {
+			w.Header().Set("X-AW-Key-Rollover", signing.SignRollover(announcer, signer.Public().(ed25519.PublicKey)))
+		}
+		_, _ = w.Write(body)
+	}))
+	t.Cleanup(srv.Close)
+	return srv
+}
+
+// signingServerSigningOver signs signedBody but serves servedBody, the shape
+// a tampered-in-transit or misconfigured response takes: the bytes on the
+// wire are not the bytes the signature covers.
+func signingServerSigningOver(t *testing.T, signer ed25519.PrivateKey, servedBody, signedBody []byte) *httptest.Server {
+	t.Helper()
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("X-AW-Signature", signing.Sign(signer, signedBody))
+		w.Header().Set("X-AW-Key-Id", signing.KeyID(signer.Public().(ed25519.PublicKey)))
+		_, _ = w.Write(servedBody)
+	}))
+	t.Cleanup(srv.Close)
+	return srv
+}
+
+// unsignedServer answers with body and none of the three signing headers,
+// the shape a deployment that does not sign sends.
+func unsignedServer(t *testing.T, body []byte) *httptest.Server {
+	t.Helper()
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write(body)
+	}))
+	t.Cleanup(srv.Close)
+	return srv
+}
+
+func TestFetchVerifiesTheSignature(t *testing.T) {
+	key, _ := signing.Generate()
+	body := []byte(`{"version":"4","user":"a@b.c","rules":[]}`)
+	srv := signingServer(t, key, body, nil)
+	c := &sync.Client{Server: srv.URL}
+
+	got, err := c.Fetch(context.Background(), "cred", "", key.Public().(ed25519.PublicKey))
+	if err != nil {
+		t.Fatalf("Fetch: %v", err)
+	}
+	if !bytes.Equal(got.Raw, body) {
+		t.Fatalf("Raw = %q, want the served bytes verbatim", got.Raw)
+	}
+	if got.Bundle.Version != "4" {
+		t.Fatalf("Version = %q", got.Bundle.Version)
+	}
+}
+
+func TestFetchRejectsATamperedBody(t *testing.T) {
+	key, _ := signing.Generate()
+	body := []byte(`{"version":"4","user":"a@b.c","rules":[]}`)
+	srv := signingServerSigningOver(t, key, body, []byte(`{"version":"9","user":"a@b.c","rules":[]}`))
+	c := &sync.Client{Server: srv.URL}
+	if _, err := c.Fetch(context.Background(), "cred", "", key.Public().(ed25519.PublicKey)); err == nil {
+		t.Fatal("Fetch accepted a body the signature does not cover")
+	}
+}
+
+func TestFetchRequiresASignatureWhenAKeyIsPinned(t *testing.T) {
+	key, _ := signing.Generate()
+	srv := unsignedServer(t, []byte(`{"version":"4"}`))
+	c := &sync.Client{Server: srv.URL}
+	if _, err := c.Fetch(context.Background(), "cred", "", key.Public().(ed25519.PublicKey)); err == nil {
+		t.Fatal("Fetch accepted an unsigned bundle while a key was pinned")
+	}
+}
+
+func TestFetchWithNoPinnedKeySkipsVerification(t *testing.T) {
+	srv := unsignedServer(t, []byte(`{"version":"4","user":"a@b.c","rules":[]}`))
+	c := &sync.Client{Server: srv.URL}
+	if _, err := c.Fetch(context.Background(), "cred", "", nil); err != nil {
+		t.Fatalf("Fetch: %v", err)
+	}
+}
+
+func TestFetchFollowsARollover(t *testing.T) {
+	old, _ := signing.Generate()
+	next, _ := signing.Generate()
+	body := []byte(`{"version":"5","user":"a@b.c","rules":[]}`)
+	srv := signingServer(t, next, body, old) // signs with next, announces via old
+	c := &sync.Client{Server: srv.URL}
+	got, err := c.Fetch(context.Background(), "cred", "", old.Public().(ed25519.PublicKey))
+	if err != nil {
+		t.Fatalf("Fetch: %v", err)
+	}
+	if got.Rollover == nil || !got.Rollover.PublicKey.Equal(next.Public().(ed25519.PublicKey)) {
+		t.Fatal("Fetch did not report the rollover it used")
+	}
+}
+
+func TestFetchRejectsAForgedRollover(t *testing.T) {
+	old, _ := signing.Generate()
+	stranger, _ := signing.Generate()
+	next, _ := signing.Generate()
+	body := []byte(`{"version":"5"}`)
+	srv := signingServer(t, next, body, stranger) // announced by a key we never pinned
+	c := &sync.Client{Server: srv.URL}
+	if _, err := c.Fetch(context.Background(), "cred", "", old.Public().(ed25519.PublicKey)); err == nil {
+		t.Fatal("Fetch followed a rollover the pinned key did not sign")
+	}
+}
+
+func TestFetchSendsThePinnedKeyID(t *testing.T) {
+	key, _ := signing.Generate()
+	var seen string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		seen = r.Header.Get("X-AW-Key-Id")
+		body := []byte(`{"version":"4","user":"a@b.c","rules":[]}`)
+		w.Header().Set("X-AW-Signature", signing.Sign(key, body))
+		w.Header().Set("X-AW-Key-Id", signing.KeyID(key.Public().(ed25519.PublicKey)))
+		w.Write(body)
+	}))
+	defer srv.Close()
+	pub := key.Public().(ed25519.PublicKey)
+	if _, err := (&sync.Client{Server: srv.URL}).Fetch(context.Background(), "cred", "", pub); err != nil {
+		t.Fatalf("Fetch: %v", err)
+	}
+	if seen != signing.KeyID(pub) {
+		t.Fatalf("the request sent X-AW-Key-Id %q, want %q", seen, signing.KeyID(pub))
 	}
 }

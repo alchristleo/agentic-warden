@@ -45,6 +45,13 @@ type Machine struct {
 	// without Codex installed lists only what it runs, so no directory is
 	// created for an agent that is not there.
 	Agents []string `json:"agents"`
+	// PublicKey is the control plane's signing key, pinned at enrollment.
+	// Empty means this machine enrolled before signing existed and verifies
+	// nothing — the reason an old machine keeps working.
+	PublicKey string `json:"publicKey,omitempty"`
+	// KeyID names that key, so `aw doctor` and the control plane's listing
+	// agree about which key this machine trusts.
+	KeyID string `json:"keyId,omitempty"`
 }
 
 // State is what the last cycle left behind.

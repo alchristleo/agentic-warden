@@ -132,7 +132,9 @@ func Run(ctx context.Context, cfg Config) Result {
 	}
 
 	client := &Client{Server: machine.Server, HTTP: cfg.HTTP}
-	fetched, err := client.Fetch(ctx, machine.Credential, etag)
+	// The pinned key and rollover persistence belong to the task that stores
+	// them in machine.json; until then every fetch verifies nothing.
+	fetched, err := client.Fetch(ctx, machine.Credential, etag, nil)
 	if err != nil {
 		return cfg.fail(state, notes, nil, nil, err)
 	}
