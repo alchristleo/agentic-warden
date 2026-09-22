@@ -126,26 +126,42 @@ func TestBuildWithoutPoliciesWritesSettingsAlone(t *testing.T) {
 	}
 }
 
-func TestBuildWithNoManagedDocumentStillPinsAnEmptySettingsFile(t *testing.T) {
-	// A launch outside any policy must still pin the variable: a developer's
-	// own GEMINI_CLI_SYSTEM_SETTINGS_PATH would otherwise stand.
-	launch, err := newAdapter(t).Build(context.Background(), agent.BuildOptions{Env: fakeBinary(t)})
+func TestBuildWithNoManagedDocumentLeavesTheSystemSettingsAlone(t *testing.T) {
+	// With no rule in scope for Gemini there is nothing of the
+	// organization's to pin. Pinning an empty settings file would hide a
+	// system settings.json installed by other means, so Build must leave
+	// the variable, and the developer's own environment, untouched.
+	env := append(fakeBinary(t), "SOME_DEV_VAR=kept")
+
+	launch, err := newAdapter(t).Build(context.Background(), agent.BuildOptions{Env: env})
 	if err != nil {
 		t.Fatal(err)
 	}
-	raw, err := os.ReadFile(envValue(launch.Env, gemini.SystemSettingsEnv))
-	if err != nil {
-		t.Fatal(err)
+
+	if got := envValue(launch.Env, gemini.SystemSettingsEnv); got != "" {
+		t.Errorf("%s = %q, want unset", gemini.SystemSettingsEnv, got)
 	}
-	if string(raw) != "{}\n" {
-		t.Errorf("settings = %q, want an empty object", raw)
+	if got := envValue(launch.Env, "SOME_DEV_VAR"); got != "kept" {
+		t.Errorf("SOME_DEV_VAR = %q, want the developer's own value kept", got)
+	}
+	if len(launch.Files) != 0 {
+		t.Errorf("Files = %v, want none written", launch.Files)
+	}
+	if !strings.Contains(strings.Join(launch.Notes, "\n"), "the system settings stay as installed") {
+		t.Errorf("notes %v do not say the system settings were left alone", launch.Notes)
 	}
 }
 
 func TestBuildReplacesTheDevelopersOwnSettingsPathAndSaysSo(t *testing.T) {
+	// The pin only replaces the developer's value when a managed document
+	// is actually in scope; with none, Build leaves the path alone (see
+	// TestBuildWithNoManagedDocumentLeavesTheSystemSettingsAlone).
 	env := append(fakeBinary(t), gemini.SystemSettingsEnv+"=/home/dev/mine.json")
 
-	launch, err := newAdapter(t).Build(context.Background(), agent.BuildOptions{Env: env})
+	launch, err := newAdapter(t).Build(context.Background(), agent.BuildOptions{
+		Env:      env,
+		Settings: agent.Settings{Managed: map[string]any{"settings": map[string]any{"general": map[string]any{}}}},
+	})
 	if err != nil {
 		t.Fatal(err)
 	}

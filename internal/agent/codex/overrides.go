@@ -1,6 +1,7 @@
 package codex
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"sort"
@@ -58,11 +59,13 @@ func tomlValue(v any) (string, error) {
 	case nil:
 		return "", fmt.Errorf("is null, which TOML cannot represent")
 	case string:
-		b, err := json.Marshal(t)
-		if err != nil {
+		var buf bytes.Buffer
+		enc := json.NewEncoder(&buf)
+		enc.SetEscapeHTML(false)
+		if err := enc.Encode(t); err != nil {
 			return "", err
 		}
-		return string(b), nil
+		return strings.TrimSuffix(buf.String(), "\n"), nil
 	case bool:
 		return strconv.FormatBool(t), nil
 	case int:

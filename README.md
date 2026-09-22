@@ -41,8 +41,10 @@ launch-time channel: Codex gets `-c key=value` overrides from the rule's
 `requirements.toml`), and Gemini gets a settings file generated for the
 session with `GEMINI_CLI_SYSTEM_SETTINGS_PATH` pinned to it, repo-scoped
 `policies` included via `policyPaths`. This layer is advisory: bare
-`codex` or `gemini` sees the machine-wide files alone. `aw doctor` shows
-the compiled result per agent and which repository it was compiled for.
+`codex` or `gemini` sees the machine-wide files alone. With no policy
+source, `aw gemini` leaves the system settings path alone rather than
+pinning an empty file over it. `aw doctor` shows the compiled result per
+agent and which repository it was compiled for.
 
 One Gemini limitation: rules delivered through `policyPaths` load at
 Gemini's user tier, below the admin tier where `aw-sync`'s machine-wide
@@ -92,7 +94,7 @@ detects the collision, and reports the bundle and aw-sync's last cycle.
     deploy/           managed-settings install templates
     internal/agent/   Adapter interface, registry, Prepare/Launch/Exec
     internal/agent/claude/schema/  vendored settings schema and validation
-    internal/agent/codex/  Codex adapter: requirements.toml renderer and key allowlist
+    internal/agent/codex/  Codex adapter: requirements.toml renderer and key allowlist; -c overrides for aw codex
     internal/agent/gemini/  Gemini adapter: settings.json and admin policy renderer, key allowlist
     internal/policyhelper/  what aw-policy does: read the bundle, compile, validate, emit
     internal/sync/    the sync cycle: fetch the bundle, render, write all-or-nothing

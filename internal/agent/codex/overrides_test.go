@@ -13,6 +13,7 @@ func TestOverridesFlattenSortAndEncodeAsTOML(t *testing.T) {
 		"mcp_servers":     map[string]any{"docs": map[string]any{"command": "codex-mcp", "args": []any{"--port", float64(8080)}}},
 		"features":        map[string]any{"web_search": true, "ratio": 0.5},
 		"note":            `say "hi"`,
+		"url":             "https://a?b=1&c=<d>",
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -27,6 +28,7 @@ func TestOverridesFlattenSortAndEncodeAsTOML(t *testing.T) {
 		`model_reasoning.effort="high"`,
 		`note="say \"hi\""`,
 		`sandbox_mode="read-only"`,
+		`url="https://a?b=1&c=<d>"`,
 	}
 	if strings.Join(got, "\n") != strings.Join(want, "\n") {
 		t.Errorf("overrides =\n%s\nwant:\n%s", strings.Join(got, "\n"), strings.Join(want, "\n"))

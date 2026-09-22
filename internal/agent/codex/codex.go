@@ -44,7 +44,7 @@ func programData() string {
 }
 
 // Adapter launches Codex and renders its requirements file. The exported
-// field exists so tests can control the binary.
+// fields exist so tests can control the binary and the system directory.
 type Adapter struct {
 	// Binary is the command to resolve on PATH; empty means Name.
 	Binary string

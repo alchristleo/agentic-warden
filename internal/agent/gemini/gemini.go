@@ -115,13 +115,30 @@ func (a *Adapter) Locate(env []string) (string, error) {
 // settings variable is pinned to it. The pin replaces whatever the
 // developer exported: the system tier is the organization's, and pinning
 // it is the point of the wrapper. A policy that sets the same variable in
-// env loses to the pin too, with a note.
+// env loses to the pin too, with a note. When no rule in scope carries a
+// managed document for Gemini, there is nothing of the organization's to
+// pin, so Build leaves the system settings path exactly as installed
+// instead of pinning an empty file over it.
 func (a *Adapter) Build(ctx context.Context, o agent.BuildOptions) (*agent.Launch, error) {
 	binary, err := a.Locate(o.Env)
 	if err != nil {
 		return nil, err
 	}
 	launch := &agent.Launch{Agent: Name, Binary: binary}
+
+	base := o.Env
+	if base == nil {
+		base = os.Environ()
+	}
+
+	if o.Settings.Managed == nil {
+		env, notes := merge.Env(base, o.Settings.Env, o.Settings.ForceEnv)
+		launch.Notes = append(launch.Notes, notes...)
+		launch.Env = env
+		launch.Notes = append(launch.Notes, "gemini: no managed document for this session; the system settings stay as installed")
+		launch.Args = append(launch.Args, o.Args...)
+		return launch, nil
+	}
 
 	if err := managed.Validate(o.Settings.Managed); err != nil {
 		return nil, fmt.Errorf("gemini: %w", err)
@@ -163,10 +180,6 @@ func (a *Adapter) Build(ctx context.Context, o agent.BuildOptions) (*agent.Launc
 	}
 	launch.Files = append(launch.Files, settingsPath)
 
-	base := o.Env
-	if base == nil {
-		base = os.Environ()
-	}
 	env, notes := merge.Env(base, o.Settings.Env, o.Settings.ForceEnv)
 	launch.Notes = append(launch.Notes, notes...)
 	env, note := pin(env, SystemSettingsEnv, settingsPath)

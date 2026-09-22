@@ -89,7 +89,7 @@ developers can check it too.
 
 | | Linux | macOS | Windows |
 | --- | --- | --- | --- |
-| State (`machine.json` 0600, `state.json` 0644, `aw-sync-audit.log`) | `/var/lib/agent-wrapper/` | `/Library/Application Support/agent-wrapper/` | `C:\ProgramData\agent-wrapper\` |
+| State (`machine.json` 0600, `state.json` 0644, `aw-sync-audit.log`, `aw-bundle.json` 0644, the full bundle `aw` compiles per launch) | `/var/lib/agent-wrapper/` | `/Library/Application Support/agent-wrapper/` | `C:\ProgramData\agent-wrapper\` |
 | Claude Code | `/etc/claude-code/` | `/Library/Application Support/ClaudeCode/` | `C:\Program Files\ClaudeCode\` |
 
 Rendered files are root-owned and world-readable. A user who can edit them

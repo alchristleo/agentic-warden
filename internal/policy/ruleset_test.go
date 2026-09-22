@@ -231,3 +231,20 @@ func TestLaunchIsAcceptedForCodexAlone(t *testing.T) {
 		}
 	}
 }
+
+func TestANullLeafInALaunchDocumentFailsValidate(t *testing.T) {
+	// A null in a codex launch document would pass apply and then block
+	// every launch in the matching repository, since TOML cannot represent
+	// null. Validate must catch it and name the path.
+	set := &policy.RuleSet{Version: "v1", Rules: []policy.Rule{
+		{Name: "b", Agents: map[string]policy.AgentConfig{
+			"codex": {Launch: map[string]any{"sandbox_mode": nil}},
+		}},
+	}}
+
+	err := set.Validate()
+
+	if err == nil || !strings.Contains(err.Error(), "launch.sandbox_mode") {
+		t.Errorf("err = %v; want launch.sandbox_mode named", err)
+	}
+}

@@ -11,6 +11,8 @@ import (
 	"strings"
 
 	toml "github.com/pelletier/go-toml/v2"
+
+	"github.com/acme/agent-wrapper/internal/policy"
 )
 
 // Validate reports whether managed can be written as requirements.toml: every
@@ -36,7 +38,7 @@ func Validate(managed map[string]any) error {
 	if len(managed) == 0 {
 		return nil
 	}
-	if path := firstNull(managed, ""); path != "" {
+	if path := policy.FirstNull(managed, ""); path != "" {
 		return fmt.Errorf("requirements: %s is null, which TOML cannot represent", path)
 	}
 	encoded, err := toml.Marshal(managed)
@@ -58,38 +60,6 @@ func ForAgent(agentName string, managed map[string]any) error {
 		return nil
 	}
 	return Validate(managed)
-}
-
-// firstNull returns the path of the first nil value in v, or "" when there
-// is none. TOML has no null: the encoder drops a nil map value silently and
-// refuses a nil slice element, and neither is what an author meant.
-func firstNull(v any, path string) string {
-	switch t := v.(type) {
-	case nil:
-		return path
-	case map[string]any:
-		keys := make([]string, 0, len(t))
-		for k := range t {
-			keys = append(keys, k)
-		}
-		sort.Strings(keys)
-		for _, k := range keys {
-			p := k
-			if path != "" {
-				p = path + "." + k
-			}
-			if found := firstNull(t[k], p); found != "" {
-				return found
-			}
-		}
-	case []any:
-		for i, e := range t {
-			if found := firstNull(e, fmt.Sprintf("%s[%d]", path, i)); found != "" {
-				return found
-			}
-		}
-	}
-	return ""
 }
 
 func known(key string) bool {

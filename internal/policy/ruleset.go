@@ -65,6 +65,11 @@ func (rs *RuleSet) Validate(validators ...ManagedValidator) error {
 			if config.Launch != nil && agentName != "codex" {
 				return fmt.Errorf("rule %q, agent %q: launch is not supported; %s applies managed at launch", rule.Name, agentName, agentName)
 			}
+			if config.Launch != nil {
+				if p := FirstNull(config.Launch, "launch"); p != "" {
+					return fmt.Errorf("rule %q, agent %q: %s is null, which TOML cannot represent", rule.Name, agentName, p)
+				}
+			}
 			for _, validate := range validators {
 				if err := validate(agentName, config.Managed); err != nil {
 					return fmt.Errorf("rule %q, agent %q: %w", rule.Name, agentName, err)

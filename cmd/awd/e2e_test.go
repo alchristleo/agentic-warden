@@ -355,6 +355,22 @@ func TestApplyRejectsALaunchDocumentForGemini(t *testing.T) {
 	}
 }
 
+func TestApplyRejectsANullLeafInALaunchDocument(t *testing.T) {
+	// A null in a codex launch document has no TOML form; apply must catch
+	// it before it reaches a repository and blocks every launch there.
+	s := startServer(t)
+	path := writePolicy(t, "version: v1\nrules:\n  - name: baseline\n    agents:\n      codex:\n        launch:\n          sandbox_mode:\n")
+
+	out, code := runAwd(t, "apply", path, "--url", s.url)
+
+	if code == 0 {
+		t.Fatalf("apply exited 0, want non-zero for a null launch leaf: %s", out)
+	}
+	if !strings.Contains(out, "launch.sandbox_mode") {
+		t.Errorf("output %q does not name launch.sandbox_mode", out)
+	}
+}
+
 func TestApplyWithoutTheAdminTokenIsRefused(t *testing.T) {
 	s := startServer(t)
 	path := writePolicy(t, policyYAML)

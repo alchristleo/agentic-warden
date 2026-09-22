@@ -66,9 +66,15 @@ func run(t *testing.T, env []string, args ...string) (string, int) {
 	}
 }
 
+// baseEnv is the environment every e2e test starts from. It sets
+// AW_SYNC_STATE_DIR to a fresh, empty temporary directory so a test that
+// does not care about aw-sync state never reads the real machine's
+// /var/lib/agent-wrapper/aw-bundle.json; a test that needs its own state
+// directory appends its own AW_SYNC_STATE_DIR after this slice, and the
+// later entry in exec.Cmd.Env wins over this default.
 func baseEnv(t *testing.T, binDir string) []string {
 	t.Helper()
-	return []string{"PATH=" + binDir, "HOME=" + t.TempDir(), "XDG_CACHE_HOME=" + t.TempDir()}
+	return []string{"PATH=" + binDir, "HOME=" + t.TempDir(), "XDG_CACHE_HOME=" + t.TempDir(), "AW_SYNC_STATE_DIR=" + t.TempDir()}
 }
 
 func TestAgentsListsWhatTheBinaryCanLaunch(t *testing.T) {

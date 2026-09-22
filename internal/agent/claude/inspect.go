@@ -215,9 +215,9 @@ func firstSet(env, names []string) string {
 
 // SystemDir is where Claude Code reads its managed settings on goos, and so
 // where aw-sync writes the bundle and the drop-in and where aw-policy reads
-// the bundle back. aw-sync keeps its own copy of this table in
-// internal/sync/paths.go; a test in that package pins the two together, so
-// this file cannot import that one.
+// the bundle back. sync.AgentRoot delegates to each adapter's SystemDir
+// rather than keeping its own copy of this table, so this file and
+// internal/sync/paths.go cannot drift; a test in that package checks it.
 func SystemDir(goos string) string {
 	switch goos {
 	case "darwin":

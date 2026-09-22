@@ -9,7 +9,9 @@
 // Enforcement does not depend on this binary. Managed settings reach the agent
 // through its own managed-settings tier, which applies whether or not the
 // developer goes through the wrapper. What the wrapper adds is launch-time
-// environment injection, and doctor, which shows exactly what would run.
+// environment injection, compiling the machine bundle for the session's
+// repository and applying per-launch overlays for Codex and Gemini, and
+// doctor, which shows exactly what would run.
 package main
 
 import (

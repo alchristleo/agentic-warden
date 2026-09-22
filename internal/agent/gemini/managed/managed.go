@@ -11,6 +11,8 @@ import (
 	"fmt"
 	"sort"
 	"strings"
+
+	"github.com/acme/agent-wrapper/internal/policy"
 )
 
 // Parts splits a Gemini managed document into its settings object and its
@@ -127,7 +129,7 @@ func validateRule(entry any, path string) error {
 	if !ok {
 		return fmt.Errorf("managed: %s must be an object, not %T", path, entry)
 	}
-	if p := firstNull(rule, path); p != "" {
+	if p := policy.FirstNull(rule, path); p != "" {
 		return fmt.Errorf("managed: %s is null, which TOML cannot represent", p)
 	}
 	switch name := rule["toolName"].(type) {
@@ -155,34 +157,6 @@ func validateRule(entry any, path string) error {
 		return fmt.Errorf("managed: %s.priority is required and must be an integer from 0 to 999; Gemini rejects the whole policy file otherwise", path)
 	}
 	return nil
-}
-
-// firstNull returns the path of the first nil value in v, or "" when there
-// is none. TOML has no null: the encoder drops a nil map value silently and
-// refuses a nil slice element, and neither is what an author meant.
-func firstNull(v any, path string) string {
-	switch t := v.(type) {
-	case nil:
-		return path
-	case map[string]any:
-		keys := make([]string, 0, len(t))
-		for k := range t {
-			keys = append(keys, k)
-		}
-		sort.Strings(keys)
-		for _, k := range keys {
-			if found := firstNull(t[k], path+"."+k); found != "" {
-				return found
-			}
-		}
-	case []any:
-		for i, e := range t {
-			if found := firstNull(e, fmt.Sprintf("%s[%d]", path, i)); found != "" {
-				return found
-			}
-		}
-	}
-	return ""
 }
 
 func knownKey(key string) bool {
