@@ -80,6 +80,16 @@ groups = policy.UnionGroups(ruleSet.GroupsFor(user), snapshot.Members[user])
 slice. With no snapshot stored, the result is the authored map alone —
 byte for byte what the server sends today.
 
+One consequence of always sorting: today's bundle reports a user's groups
+in authored order, whatever order the policy wrote them in, and
+`UnionGroups` sorts even when there is no snapshot to union with. So on
+the first deploy of this change, every bundle whose authored groups were
+not already alphabetical gets a new `groups` order and each affected
+machine sees one ETag change on its next `aw-sync` cycle, with no
+membership behind it. Matching a rule's group constraint against a user's
+groups is set-based, not order-sensitive, so nothing besides that one
+reported order — and the resulting ETag — changes.
+
 Why union and not replace: the authored map becomes the manual override —
 a contractor who is not in the IdP, a group the IdP does not model, an
 emergency change while the export is broken — and nothing a policy author
@@ -107,10 +117,13 @@ exactly as `enroll-token`, `machines` and `revoke` behave.
 {"source": "okta-export", "members": {"alice@acme.com": ["platform", "oncall"]}}
 ```
 
-- 422 with a message naming the problem when `members` is missing or not
-  an object, a user key is empty, a value is not a list of strings, or a
-  group name is empty. An empty `members` object is valid: it means "the
-  IdP says nobody is in anything", and the authored map still applies.
+- 400 when the body is not JSON of the expected shape: `members` is not
+  an object, a value is not a list of strings, or the body has an unknown
+  field. 422 when the shape is right but a user key or a group name is
+  empty, or `members` is missing entirely — this matches
+  `POST /v1/policy/revisions`. An empty `members` object is valid: it
+  means "the IdP says nobody is in anything", and the authored map still
+  applies.
 - Body limited to 8 MiB; 413 beyond it.
 - 200 with `{"source": ..., "syncedAt": ..., "users": N, "groups": M}`
   where `groups` counts distinct group names.

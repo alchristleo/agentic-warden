@@ -41,6 +41,13 @@ func TestAdminRoutesAre503WhenNoTokenIsConfigured(t *testing.T) {
 	if resp.StatusCode != http.StatusServiceUnavailable {
 		t.Errorf("status = %d, want 503", resp.StatusCode)
 	}
+
+	if resp := putGroups(t, srv, `{"members":{}}`, "anything"); resp.StatusCode != http.StatusServiceUnavailable {
+		t.Errorf("PUT /v1/groups status = %d, want 503", resp.StatusCode)
+	}
+	if resp := getGroups(t, srv, "anything"); resp.StatusCode != http.StatusServiceUnavailable {
+		t.Errorf("GET /v1/groups status = %d, want 503", resp.StatusCode)
+	}
 }
 
 func TestBearerSchemeIsCaseInsensitive(t *testing.T) {

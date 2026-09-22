@@ -146,7 +146,9 @@ A machine's bundle resolves its user's groups as the union of the two, so
 a membership that must go away is removed from the source that added it.
 User keys match the enrolled email exactly; there is no case folding. The
 bundle's ETag covers the resolved rules, so a new snapshot reaches every
-affected machine on its next `aw-sync` cycle.
+affected machine on its next `aw-sync` cycle. `awd groups` shows what the
+server holds; the `GET /v1/groups` body is a report, not a re-appliable
+file, because it carries fields the endpoint rejects on input.
 
 The bundle is every rule that could apply to that user, with repository
 matchers still in it; the machine resolves those per session. `aw-sync` does

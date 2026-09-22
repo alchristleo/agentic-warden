@@ -2,6 +2,7 @@ package handler_test
 
 import (
 	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -136,5 +137,17 @@ func TestAnEmptyMembersObjectIsAValidSnapshot(t *testing.T) {
 	srv := newServer(t)
 	if resp := putGroups(t, srv, `{"members":{}}`, adminToken); resp.StatusCode != http.StatusOK {
 		t.Errorf("status = %d, want 200: the IdP may say nobody is in anything", resp.StatusCode)
+	}
+
+	got := getGroups(t, srv, adminToken)
+	if got.StatusCode != http.StatusOK {
+		t.Fatalf("GET status = %d", got.StatusCode)
+	}
+	body, err := io.ReadAll(got.Body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(body), `"members":{}`) {
+		t.Errorf("GET body = %s; want an explicit empty members object, not an omitted field", body)
 	}
 }

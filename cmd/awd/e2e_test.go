@@ -608,6 +608,11 @@ func TestGroupsWithoutASnapshotSaysSo(t *testing.T) {
 	if code != 0 || !strings.Contains(out, "no group snapshot") {
 		t.Errorf("exit %d, output %q", code, out)
 	}
+	// A missing admin token means the server answers 401, not 404; `groups`
+	// treats only a 404 as "no snapshot", so a 401 must surface as an error.
+	if out, code := runAwdEnv(t, []string{"AWD_ADMIN_TOKEN="}, "groups", "--url", s.url); code == 0 {
+		t.Errorf("groups without the admin token exited 0: %s", out)
+	}
 	if out, code := runAwdEnv(t, []string{"AWD_ADMIN_TOKEN="}, "groups", "apply", writePolicy(t, groupsYAML), "--url", s.url); code == 0 {
 		t.Errorf("groups apply without the admin token exited 0: %s", out)
 	}

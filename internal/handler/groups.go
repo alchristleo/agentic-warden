@@ -24,8 +24,8 @@ type groupsRequest struct {
 	Members map[string][]string `json:"members"`
 }
 
-// groupsSummary is what both routes answer with: enough for an operator to
-// confirm what the server holds without reading the members.
+// groupsSummary is what PUT /v1/groups answers with: enough for an
+// operator to confirm what the server stored without reading the members.
 type groupsSummary struct {
 	// Source names the exporter that produced the current snapshot.
 	Source string `json:"source"`
@@ -37,28 +37,42 @@ type groupsSummary struct {
 	Users int `json:"users"`
 	// Groups is the number of distinct group names across all members.
 	Groups int `json:"groups"`
-	// Members holds the full membership map, present only when the caller
-	// asked to see it (the GET route, not the PUT response).
-	Members map[string][]string `json:"members,omitempty"`
 }
 
-// summarise turns a stored snapshot into the wire summary, including the
-// full membership map only when withMembers asks for it.
-func summarise(s model.GroupSnapshot, withMembers bool) groupsSummary {
+// groupsDetail is what GET /v1/groups answers with: the summary fields
+// plus the full membership map, for an operator checking exactly what the
+// server resolves against.
+type groupsDetail struct {
+	// groupsSummary's fields are inlined into the same JSON object; GET
+	// answers with everything PUT does, plus members.
+	groupsSummary
+	// Members holds the full membership map and is never nil: an absent
+	// map would be indistinguishable from an omitted field by a caller
+	// checking the raw JSON, so an empty snapshot still serialises
+	// "members":{}.
+	Members map[string][]string `json:"members"`
+}
+
+// summarise turns a stored snapshot into the wire summary used by PUT,
+// counting distinct users and groups without exposing the membership map.
+func summarise(s model.GroupSnapshot) groupsSummary {
 	distinct := make(map[string]bool)
 	for _, groups := range s.Members {
 		for _, g := range groups {
 			distinct[g] = true
 		}
 	}
-	out := groupsSummary{Source: s.Source, AppliedBy: s.AppliedBy, SyncedAt: s.SyncedAt, Users: len(s.Members), Groups: len(distinct)}
-	if withMembers {
-		out.Members = s.Members
-		if out.Members == nil {
-			out.Members = map[string][]string{}
-		}
+	return groupsSummary{Source: s.Source, AppliedBy: s.AppliedBy, SyncedAt: s.SyncedAt, Users: len(s.Members), Groups: len(distinct)}
+}
+
+// detail turns a stored snapshot into the wire detail used by GET, adding
+// the full membership map and guaranteeing it is never nil.
+func detail(s model.GroupSnapshot) groupsDetail {
+	members := s.Members
+	if members == nil {
+		members = map[string][]string{}
 	}
-	return out
+	return groupsDetail{groupsSummary: summarise(s), Members: members}
 }
 
 // putGroups stores an IdP membership snapshot. It replaces the previous
@@ -95,7 +109,7 @@ func (h *Handler) putGroups(w http.ResponseWriter, r *http.Request) {
 		h.fail(w, r, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, summarise(snapshot, false))
+	writeJSON(w, http.StatusOK, summarise(snapshot))
 }
 
 // getGroups shows the current snapshot, members included, for an operator
@@ -106,5 +120,5 @@ func (h *Handler) getGroups(w http.ResponseWriter, r *http.Request) {
 		h.fail(w, r, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, summarise(snapshot, true))
+	writeJSON(w, http.StatusOK, detail(snapshot))
 }
