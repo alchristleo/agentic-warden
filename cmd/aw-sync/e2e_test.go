@@ -39,7 +39,7 @@ func TestMain(m *testing.M) {
 		panic("building awd: " + err.Error() + "\n" + string(out))
 	}
 	builtPolicy = filepath.Join(dir, "aw-policy")
-	if out, err := exec.Command("go", "build", "-o", builtPolicy, "../aw-policy").CombinedOutput(); err != nil {
+	if out, err := exec.Command("go", "build", "-tags", "awtest", "-o", builtPolicy, "../aw-policy").CombinedOutput(); err != nil {
 		panic("building aw-policy: " + err.Error() + "\n" + string(out))
 	}
 	// os.Exit does not run deferred calls, so the cleanup has to happen

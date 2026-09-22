@@ -18,6 +18,11 @@
 // always exits 0 with a valid envelope, printing an empty one when there is
 // no usable bundle, unless the organization opts into failing closed with
 // "requireBundle". See internal/policyhelper for the rules.
+//
+// The one argument it recognises is "build-info", which prints whether the
+// AW_POLICY_BUNDLE and AW_POLICY_CONFIG overrides are compiled in; they are
+// only under -tags awtest, for tests. Any other argument runs the helper as
+// usual, so a future Claude Code that passes one cannot break a launch.
 package main
 
 import (
@@ -34,12 +39,15 @@ import (
 	"github.com/acme/agent-wrapper/internal/policyhelper"
 )
 
-// configEnv names the configuration file explicitly. It exists for tests and
-// for trying the helper by hand; a deployment relies on the system path.
+// configEnv names the configuration file explicitly. It is honoured only
+// when envOverrides is true, for tests; a deployment reads the system path.
 const configEnv = "AW_POLICY_CONFIG"
 
-// bundleEnv names the bundle file explicitly, for the same reasons.
+// bundleEnv names the bundle file explicitly, under the same rule.
 const bundleEnv = "AW_POLICY_BUNDLE"
+
+// buildInfoArg is the one argument the helper answers instead of running.
+const buildInfoArg = "build-info"
 
 // maxStderr bounds what is written to stderr. Claude Code fails the run past
 // 1 MiB, and it shows stderr as the reason when the helper exits non-zero,
@@ -55,12 +63,25 @@ type fileConfig struct {
 }
 
 func main() {
-	os.Exit(run(os.Stdout, os.Stderr, os.Getenv))
+	if len(os.Args) == 2 && os.Args[1] == buildInfoArg {
+		fmt.Fprintln(os.Stdout, buildInfo(envOverrides))
+		os.Exit(0)
+	}
+	os.Exit(run(os.Stdout, os.Stderr, os.Getenv, envOverrides))
+}
+
+// buildInfo is what `aw-policy build-info` prints: one line `aw doctor`
+// parses to tell a test build from a release build.
+func buildInfo(overrides bool) string {
+	if overrides {
+		return "env-overrides=on"
+	}
+	return "env-overrides=off"
 }
 
 // run does everything main would, with the process boundary as parameters.
 // It never panics out: a defect here must still let Claude Code start.
-func run(stdout, stderr io.Writer, getenv func(string) string) (code int) {
+func run(stdout, stderr io.Writer, getenv func(string) string, allowEnv bool) (code int) {
 	var notes []string
 	defer func() {
 		if r := recover(); r != nil {
@@ -71,7 +92,7 @@ func run(stdout, stderr io.Writer, getenv func(string) string) (code int) {
 		writeNotes(stderr, notes)
 	}()
 
-	cfg, notes := loadConfig(getenv)
+	cfg, notes := loadConfig(getenv, allowEnv)
 
 	result := policyhelper.Run(cfg)
 	notes = append(notes, result.Notes...)
@@ -83,17 +104,27 @@ func run(stdout, stderr io.Writer, getenv func(string) string) (code int) {
 
 // loadConfig locates the bundle and reads the optional configuration file.
 // Problems are notes, not errors: the helper runs on with the defaults.
-func loadConfig(getenv func(string) string) (policyhelper.Config, []string) {
+// allowEnv is false in a release build: the two environment variables are
+// then not consulted at all, and a set one earns a note so the developer
+// who set it learns it did nothing rather than wondering why.
+func loadConfig(getenv func(string) string, allowEnv bool) (policyhelper.Config, []string) {
 	var notes []string
 	systemDir := claude.SystemDir(runtime.GOOS)
-	cfg := policyhelper.Config{BundlePath: getenv(bundleEnv)}
-	if cfg.BundlePath == "" {
-		cfg.BundlePath = filepath.Join(systemDir, claude.BundleFile)
-	}
-
-	path := getenv(configEnv)
-	if path == "" {
-		path = filepath.Join(systemDir, "aw-policy.json")
+	cfg := policyhelper.Config{BundlePath: filepath.Join(systemDir, claude.BundleFile)}
+	path := filepath.Join(systemDir, "aw-policy.json")
+	if allowEnv {
+		if p := getenv(bundleEnv); p != "" {
+			cfg.BundlePath = p
+		}
+		if p := getenv(configEnv); p != "" {
+			path = p
+		}
+	} else {
+		for _, name := range []string{bundleEnv, configEnv} {
+			if getenv(name) != "" {
+				notes = append(notes, fmt.Sprintf("%s is set but this build ignores it; the bundle and configuration are read from %s only", name, systemDir))
+			}
+		}
 	}
 	raw, err := os.ReadFile(path)
 	switch {
