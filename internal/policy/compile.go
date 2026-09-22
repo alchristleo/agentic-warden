@@ -87,6 +87,8 @@ type RuleSet struct {
 // layering: scalars and allowlists replace (a union would widen an
 // allowlist), tables such as mcp_servers merge by key, and only
 // rules.prefix_rules accumulate, since each entry is its own restriction.
+// Gemini's tool exclusions and MCP allowlist union for the same reason as
+// Claude's lists, mcpServers merge by name, and policy rules accumulate.
 func AgentMergeRules(agentName string) merge.Rules {
 	switch agentName {
 	case "claude":
@@ -98,6 +100,12 @@ func AgentMergeRules(agentName string) merge.Rules {
 		}}
 	case "codex":
 		return merge.Rules{UnionArrays: []string{"rules.prefix_rules"}}
+	case "gemini":
+		return merge.Rules{UnionArrays: []string{
+			"settings.tools.exclude",
+			"settings.mcp.allowed",
+			"policies",
+		}}
 	default:
 		return merge.Rules{}
 	}

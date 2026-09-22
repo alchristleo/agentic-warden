@@ -303,3 +303,56 @@ func TestCodexRulesMergeWithCodexSemantics(t *testing.T) {
 		t.Errorf("prefix_rules = %v; want both rules appended in order", prefix)
 	}
 }
+
+func TestGeminiRulesMergeWithGeminiSemantics(t *testing.T) {
+	// Gemini's two enforced files layer differently: exclusion and MCP
+	// allowlists union so a team's additions join the organization's,
+	// mcpServers merge by name, other settings replace, and policy rules
+	// accumulate since each is its own restriction.
+	rs := &policy.RuleSet{Rules: []policy.Rule{
+		{Name: "baseline", Agents: map[string]policy.AgentConfig{"gemini": {Managed: map[string]any{
+			"settings": map[string]any{
+				"tools":      map[string]any{"exclude": []any{"run_shell_command"}},
+				"mcp":        map[string]any{"allowed": []any{"docs"}},
+				"mcpServers": map[string]any{"docs": map[string]any{"command": "gemini-mcp"}},
+				"admin":      map[string]any{"secureModeEnabled": true},
+			},
+			"policies": []any{map[string]any{"toolName": "run_shell_command", "commandPrefix": "rm -rf", "decision": "deny", "priority": 100}},
+		}}}},
+		{Name: "strict", Agents: map[string]policy.AgentConfig{"gemini": {Managed: map[string]any{
+			"settings": map[string]any{
+				"tools":      map[string]any{"exclude": []any{"web_fetch"}},
+				"mcp":        map[string]any{"allowed": []any{"jira"}},
+				"mcpServers": map[string]any{"jira": map[string]any{"url": "https://jira/mcp"}},
+				"admin":      map[string]any{"secureModeEnabled": false},
+			},
+			"policies": []any{map[string]any{"toolName": []any{"write_file", "replace"}, "decision": "ask_user", "priority": 50}},
+		}}}},
+	}}
+
+	managed := rs.Compile(policy.Subject{}).Agent("gemini").Managed
+	settings, _ := managed["settings"].(map[string]any)
+
+	tools, _ := settings["tools"].(map[string]any)
+	if exclude, _ := tools["exclude"].([]any); len(exclude) != 2 || exclude[0] != "run_shell_command" || exclude[1] != "web_fetch" {
+		t.Errorf("tools.exclude = %v; want the union in rule order", exclude)
+	}
+	mcp, _ := settings["mcp"].(map[string]any)
+	if allowed, _ := mcp["allowed"].([]any); len(allowed) != 2 {
+		t.Errorf("mcp.allowed = %v; want the union", allowed)
+	}
+	servers, _ := settings["mcpServers"].(map[string]any)
+	if _, docs := servers["docs"]; !docs {
+		t.Error("mcpServers lost docs; tables merge by name")
+	}
+	if _, jira := servers["jira"]; !jira {
+		t.Error("mcpServers lost jira; tables merge by name")
+	}
+	admin, _ := settings["admin"].(map[string]any)
+	if admin["secureModeEnabled"] != false {
+		t.Errorf("admin.secureModeEnabled = %v; scalars replace", admin["secureModeEnabled"])
+	}
+	if policies, _ := managed["policies"].([]any); len(policies) != 2 {
+		t.Errorf("policies = %v; want both rules appended in order", policies)
+	}
+}
