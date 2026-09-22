@@ -1,6 +1,6 @@
 # Multi-agent governance: bundles, machine enrollment, aw-sync
 
-Date: 2026-09-21. Status: approved design, not yet implemented.
+Date: 2026-09-21. Status: implemented through M4e on 2026-09-22; the "Out of scope" section is what remains.
 Supersedes milestones 4-7 of the original plan.
 
 ## Why this exists
