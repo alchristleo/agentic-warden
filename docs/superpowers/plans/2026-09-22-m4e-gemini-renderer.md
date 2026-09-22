@@ -174,8 +174,8 @@ func TestAPolicyRuleNeedsAToolName(t *testing.T) {
 
 func TestAPolicyRuleNeedsAKnownDecision(t *testing.T) {
 	for name, rule := range map[string]map[string]any{
-		"missing": {"toolName": "*", "priority": 1},
-		"unknown": {"toolName": "*", "decision": "forbid", "priority": 1},
+		"missing":    {"toolName": "*", "priority": 1},
+		"unknown":    {"toolName": "*", "decision": "forbid", "priority": 1},
 		"wrong type": {"toolName": "*", "decision": true, "priority": 1},
 	} {
 		err := managed.Validate(map[string]any{"policies": []any{rule}})
