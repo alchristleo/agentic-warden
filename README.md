@@ -207,3 +207,7 @@ This is a client-side control, not a security boundary. A developer with local
 administrator rights can edit the managed source or run a modified client. Pair
 it with scheduled MDM redeployment and network-level egress restriction. See
 `docs/threat-model.md` when it lands.
+
+## License
+
+Apache License 2.0; see `LICENSE`.
