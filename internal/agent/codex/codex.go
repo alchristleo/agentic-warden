@@ -9,6 +9,7 @@ package codex
 import (
 	"context"
 	"os"
+	"runtime"
 
 	"github.com/acme/agent-wrapper/internal/agent"
 	"github.com/acme/agent-wrapper/internal/merge"
@@ -17,11 +18,41 @@ import (
 // Name is the subcommand a developer types and the agent key in a policy.
 const Name = "codex"
 
+// SystemDir is where Codex reads requirements.toml on goos: the enforced
+// tier that outranks every user file. Windows keeps it under ProgramData,
+// which an installation can relocate; the environment says where.
+func SystemDir(goos string) string {
+	switch goos {
+	case "windows":
+		return programData() + `\OpenAI\Codex`
+	default:
+		return "/etc/codex"
+	}
+}
+
+// programData is Windows' machine-wide data directory.
+func programData() string {
+	if dir := os.Getenv("ProgramData"); dir != "" {
+		return dir
+	}
+	return `C:\ProgramData`
+}
+
 // Adapter launches Codex and renders its requirements file. The exported
 // field exists so tests can control the binary.
 type Adapter struct {
 	// Binary is the command to resolve on PATH; empty means Name.
 	Binary string
+	// SystemDir overrides where Inspect looks for requirements.toml; empty
+	// means SystemDir(runtime.GOOS). Tests aim it at a temporary directory.
+	SystemDir string
+}
+
+func (a *Adapter) systemDir() string {
+	if a.SystemDir != "" {
+		return a.SystemDir
+	}
+	return SystemDir(runtime.GOOS)
 }
 
 // New returns an adapter with the defaults a developer's machine implies.

@@ -5,6 +5,8 @@ import (
 	"testing"
 
 	"github.com/acme/agent-wrapper/internal/agent/claude"
+	"github.com/acme/agent-wrapper/internal/agent/codex"
+	"github.com/acme/agent-wrapper/internal/agent/gemini"
 	"github.com/acme/agent-wrapper/internal/sync"
 )
 
@@ -79,6 +81,29 @@ func TestClaudeRootMatchesTheAdaptersSystemDir(t *testing.T) {
 		}
 		if want := claude.SystemDir(goos); got != want {
 			t.Errorf("AgentRoot(%s, claude) = %q, want %q to match claude.SystemDir", goos, got, want)
+		}
+	}
+}
+
+// TestCodexAndGeminiRootsMatchTheAdapters pins sync.AgentRoot to the
+// adapters' own SystemDir, as the Claude test above does: aw-sync writes
+// where AgentRoot says and `aw doctor` reads where the adapter says.
+func TestCodexAndGeminiRootsMatchTheAdapters(t *testing.T) {
+	t.Setenv("ProgramData", "")
+	for _, goos := range []string{"linux", "darwin", "windows"} {
+		got, err := sync.AgentRoot(goos, "codex")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if want := codex.SystemDir(goos); got != want {
+			t.Errorf("AgentRoot(%s, codex) = %q, want %q", goos, got, want)
+		}
+		got, err = sync.AgentRoot(goos, "gemini")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if want := gemini.SystemDir(goos); got != want {
+			t.Errorf("AgentRoot(%s, gemini) = %q, want %q", goos, got, want)
 		}
 	}
 }

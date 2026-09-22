@@ -12,6 +12,7 @@ package gemini
 import (
 	"context"
 	"os"
+	"runtime"
 
 	"github.com/acme/agent-wrapper/internal/agent"
 	"github.com/acme/agent-wrapper/internal/merge"
@@ -20,11 +21,44 @@ import (
 // Name is the subcommand a developer types and the agent key in a policy.
 const Name = "gemini"
 
+// SystemDir is where Gemini reads its system settings.json and, under
+// policies/, its admin policies on goos. Windows keeps it under
+// ProgramData, which an installation can relocate.
+func SystemDir(goos string) string {
+	switch goos {
+	case "darwin":
+		return "/Library/Application Support/GeminiCli"
+	case "windows":
+		return programData() + `\gemini-cli`
+	default:
+		return "/etc/gemini-cli"
+	}
+}
+
+// programData is Windows' machine-wide data directory.
+func programData() string {
+	if dir := os.Getenv("ProgramData"); dir != "" {
+		return dir
+	}
+	return `C:\ProgramData`
+}
+
 // Adapter launches Gemini and renders its system files. The exported field
 // exists so tests can control the binary.
 type Adapter struct {
 	// Binary is the command to resolve on PATH; empty means Name.
 	Binary string
+	// SystemDir overrides where Inspect looks for settings.json and the policies
+	// directory; empty means SystemDir(runtime.GOOS). Tests aim it at a
+	// temporary directory.
+	SystemDir string
+}
+
+func (a *Adapter) systemDir() string {
+	if a.SystemDir != "" {
+		return a.SystemDir
+	}
+	return SystemDir(runtime.GOOS)
 }
 
 // New returns an adapter with the defaults a developer's machine implies.
