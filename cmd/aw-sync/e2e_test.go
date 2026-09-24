@@ -684,9 +684,42 @@ func TestHelpListsTheCommands(t *testing.T) {
 	if code != 0 {
 		t.Fatalf("help exited %d", code)
 	}
-	for _, want := range []string{"enroll", "once", "status", "AW_SYNC_TOKEN"} {
+	for _, want := range []string{"enroll", "once", "status", "install-timer", "uninstall-timer", "AW_SYNC_TOKEN"} {
 		if !strings.Contains(stdout, want) {
 			t.Errorf("help lacks %q", want)
 		}
+	}
+}
+
+func TestInstallTimerRefusesAnUnenrolledMachine(t *testing.T) {
+	stateDir := t.TempDir()
+	_, stderr, code := runSync(t, nil, "install-timer", "--state-dir", stateDir)
+	if code != 1 || !strings.Contains(stderr, "not enrolled; run aw-sync enroll first") {
+		t.Errorf("exit %d, stderr %q", code, stderr)
+	}
+	if entries, _ := os.ReadDir(stateDir); len(entries) != 0 {
+		t.Errorf("wrote into the state dir: %v", entries)
+	}
+}
+
+func TestInstallTimerRejectsBadIntervalsFirst(t *testing.T) {
+	for _, interval := range []string{"30s", "90s", "25h", "soon"} {
+		// Even on an unenrolled dir the interval is the reported problem:
+		// it is checked before anything else.
+		_, stderr, code := runSync(t, nil, "install-timer", "--interval", interval, "--state-dir", t.TempDir())
+		if code != 1 || !strings.Contains(stderr, "interval") {
+			t.Errorf("--interval %s: exit %d, stderr %q", interval, code, stderr)
+		}
+	}
+}
+
+func TestInstallTimerRejectsStrayArguments(t *testing.T) {
+	_, stderr, code := runSync(t, nil, "install-timer", "now")
+	if code != 1 || !strings.Contains(stderr, "no arguments") {
+		t.Errorf("exit %d, stderr %q", code, stderr)
+	}
+	_, stderr, code = runSync(t, nil, "uninstall-timer", "now")
+	if code != 1 || !strings.Contains(stderr, "no arguments") {
+		t.Errorf("exit %d, stderr %q", code, stderr)
 	}
 }

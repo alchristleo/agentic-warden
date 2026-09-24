@@ -5,6 +5,8 @@
 //	aw-sync enroll --server URL --token T    exchange an enrollment token for this machine's credential
 //	aw-sync once                             fetch the bundle and render every enrolled agent's files
 //	aw-sync status                           last sync, bundle version, per-file drift, last error
+//	aw-sync install-timer [--interval 5m]      run `once` periodically (systemd, launchd or Task Scheduler)
+//	aw-sync uninstall-timer                    stop and remove that timer; enrollment and files stay
 //
 // The rendered files are never deleted on failure: a machine that cannot
 // reach the control plane keeps the policy it last received.
@@ -30,6 +32,7 @@ import (
 	"github.com/acme/agent-wrapper/internal/agent/codex"
 	"github.com/acme/agent-wrapper/internal/agent/gemini"
 	"github.com/acme/agent-wrapper/internal/sync"
+	"github.com/acme/agent-wrapper/internal/sync/timer"
 )
 
 const usage = `aw-sync keeps this machine's agent configuration in step with the control plane.
@@ -38,6 +41,8 @@ Usage:
   aw-sync enroll --server URL [--token T] [--name HOST] [--agents claude,codex,gemini] [--force] [--state-dir DIR]
   aw-sync once [--state-dir DIR] [--root agent=DIR ...]
   aw-sync status [--json] [--state-dir DIR]
+  aw-sync install-timer [--interval 5m] [--state-dir DIR]
+  aw-sync uninstall-timer
   aw-sync help
 
 Environment:
@@ -46,6 +51,7 @@ Environment:
 --state-dir defaults to the OS state directory (/var/lib/agent-wrapper on Linux).
 --root overrides where one agent's files are written and exists for testing.
 once exits 1 when the cycle fails; the files on disk are left as they were.
+install-timer and uninstall-timer need root (an elevated prompt on Windows).
 `
 
 func main() {
@@ -70,6 +76,10 @@ func run(argv []string, stdout io.Writer) error {
 		return helpOr(once(argv[1:], stdout), stdout)
 	case "status":
 		return helpOr(status(argv[1:], stdout), stdout)
+	case "install-timer":
+		return helpOr(installTimer(argv[1:], stdout), stdout)
+	case "uninstall-timer":
+		return helpOr(uninstallTimer(argv[1:], stdout), stdout)
 	default:
 		return fmt.Errorf("unknown command %q; run `aw-sync help`", argv[0])
 	}
@@ -331,4 +341,112 @@ func orNone(version string) string {
 		return "(none)"
 	}
 	return version
+}
+
+// installTimer schedules `aw-sync once` for this machine. The unit runs the
+// binary that is running now, so a binary installed somewhere other than
+// /usr/local/bin still syncs; re-running it changes the interval.
+func installTimer(argv []string, stdout io.Writer) error {
+	flags, stateDir := newFlagSet("install-timer")
+	interval := flags.Duration("interval", timer.DefaultInterval, "how often to run once (1m to 24h, whole minutes)")
+	if err := flags.Parse(argv); err != nil {
+		if strings.Contains(err.Error(), "interval") {
+			return fmt.Errorf("--interval: %w", err)
+		}
+		return err
+	}
+	if flags.NArg() != 0 {
+		return errors.New("install-timer takes no arguments")
+	}
+	if err := timer.ValidateInterval(*interval); err != nil {
+		return err
+	}
+	if err := timer.Supported(runtime.GOOS); err != nil {
+		return err
+	}
+	dir, err := filepath.Abs(*stateDir)
+	if err != nil {
+		return err
+	}
+	// A timer on an unenrolled machine would only log "not enrolled" every
+	// interval. machine.json is root-only, so its existence is the test.
+	if _, err := os.Stat(filepath.Join(dir, sync.MachineFile)); err != nil {
+		return errors.New("not enrolled; run aw-sync enroll first")
+	}
+	binary, err := runningBinary()
+	if err != nil {
+		return err
+	}
+	p := timer.Params{Binary: binary, StateDir: dir, Interval: *interval}
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+	if err := timer.NewInstaller(runtime.GOOS).Install(ctx, p); err != nil {
+		return privilegeHint(err, "install-timer")
+	}
+	fmt.Fprintf(stdout, "installed the aw-sync timer: %s once, every %s\n", binary, *interval)
+	units, _ := timer.Render(runtime.GOOS, p)
+	for _, u := range units {
+		if u.Path != "" {
+			fmt.Fprintln(stdout, "  "+u.Path)
+		}
+	}
+	if runtime.GOOS == "windows" {
+		fmt.Fprintln(stdout, "  scheduled task "+timer.TaskName)
+	}
+	fmt.Fprintln(stdout, "check it with: aw-sync status")
+	return nil
+}
+
+// uninstallTimer stops future syncs. Enrollment, state and the rendered
+// files are left exactly as they are.
+func uninstallTimer(argv []string, stdout io.Writer) error {
+	flags, _ := newFlagSet("uninstall-timer")
+	if err := flags.Parse(argv); err != nil {
+		return err
+	}
+	if flags.NArg() != 0 {
+		return errors.New("uninstall-timer takes no arguments")
+	}
+	if err := timer.Supported(runtime.GOOS); err != nil {
+		return err
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+	err := timer.NewInstaller(runtime.GOOS).Uninstall(ctx)
+	switch {
+	case errors.Is(err, timer.ErrNotInstalled):
+		fmt.Fprintln(stdout, "no timer installed")
+		return nil
+	case err != nil:
+		return privilegeHint(err, "uninstall-timer")
+	}
+	fmt.Fprintln(stdout, "removed the aw-sync timer; this machine stays enrolled and keeps its files")
+	return nil
+}
+
+// runningBinary is the path of this executable with symlinks resolved, so
+// the unit keeps working if a convenience symlink is later removed. It
+// never guesses: an unresolvable path is an error.
+func runningBinary() (string, error) {
+	exe, err := os.Executable()
+	if err != nil {
+		return "", fmt.Errorf("cannot resolve the running aw-sync binary: %w", err)
+	}
+	resolved, err := filepath.EvalSymlinks(exe)
+	if err != nil {
+		return "", fmt.Errorf("cannot resolve the running aw-sync binary: %w", err)
+	}
+	return resolved, nil
+}
+
+// privilegeHint adds how to get the privilege the timer commands need,
+// since "permission denied" from systemctl does not say what to do.
+func privilegeHint(err error, command string) error {
+	if runtime.GOOS == "windows" {
+		return fmt.Errorf("%w (run aw-sync %s from an elevated prompt)", err, command)
+	}
+	if errors.Is(err, fs.ErrPermission) || os.Geteuid() != 0 {
+		return fmt.Errorf("%w (run as root: sudo aw-sync %s)", err, command)
+	}
+	return err
 }
