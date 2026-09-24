@@ -401,6 +401,13 @@ func (cfg Config) audit(state State, res Result) {
 		return
 	}
 	defer f.Close()
+	// OpenFile's mode is umask-filtered on creation like any other mode, so
+	// under a strict umask the log can come out 0600 despite the 0644 asked
+	// for above. The state directory is aw-sync's own, so forcing the mode
+	// here is always safe, and Chmod is unconditional rather than only on
+	// creation because a log an older, unfixed binary already narrowed to
+	// 0600 needs the same repair EnsureStateDir gives the directory itself.
+	_ = os.Chmod(path, 0o644)
 	errText := ""
 	if res.Err != nil {
 		errText = res.Err.Error()

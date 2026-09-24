@@ -48,6 +48,10 @@ func (a *Adapter) Render(bundle *policy.Bundle) (agent.Rendering, error) {
 	if err != nil {
 		return agent.Rendering{}, err
 	}
+	// SettingsFile is listed first so its write creates the agent root:
+	// under a strict umask, cache.MkdirMode fixes only the leaf directory
+	// it creates, so the root must come from the root-level file, not from
+	// MkdirAll creating it as an unfixed parent of policies/.
 	return agent.Rendering{
 		Files: []agent.File{
 			{Path: SettingsFile, Content: settingsBytes, Mode: 0o644},
