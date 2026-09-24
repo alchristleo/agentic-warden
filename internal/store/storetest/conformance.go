@@ -58,6 +58,7 @@ func Run(t *testing.T, newStore Factory) {
 			tc.fn(t, newStore(t))
 		})
 	}
+	RunSCIM(t, func(t *testing.T) store.SCIMStore { return newStore(t) })
 }
 
 func revision(version string, at time.Time) model.Revision {

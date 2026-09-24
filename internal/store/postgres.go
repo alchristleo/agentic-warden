@@ -353,7 +353,7 @@ func (p *Postgres) CurrentGroupSnapshot(ctx context.Context) (model.GroupSnapsho
 // conformance suite, which needs a fresh store per case; never call it
 // against a database that holds a real policy history.
 func (p *Postgres) Truncate(ctx context.Context) error {
-	if _, err := p.pool.Exec(ctx, `TRUNCATE policy_revisions, enrollment_tokens, machines, group_snapshots RESTART IDENTITY`); err != nil {
+	if _, err := p.pool.Exec(ctx, `TRUNCATE policy_revisions, enrollment_tokens, machines, group_snapshots, scim_members, scim_users, scim_groups RESTART IDENTITY`); err != nil {
 		return fmt.Errorf("store: truncating: %w", err)
 	}
 	return nil

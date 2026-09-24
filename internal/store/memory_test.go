@@ -15,10 +15,3 @@ func TestMemory(t *testing.T) {
 		return store.NewMemory()
 	})
 }
-
-// TestMemorySCIM runs the SCIM conformance cases against the memory store.
-func TestMemorySCIM(t *testing.T) {
-	storetest.RunSCIM(t, func(t *testing.T) store.SCIMStore {
-		return store.NewMemory()
-	})
-}

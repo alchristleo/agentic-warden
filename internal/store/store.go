@@ -11,8 +11,11 @@ import (
 	"github.com/acme/agent-wrapper/internal/model"
 )
 
-// Store holds policy revisions, enrolled machines and enrollment tokens.
+// Store holds policy revisions, enrolled machines, enrollment tokens and
+// what SCIM has provisioned.
 type Store interface {
+	SCIMStore
+
 	// PutRuleSet stores a new revision. It returns model.ErrBadInput for a
 	// revision without a version and model.ErrConflict when that version is
 	// already stored, because a revision is immutable once written.
