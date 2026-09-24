@@ -388,7 +388,10 @@ func (p *Postgres) SCIMGroupsFor(ctx context.Context, userName string) ([]string
 		FROM scim_users u
 		JOIN scim_members m ON m.user_id = u.id
 		JOIN scim_groups g ON g.id = m.group_id
-		WHERE u.user_name = $1 AND u.active
+		-- lower(user_name) uses the unique index (the only one on this
+		-- column); user_name = $1 keeps the match exact, since resolution
+		-- must not fold case.
+		WHERE lower(u.user_name) = lower($1) AND u.user_name = $1 AND u.active
 		ORDER BY g.display_name COLLATE "C"`
 	rows, err := p.pool.Query(ctx, query, userName)
 	if err != nil {
