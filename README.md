@@ -38,7 +38,10 @@ in, which the machine-wide files cannot carry. `aw` reads the bundle
 `.git/config` names, and hands each agent the result through its own
 launch-time channel: Codex gets `-c key=value` overrides from the rule's
 `launch` document (its `config.toml` schema; `managed` stays
-`requirements.toml`), and Gemini gets a settings file generated for the
+`requirements.toml`). Because Codex receives them as `-c` overrides, every
+key in a launch document — including an MCP server name — must use only
+letters, digits, `_` and `-`; `awd apply` refuses a rule with any other
+key. Gemini gets a settings file generated for the
 session with `GEMINI_CLI_SYSTEM_SETTINGS_PATH` pinned to it, repo-scoped
 `policies` included via `policyPaths`. This layer is advisory: bare
 `codex` or `gemini` sees the machine-wide files alone. With no policy
