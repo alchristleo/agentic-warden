@@ -4,20 +4,12 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
-	"regexp"
 	"sort"
 	"strconv"
 	"strings"
-)
 
-// bareKey is the character set a TOML bare key allows. flatten dots every
-// table level together to address it from -c, and tomlValue writes an
-// inline table's keys the same way; a key outside this set would either
-// break that syntax or silently address a different, nested key than the
-// one the author wrote. The policy package rejects this before a launch
-// document ever reaches this adapter (see policy.FirstBadKey); the check
-// here is defence in depth for a launch document built some other way.
-var bareKey = regexp.MustCompile(`^[A-Za-z0-9_-]+$`)
+	"github.com/acme/agent-wrapper/internal/policy"
+)
 
 // overrides turns the launch document into the key=value strings Codex's
 // -c flag takes, one per leaf, sorted so two launches from the same policy
@@ -48,10 +40,13 @@ func overrides(launch map[string]any) ([]string, error) {
 }
 
 // flatten walks tables into dotted keys and stops at anything else. It
-// rejects a key segment codex -c cannot address as a bare TOML key.
+// rejects a key segment codex -c cannot address as a bare TOML key. The
+// policy package rejects this before a launch document ever reaches this
+// adapter (see policy.FirstBadKey); the check here is defence in depth for
+// a launch document built some other way.
 func flatten(prefix string, table map[string]any, leaves map[string]any) error {
 	for k, v := range table {
-		if !bareKey.MatchString(k) {
+		if !policy.IsBareKey(k) {
 			return fmt.Errorf("key %q must use only letters, digits, _ and - to reach codex -c", k)
 		}
 		key := k
@@ -114,7 +109,7 @@ func tomlValue(v any) (string, error) {
 		sort.Strings(keys)
 		parts := make([]string, 0, len(keys))
 		for _, k := range keys {
-			if !bareKey.MatchString(k) {
+			if !policy.IsBareKey(k) {
 				return "", fmt.Errorf("key %q must use only letters, digits, _ and - to reach codex -c", k)
 			}
 			s, err := tomlValue(t[k])

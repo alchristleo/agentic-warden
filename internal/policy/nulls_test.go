@@ -27,6 +27,21 @@ func TestFirstNull(t *testing.T) {
 	}
 }
 
+func TestIsBareKey(t *testing.T) {
+	valid := []string{"a", "my-server_2", "A9"}
+	for _, s := range valid {
+		if !policy.IsBareKey(s) {
+			t.Errorf("IsBareKey(%q) = false, want true", s)
+		}
+	}
+	invalid := []string{"", "my server", "a.b", "x=y", "é"}
+	for _, s := range invalid {
+		if policy.IsBareKey(s) {
+			t.Errorf("IsBareKey(%q) = true, want false", s)
+		}
+	}
+}
+
 func TestFirstBadKey(t *testing.T) {
 	cases := []struct {
 		name     string
