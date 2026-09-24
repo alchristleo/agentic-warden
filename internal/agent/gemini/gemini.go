@@ -39,18 +39,10 @@ func SystemDir(goos string) string {
 	case "darwin":
 		return "/Library/Application Support/GeminiCli"
 	case "windows":
-		return programData() + `\gemini-cli`
+		return agent.ProgramData() + `\gemini-cli`
 	default:
 		return "/etc/gemini-cli"
 	}
-}
-
-// programData is Windows' machine-wide data directory.
-func programData() string {
-	if dir := os.Getenv("ProgramData"); dir != "" {
-		return dir
-	}
-	return `C:\ProgramData`
 }
 
 // SystemSettingsEnv is the variable Gemini reads its system settings path
@@ -156,7 +148,11 @@ func (a *Adapter) Build(ctx context.Context, o agent.BuildOptions) (*agent.Launc
 	}
 
 	if len(policies) > 0 {
-		policyBytes, err := policiesTOML(fmt.Sprintf(launchHeader, "unversioned"), policies)
+		version := o.Settings.Version
+		if version == "" {
+			version = "unversioned"
+		}
+		policyBytes, err := policiesTOML(fmt.Sprintf(launchHeader, version), policies)
 		if err != nil {
 			return nil, err
 		}

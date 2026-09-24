@@ -235,13 +235,19 @@ func compiledFor(src policySource) string {
 	return "policy compiled for " + src.Repo
 }
 
-func settingsFor(doc *policy.Document, agentName string) agent.Settings {
+// settingsFor builds the settings an adapter applies, stamped with the
+// bundle revision they were compiled from (empty for an explicit document,
+// which carries no version of its own), so an adapter that writes a
+// per-session file, such as Gemini's policy file, can name the revision it
+// came from.
+func settingsFor(doc *policy.Document, agentName, version string) agent.Settings {
 	config := doc.Agent(agentName)
 	return agent.Settings{
 		Managed:  config.Managed,
 		Env:      config.Env,
 		ForceEnv: config.ForceEnv,
 		Launch:   config.Launch,
+		Version:  version,
 	}
 }
 
@@ -262,7 +268,7 @@ func launch(registry *agent.Registry, opts options, agentName string, args []str
 	prepared, err := agent.Prepare(context.Background(), registry, agent.Options{
 		Agent:    agentName,
 		Args:     args,
-		Settings: settingsFor(doc, agentName),
+		Settings: settingsFor(doc, agentName, src.Version),
 	})
 	if err != nil {
 		return err
@@ -346,7 +352,7 @@ func doctor(registry *agent.Registry, opts options, args []string) error {
 		}
 		launch, err := agent.Prepare(context.Background(), registry, agent.Options{
 			Agent:    name,
-			Settings: settingsFor(doc, name),
+			Settings: settingsFor(doc, name, src.Version),
 		})
 		if err != nil {
 			if status.Error == "" {

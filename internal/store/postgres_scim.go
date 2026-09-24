@@ -329,8 +329,10 @@ func (p *Postgres) DeleteSCIMGroup(ctx context.Context, id string) error {
 	return nil
 }
 
-// ListSCIMGroups returns one page of matching groups with their members.
-func (p *Postgres) ListSCIMGroups(ctx context.Context, f model.SCIMFilter, startIndex, count int) ([]model.SCIMGroup, int, error) {
+// ListSCIMGroups returns one page of matching groups. withMembers false
+// skips the member query entirely, so paging a large directory without
+// members costs one round trip instead of two.
+func (p *Postgres) ListSCIMGroups(ctx context.Context, f model.SCIMFilter, startIndex, count int, withMembers bool) ([]model.SCIMGroup, int, error) {
 	var where string
 	switch f.Attribute {
 	case "":
@@ -367,6 +369,12 @@ func (p *Postgres) ListSCIMGroups(ctx context.Context, f model.SCIMFilter, start
 	rows.Close()
 	if err := rows.Err(); err != nil {
 		return nil, 0, fmt.Errorf("store: listing scim groups: %w", err)
+	}
+	if !withMembers {
+		for i := range groups {
+			groups[i].Members = []string{}
+		}
+		return groups, total, nil
 	}
 	members, err := readMembers(ctx, p.pool, ids)
 	if err != nil {

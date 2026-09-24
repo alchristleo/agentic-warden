@@ -64,6 +64,10 @@ func (a *Adapter) Render(bundle *policy.Bundle) (agent.Rendering, error) {
 		return agent.Rendering{}, fmt.Errorf("claude: encoding the drop-in: %w", err)
 	}
 
+	// BundleFile is listed first so its write creates the agent root: under
+	// a strict umask, cache.MkdirMode fixes only the leaf directory it
+	// creates, so the root must come from the root-level file, not from
+	// MkdirAll creating it as an unfixed parent of managed-settings.d.
 	return agent.Rendering{Files: []agent.File{
 		{Path: BundleFile, Content: append(bundleJSON, '\n'), Mode: 0o644},
 		{Path: DropInFile, Content: append(dropInJSON, '\n'), Mode: 0o644},

@@ -69,8 +69,13 @@ and runs the binary you invoked, wherever it is installed. Because the timer
 runs that binary as root, on Linux and macOS it refuses unless the binary and
 the state directory, and every directory above them, are owned by root and
 writable by no one else — install aw-sync somewhere like `/usr/local/bin`,
-not a build directory or `~/Downloads`. On Windows it warns when the binary
-is outside `Program Files`. Running it again replaces the timer.
+not a build directory or `~/Downloads`. On machines where `/usr/local/bin`
+itself is not root-owned — Homebrew on Intel Macs takes it over — that
+refusal fires there too; install aw-sync into a directory root creates
+instead, e.g. `sudo install -d -m 0755 /opt/agent-wrapper/bin && sudo install
+-m 0755 aw-sync /opt/agent-wrapper/bin/`, and run `install-timer` from that
+copy. On Windows it warns when the binary is outside `Program Files`.
+Running it again replaces the timer.
 `sudo aw-sync uninstall-timer` removes it and leaves the enrollment and the
 rendered files alone.
 

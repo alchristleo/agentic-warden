@@ -7,8 +7,8 @@ package sync
 
 import (
 	"fmt"
-	"os"
 
+	"github.com/acme/agent-wrapper/internal/agent"
 	"github.com/acme/agent-wrapper/internal/agent/claude"
 	"github.com/acme/agent-wrapper/internal/agent/codex"
 	"github.com/acme/agent-wrapper/internal/agent/gemini"
@@ -22,7 +22,7 @@ func StateDir(goos string) string {
 	case "darwin":
 		return "/Library/Application Support/agent-wrapper"
 	case "windows":
-		return programData() + `\agent-wrapper`
+		return agent.ProgramData() + `\agent-wrapper`
 	default:
 		return "/var/lib/agent-wrapper"
 	}
@@ -43,13 +43,4 @@ func AgentRoot(goos, agentName string) (string, error) {
 		return gemini.SystemDir(goos), nil
 	}
 	return "", fmt.Errorf("sync: no system directory is known for agent %q", agentName)
-}
-
-// programData is Windows' machine-wide data directory, which an installation
-// can relocate; the environment says where.
-func programData() string {
-	if dir := os.Getenv("ProgramData"); dir != "" {
-		return dir
-	}
-	return `C:\ProgramData`
 }

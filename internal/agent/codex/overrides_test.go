@@ -52,6 +52,23 @@ func TestOverridesRejectNull(t *testing.T) {
 	}
 }
 
+func TestOverridesRejectsAKeySegmentCodexCsMisparses(t *testing.T) {
+	// The policy package rejects this before a launch document ever
+	// reaches an adapter (see policy.FirstBadKey); this is defence in
+	// depth for a launch document built by some other path.
+	_, err := overrides(map[string]any{"mcp_servers": map[string]any{"my server": map[string]any{"command": "x"}}})
+	if err == nil || !strings.Contains(err.Error(), `"my server"`) {
+		t.Errorf("err = %v; want the offending key named", err)
+	}
+}
+
+func TestOverridesRejectsABadKeyInsideAnInlineTable(t *testing.T) {
+	_, err := overrides(map[string]any{"servers": []any{map[string]any{"my name": "a"}}})
+	if err == nil || !strings.Contains(err.Error(), `"my name"`) {
+		t.Errorf("err = %v; want the offending inline-table key named", err)
+	}
+}
+
 func TestOverridesOfNothingAreNothing(t *testing.T) {
 	if got, err := overrides(nil); err != nil || len(got) != 0 {
 		t.Errorf("overrides(nil) = %v, %v", got, err)

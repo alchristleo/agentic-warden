@@ -300,12 +300,12 @@ func (h *Handler) scimListGroups(w http.ResponseWriter, r *http.Request) {
 		h.scimFail(w, r, err)
 		return
 	}
-	groups, total, err := h.store.ListSCIMGroups(r.Context(), filter, startIndex, count)
+	members := withMembers(r)
+	groups, total, err := h.store.ListSCIMGroups(r.Context(), filter, startIndex, count, members)
 	if err != nil {
 		h.scimFail(w, r, err)
 		return
 	}
-	members := withMembers(r)
 	out := make([]scim.Group, 0, len(groups))
 	for _, g := range groups {
 		out = append(out, scim.EncodeGroup(g, h.groupLocation(r, g.ID), members))

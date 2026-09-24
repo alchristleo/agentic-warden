@@ -232,6 +232,40 @@ func TestLaunchIsAcceptedForCodexAlone(t *testing.T) {
 	}
 }
 
+func TestALaunchDocumentKeyCodexCsMisparsesFailsValidate(t *testing.T) {
+	// A key segment codex -c cannot address as a bare TOML key would pass
+	// apply and then either break parsing or silently address a different
+	// key than the one the author wrote, for every launch in the matching
+	// repository.
+	set := &policy.RuleSet{Version: "v1", Rules: []policy.Rule{
+		{Name: "baseline", Agents: map[string]policy.AgentConfig{
+			"codex": {Launch: map[string]any{"mcp_servers": map[string]any{"my server": map[string]any{"command": "x"}}}},
+		}},
+	}}
+
+	err := set.Validate()
+
+	if err == nil ||
+		!strings.Contains(err.Error(), `rule "baseline"`) ||
+		!strings.Contains(err.Error(), `agent "codex"`) ||
+		!strings.Contains(err.Error(), "launch.mcp_servers.my server") ||
+		!strings.Contains(err.Error(), `"my server"`) {
+		t.Errorf("err = %v; want the rule, the agent and the offending path and key named", err)
+	}
+}
+
+func TestALaunchDocumentKeyWithLettersDigitsUnderscoresAndHyphensPassesValidate(t *testing.T) {
+	set := &policy.RuleSet{Version: "v1", Rules: []policy.Rule{
+		{Name: "baseline", Agents: map[string]policy.AgentConfig{
+			"codex": {Launch: map[string]any{"mcp_servers": map[string]any{"my-server_2": map[string]any{"command": "x"}}}},
+		}},
+	}}
+
+	if err := set.Validate(); err != nil {
+		t.Errorf("valid keys: %v; want nil", err)
+	}
+}
+
 func TestANullLeafInALaunchDocumentFailsValidate(t *testing.T) {
 	// A null in a codex launch document would pass apply and then block
 	// every launch in the matching repository, since TOML cannot represent

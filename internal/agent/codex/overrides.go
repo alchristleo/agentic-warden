@@ -7,6 +7,8 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+
+	"github.com/acme/agent-wrapper/internal/policy"
 )
 
 // overrides turns the launch document into the key=value strings Codex's
@@ -18,7 +20,9 @@ import (
 // "1.0" a string and "true" a string.
 func overrides(launch map[string]any) ([]string, error) {
 	leaves := make(map[string]any)
-	flatten("", launch, leaves)
+	if err := flatten("", launch, leaves); err != nil {
+		return nil, fmt.Errorf("codex: launch: %w", err)
+	}
 	keys := make([]string, 0, len(leaves))
 	for k := range leaves {
 		keys = append(keys, k)
@@ -35,19 +39,29 @@ func overrides(launch map[string]any) ([]string, error) {
 	return out, nil
 }
 
-// flatten walks tables into dotted keys and stops at anything else.
-func flatten(prefix string, table map[string]any, leaves map[string]any) {
+// flatten walks tables into dotted keys and stops at anything else. It
+// rejects a key segment codex -c cannot address as a bare TOML key. The
+// policy package rejects this before a launch document ever reaches this
+// adapter (see policy.FirstBadKey); the check here is defence in depth for
+// a launch document built some other way.
+func flatten(prefix string, table map[string]any, leaves map[string]any) error {
 	for k, v := range table {
+		if !policy.IsBareKey(k) {
+			return fmt.Errorf("key %q must use only letters, digits, _ and - to reach codex -c", k)
+		}
 		key := k
 		if prefix != "" {
 			key = prefix + "." + k
 		}
 		if sub, ok := v.(map[string]any); ok && len(sub) > 0 {
-			flatten(key, sub, leaves)
+			if err := flatten(key, sub, leaves); err != nil {
+				return err
+			}
 			continue
 		}
 		leaves[key] = v
 	}
+	return nil
 }
 
 // tomlValue writes one value as a TOML literal. JSON's string escaping is a
@@ -95,6 +109,9 @@ func tomlValue(v any) (string, error) {
 		sort.Strings(keys)
 		parts := make([]string, 0, len(keys))
 		for _, k := range keys {
+			if !policy.IsBareKey(k) {
+				return "", fmt.Errorf("key %q must use only letters, digits, _ and - to reach codex -c", k)
+			}
 			s, err := tomlValue(t[k])
 			if err != nil {
 				return "", fmt.Errorf(".%s %w", k, err)

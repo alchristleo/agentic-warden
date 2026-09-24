@@ -322,6 +322,7 @@ func TestDoctorCompilesTheBundleForTheRepositoryItRunsIn(t *testing.T) {
 			Launch struct {
 				Args  []string `json:"args"`
 				Notes []string `json:"notes"`
+				Files []string `json:"files"`
 			} `json:"launch"`
 		} `json:"agents"`
 	}
@@ -338,6 +339,26 @@ func TestDoctorCompilesTheBundleForTheRepositoryItRunsIn(t *testing.T) {
 		case "codex":
 			if args := strings.Join(a.Launch.Args, " "); args != `-c sandbox_mode="read-only"` {
 				t.Errorf("codex args = %q; want the payments rule's override", args)
+			}
+		case "gemini":
+			// The bundle's version is the policy revision Gemini's own
+			// session policy file should name in its header, so a reader
+			// of the cache can tell which bundle produced it.
+			policyFile := ""
+			for _, f := range a.Launch.Files {
+				if strings.Contains(f, "policies") {
+					policyFile = f
+				}
+			}
+			if policyFile == "" {
+				t.Fatalf("gemini launch files %v lack a policies file", a.Launch.Files)
+			}
+			raw, err := os.ReadFile(policyFile)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !strings.HasPrefix(string(raw), "# Written by aw for one session from policy revision 2026-09-22.e2e.") {
+				t.Errorf("policy file %s =\n%s\nwant the header to name the bundle version", policyFile, raw)
 			}
 		}
 		if !strings.Contains(strings.Join(a.Launch.Notes, "\n"), "policy compiled for github.com/acme/payments-api") {

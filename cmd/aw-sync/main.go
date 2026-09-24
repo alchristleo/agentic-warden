@@ -193,8 +193,10 @@ func enroll(argv []string, stdout io.Writer) error {
 	// Created before the token is spent, so a state directory this process
 	// cannot write to fails loudly here rather than after the single-use
 	// token is already consumed.
-	if err := os.MkdirAll(*stateDir, 0o755); err != nil {
-		return fmt.Errorf("creating %s: %w", *stateDir, err)
+	// EnsureStateDir already names the directory in its own error, so this
+	// returns it as-is rather than wrapping "creating X:" a second time.
+	if err := sync.EnsureStateDir(*stateDir); err != nil {
+		return err
 	}
 
 	// Enrollment rewrites machine.json, which a running cycle may be about

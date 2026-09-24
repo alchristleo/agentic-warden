@@ -320,8 +320,10 @@ func (m *Memory) DeleteSCIMGroup(_ context.Context, id string) error {
 	return nil
 }
 
-// ListSCIMGroups returns one page of matching groups.
-func (m *Memory) ListSCIMGroups(_ context.Context, f model.SCIMFilter, startIndex, count int) ([]model.SCIMGroup, int, error) {
+// ListSCIMGroups returns one page of matching groups. withMembers false
+// skips assembling each group's member set, matching Postgres skipping its
+// member query for the same case.
+func (m *Memory) ListSCIMGroups(_ context.Context, f model.SCIMFilter, startIndex, count int, withMembers bool) ([]model.SCIMGroup, int, error) {
 	var match func(model.SCIMGroup) bool
 	switch f.Attribute {
 	case "":
@@ -336,8 +338,12 @@ func (m *Memory) ListSCIMGroups(_ context.Context, f model.SCIMFilter, startInde
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 	all := make([]model.SCIMGroup, 0)
-	for id := range m.scimGroups {
-		g, _ := m.groupLocked(id)
+	for id, g := range m.scimGroups {
+		if withMembers {
+			g, _ = m.groupLocked(id)
+		} else {
+			g.Members = []string{}
+		}
 		if match(g) {
 			all = append(all, g)
 		}

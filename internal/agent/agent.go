@@ -36,6 +36,9 @@ type Settings struct {
 	// is not their managed file; Codex turns it into -c overrides. Adapters
 	// that have no such channel ignore it.
 	Launch map[string]any
+	// Version is the policy revision these settings came from, for an
+	// adapter that stamps it into a file it writes; empty when unknown.
+	Version string
 }
 
 // BuildOptions carries everything an adapter needs to compute a launch.

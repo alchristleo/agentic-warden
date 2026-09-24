@@ -3,7 +3,10 @@ package handler
 import (
 	"log/slog"
 	"net/http"
+	"strings"
 	"time"
+
+	"github.com/acme/agent-wrapper/internal/scim"
 )
 
 // Logging records one line per request, including the status it produced.
@@ -24,7 +27,9 @@ func Logging(log *slog.Logger) func(http.Handler) http.Handler {
 }
 
 // Recovery turns a panic in a handler into a 500 so one bad request cannot
-// take the process down.
+// take the process down. Under /scim/v2/ it answers the SCIM error body an
+// IdP's provisioning log expects instead of the control plane's plain JSON;
+// every other path is unaffected.
 func Recovery(log *slog.Logger) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -32,6 +37,10 @@ func Recovery(log *slog.Logger) func(http.Handler) http.Handler {
 				if recovered := recover(); recovered != nil {
 					log.ErrorContext(r.Context(), "panic serving request",
 						"err", recovered, "path", r.URL.Path)
+					if strings.HasPrefix(r.URL.Path, "/scim/v2/") {
+						writeSCIMError(w, &scim.Error{Status: http.StatusInternalServerError, Detail: "internal error"})
+						return
+					}
 					writeError(w, http.StatusInternalServerError, "internal error")
 				}
 			}()

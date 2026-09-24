@@ -120,20 +120,31 @@ func LoadMachine(dir string) (Machine, error) {
 	return m, nil
 }
 
-// SaveMachine writes the enrollment, private to the owner. The directory is
-// created (or widened) to 0755 first: ReplaceMode would otherwise create it
-// 0700 to match machine.json's own 0600, and a 0700 state directory hides
-// state.json and the audit log from the developer running `status` even
-// though those files are themselves world-readable.
-func SaveMachine(dir string, m Machine) error {
-	if m.Agents == nil {
-		m.Agents = make([]string, 0)
-	}
+// EnsureStateDir creates aw-sync's state directory, or repairs its mode,
+// widening it to 0755 unconditionally. aw-sync owns this directory (unlike
+// a shared directory such as /etc/claude-code, which cache.MkdirMode leaves
+// alone when it already exists), so it is always safe, and sometimes
+// necessary, to force its mode: an older binary — or a fresh MkdirAll
+// racing a strict umask — can leave it at 0700, which hides state.json and
+// the audit log from the developer account that runs `aw doctor` and
+// `aw-sync status`, even though those files are themselves world-readable.
+func EnsureStateDir(dir string) error {
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return fmt.Errorf("sync: creating %s: %w", dir, err)
 	}
 	if err := os.Chmod(dir, 0o755); err != nil {
 		return fmt.Errorf("sync: %w", err)
+	}
+	return nil
+}
+
+// SaveMachine writes the enrollment, private to the owner.
+func SaveMachine(dir string, m Machine) error {
+	if m.Agents == nil {
+		m.Agents = make([]string, 0)
+	}
+	if err := EnsureStateDir(dir); err != nil {
+		return err
 	}
 	raw, err := json.MarshalIndent(m, "", "  ")
 	if err != nil {
@@ -175,6 +186,9 @@ func SaveState(dir string, s State) error {
 	}
 	if s.Agents == nil {
 		s.Agents = make([]string, 0)
+	}
+	if err := EnsureStateDir(dir); err != nil {
+		return err
 	}
 	raw, err := json.MarshalIndent(s, "", "  ")
 	if err != nil {

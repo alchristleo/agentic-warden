@@ -183,6 +183,8 @@ temporary directory.
 | aw | no bundle, no `--policy` | launch with no settings; note |
 | aw | not in a repository | compile with repo `""`: machine-wide rules only |
 | aw codex | `launch` value the encoder cannot express (null) | error, no launch; nulls are rejected at apply time so this is a defect guard |
+| awd | `launch` key not a bare TOML key (only letters, digits, `_`, `-`) | 422 / apply exits non-zero, naming the rule, agent and path |
+| aw codex | stored policy has a non-bare `launch` key (from before this rule existed) | error, no launch; it used to pass a misparsed `-c` instead |
 | aw gemini | managed fails `managed.Validate` | error, no launch |
 | aw gemini | cache directory unwritable | error, no launch, naming the directory |
 | awd | `launch` on an agent other than codex | 422 / apply exits non-zero, naming the rule and agent |

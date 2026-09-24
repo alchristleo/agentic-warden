@@ -47,6 +47,7 @@ var scimCases = []struct {
 	{"concurrent member patches lose nothing", scimGroupPatchConcurrent},
 	{"deleting a scim group removes its memberships", scimGroupDelete},
 	{"scim groups list by filter", scimGroupList},
+	{"scim groups list without members omits them", scimGroupListWithoutMembers},
 	{"scim groups for a user are those of the active user only", scimGroupsForActiveOnly},
 	{"scim groups for match the userName exactly", scimGroupsForExact},
 	{"scim counts", scimCountsCase},
@@ -420,19 +421,45 @@ func scimGroupList(t *testing.T, s store.SCIMStore) {
 			t.Fatal(err)
 		}
 	}
-	all, total, err := s.ListSCIMGroups(ctx, model.SCIMFilter{}, 1, 100)
+	all, total, err := s.ListSCIMGroups(ctx, model.SCIMFilter{}, 1, 100, true)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if total != 2 || len(all) != 2 || all[0].ID != "g1" || !equalStrings(all[0].Members, []string{"u1"}) {
 		t.Errorf("all = %+v (total %d)", all, total)
 	}
-	byName, _, _ := s.ListSCIMGroups(ctx, model.SCIMFilter{Attribute: model.SCIMAttrDisplayName, Value: "MOBILE"}, 1, 100)
+	byName, _, _ := s.ListSCIMGroups(ctx, model.SCIMFilter{Attribute: model.SCIMAttrDisplayName, Value: "MOBILE"}, 1, 100, true)
 	if len(byName) != 1 || byName[0].ID != "g2" {
 		t.Errorf("displayName filter = %+v", byName)
 	}
-	if _, _, err := s.ListSCIMGroups(ctx, model.SCIMFilter{Attribute: model.SCIMAttrUserName, Value: "x"}, 1, 100); !errors.Is(err, model.ErrBadInput) {
+	if _, _, err := s.ListSCIMGroups(ctx, model.SCIMFilter{Attribute: model.SCIMAttrUserName, Value: "x"}, 1, 100, true); !errors.Is(err, model.ErrBadInput) {
 		t.Errorf("userName filter on groups: err = %v, want ErrBadInput", err)
+	}
+}
+
+// scimGroupListWithoutMembers is the conformance case for Group 5's part A:
+// a page listed with withMembers false must not report a member of a group
+// that actually has one, but the empty slice must still be non-nil so the
+// handler's JSON encoding behaves the same as an empty group.
+func scimGroupListWithoutMembers(t *testing.T, s store.SCIMStore) {
+	ctx := context.Background()
+	mustCreateUsers(t, s, scimUser("u1", "alice@acme.com", scimAt))
+	if err := s.CreateSCIMGroup(ctx, scimGroup("g1", "platform", "u1")); err != nil {
+		t.Fatal(err)
+	}
+	without, _, err := s.ListSCIMGroups(ctx, model.SCIMFilter{}, 1, 100, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(without) != 1 || without[0].Members == nil || len(without[0].Members) != 0 {
+		t.Errorf("without members = %#v, want one group with an empty, non-nil Members", without)
+	}
+	with, _, err := s.ListSCIMGroups(ctx, model.SCIMFilter{}, 1, 100, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(with) != 1 || !equalStrings(with[0].Members, []string{"u1"}) {
+		t.Errorf("with members = %+v, want [u1]", with)
 	}
 }
 

@@ -109,6 +109,62 @@ func TestBuildWritesTheCompiledSettingsAndPinsThePath(t *testing.T) {
 	}
 }
 
+func TestBuildNamesThePolicyRevisionInThePolicyFileHeader(t *testing.T) {
+	launch, err := newAdapter(t).Build(context.Background(), agent.BuildOptions{
+		Env: fakeBinary(t),
+		Settings: agent.Settings{
+			Version: "v42",
+			Managed: map[string]any{
+				"policies": []any{map[string]any{"toolName": "run_shell_command", "decision": "deny", "priority": float64(100)}},
+			},
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw, err := os.ReadFile(policyFile(t, launch))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.HasPrefix(string(raw), "# Written by aw for one session from policy revision v42.") {
+		t.Errorf("policy file =\n%s\nwant the header to name policy revision v42", raw)
+	}
+}
+
+func TestBuildWithNoVersionWritesUnversionedInThePolicyFileHeader(t *testing.T) {
+	launch, err := newAdapter(t).Build(context.Background(), agent.BuildOptions{
+		Env: fakeBinary(t),
+		Settings: agent.Settings{
+			Managed: map[string]any{
+				"policies": []any{map[string]any{"toolName": "run_shell_command", "decision": "deny", "priority": float64(100)}},
+			},
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw, err := os.ReadFile(policyFile(t, launch))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.HasPrefix(string(raw), "# Written by aw for one session from policy revision unversioned.") {
+		t.Errorf("policy file =\n%s\nwant the header to say unversioned", raw)
+	}
+}
+
+// policyFile finds the one file launch wrote whose name starts with
+// "policies", the file settingsJSON's policyPaths points at.
+func policyFile(t *testing.T, launch *agent.Launch) string {
+	t.Helper()
+	for _, f := range launch.Files {
+		if strings.Contains(filepath.Base(f), "policies") {
+			return f
+		}
+	}
+	t.Fatalf("Files = %v; want a policies file", launch.Files)
+	return ""
+}
+
 func TestBuildWithoutPoliciesWritesSettingsAlone(t *testing.T) {
 	launch, err := newAdapter(t).Build(context.Background(), agent.BuildOptions{
 		Env:      fakeBinary(t),

@@ -248,8 +248,10 @@ the IdP re-pushing a single membership.
 ## Decisions made during implementation
 
 - A PATCH that sets `active` to JSON `null` is rejected with 400 `invalidValue`; decoding it as `false` would silently deactivate the user.
+- A POST or PUT user body with `"active": null` gets the same 400 `invalidValue`, for the same reason PATCH does: `DecodeUser` distinguishes an absent `active`, which both IdPs mean as active, from an explicit JSON null.
 - `{"op":"remove","path":"members"}` with `"value": null` clears the group, as an absent value does (RFC 7644 remove without a value). An explicit `"value": []` names no members and removes none.
 - Any request under `/scim/v2` that matches no route, including a wrong method on a real path, gets a SCIM-format 404 behind the SCIM token, so every SCIM response carries the SCIM error body; the cost is a 404 where plain HTTP would say 405.
+- A panic while serving `/scim/v2` is recovered into the SCIM error body (500), not the control plane's plain JSON, so an IdP's provisioning log always sees a body it can parse.
 
 ## Out of scope, deliberately
 
