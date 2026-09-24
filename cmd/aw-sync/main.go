@@ -17,6 +17,7 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -192,6 +193,18 @@ func enroll(argv []string, stdout io.Writer) error {
 		return fmt.Errorf("creating %s: %w", *stateDir, err)
 	}
 
+	// Enrollment rewrites machine.json, which a running cycle may be about
+	// to rewrite too during a key rollover; it waits for nobody, so a held
+	// lock is an error to retry, and it comes before the token is spent.
+	release, err := sync.Lock(*stateDir)
+	if errors.Is(err, sync.ErrLocked) {
+		return errors.New("another aw-sync is running; retry")
+	}
+	if err != nil {
+		return err
+	}
+	defer release()
+
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 	client := &sync.Client{Server: *server}
@@ -215,12 +228,29 @@ func enroll(argv []string, stdout io.Writer) error {
 }
 
 func once(argv []string, stdout io.Writer) error {
-	fs, stateDir := newFlagSet("once")
+	flags, stateDir := newFlagSet("once")
 	roots := rootFlags{}
-	fs.Var(roots, "root", "agent=DIR override for one agent's system directory")
-	if err := fs.Parse(argv); err != nil {
+	flags.Var(roots, "root", "agent=DIR override for one agent's system directory")
+	if err := flags.Parse(argv); err != nil {
 		return err
 	}
+
+	// One cycle at a time: a timer tick that lands on a manual run is not a
+	// failure worth retrying, so it is skipped with exit 0. A state
+	// directory that does not exist yet means the machine is not enrolled,
+	// which sync.Run reports exactly as it did before the lock existed.
+	release, err := sync.Lock(*stateDir)
+	switch {
+	case errors.Is(err, sync.ErrLocked):
+		fmt.Fprintln(stdout, "note: another aw-sync cycle is running; skipped")
+		return nil
+	case errors.Is(err, fs.ErrNotExist):
+	case err != nil:
+		return err
+	default:
+		defer release()
+	}
+
 	reg, err := newRegistry()
 	if err != nil {
 		return err

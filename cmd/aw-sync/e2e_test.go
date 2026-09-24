@@ -15,6 +15,8 @@ import (
 	"syscall"
 	"testing"
 	"time"
+
+	"github.com/acme/agent-wrapper/internal/sync"
 )
 
 var (
@@ -554,6 +556,50 @@ func TestOnceWithoutEnrollmentExits1(t *testing.T) {
 	_, stderr, code := runSync(t, nil, "once", "--state-dir", t.TempDir())
 	if code != 1 || !strings.Contains(stderr, "enroll") {
 		t.Errorf("exit %d, stderr %q", code, stderr)
+	}
+}
+
+func TestOnceWithAMissingStateDirSaysNotEnrolled(t *testing.T) {
+	_, stderr, code := runSync(t, nil, "once", "--state-dir", filepath.Join(t.TempDir(), "absent"))
+	if code != 1 || !strings.Contains(stderr, "enroll") {
+		t.Errorf("exit %d, stderr %q; a missing state dir is 'not enrolled', not a lock error", code, stderr)
+	}
+}
+
+func TestOnceSkipsWhileAnotherCycleHoldsTheLock(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("the lock test holds the lock from this process; covered by the sync package test on Windows")
+	}
+	stateDir := t.TempDir()
+	release, err := sync.Lock(stateDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer release()
+	stdout, stderr, code := runSync(t, nil, "once", "--state-dir", stateDir)
+	if code != 0 || !strings.Contains(stdout, "another aw-sync cycle is running; skipped") {
+		t.Errorf("exit %d, stdout %q, stderr %q; want a clean skip", code, stdout, stderr)
+	}
+}
+
+func TestEnrollRefusesWhileAnotherCycleHoldsTheLock(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("see TestOnceSkipsWhileAnotherCycleHoldsTheLock")
+	}
+	stateDir := t.TempDir()
+	release, err := sync.Lock(stateDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer release()
+	// A closed port: the refusal must come before any network call.
+	_, stderr, code := runSync(t, []string{"AW_SYNC_TOKEN=x"},
+		"enroll", "--server", "http://127.0.0.1:1", "--agents", "claude", "--state-dir", stateDir)
+	if code != 1 || !strings.Contains(stderr, "another aw-sync is running; retry") {
+		t.Errorf("exit %d, stderr %q", code, stderr)
+	}
+	if _, err := os.Stat(filepath.Join(stateDir, "machine.json")); !errors.Is(err, os.ErrNotExist) {
+		t.Errorf("machine.json written while locked: %v", err)
 	}
 }
 
