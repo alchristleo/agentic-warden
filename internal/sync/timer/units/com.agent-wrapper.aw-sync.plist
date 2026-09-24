@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>{{xml .Label}}</string>
+    <key>ProgramArguments</key>
+    <array>
+{{- range .Args}}
+        <string>{{xml .}}</string>
+{{- end}}
+    </array>
+    <key>StartInterval</key>
+    <integer>{{.Seconds}}</integer>
+    <key>RunAtLoad</key>
+    <true/>
+    <key>StandardOutPath</key>
+    <string>/Library/Logs/agent-wrapper/aw-sync.log</string>
+    <key>StandardErrorPath</key>
+    <string>/Library/Logs/agent-wrapper/aw-sync.log</string>
+</dict>
+</plist>
