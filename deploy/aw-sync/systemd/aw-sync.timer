@@ -1,9 +1,9 @@
 [Unit]
-Description=Run aw-sync every five minutes
+Description=Run aw-sync on a timer
 
 [Timer]
 OnBootSec=2min
-OnUnitActiveSec=5min
+OnUnitActiveSec=300s
 RandomizedDelaySec=60
 Persistent=true
 

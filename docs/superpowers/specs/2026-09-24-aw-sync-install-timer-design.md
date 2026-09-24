@@ -1,6 +1,6 @@
 # aw-sync installs its own timer, and one cycle runs at a time
 
-Date: 2026-09-24. Status: approved, not yet implemented. Extends
+Date: 2026-09-24. Status: implemented 2026-09-24. Extends
 `2026-09-21-multi-agent-bundle-sync-design.md`, which shipped timer units
 under `deploy/aw-sync/` and said "`install-timer` is deferred". This is
 that command, plus the lock the M4b review parked ("no lock for
