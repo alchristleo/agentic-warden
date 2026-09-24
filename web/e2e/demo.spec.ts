@@ -20,6 +20,7 @@ test("happy path", async ({ page }) => {
   await waitOutSpamTimer(page);
   await page.getByRole("button", { name: "Request demo" }).click();
   await expect(page.getByRole("status")).toContainText("Thanks");
+  await expect(page.getByRole("status")).toBeFocused();
 });
 
 test("?plan= pre-selects the plan; unknown values are ignored", async ({ page }) => {
@@ -59,6 +60,7 @@ test("send failure keeps values and offers a mailto fallback", async ({ page }) 
   // hydrated page, so an unscoped getByRole("alert") is ambiguous.
   const alert = page.getByRole("alert").filter({ hasText: "Couldn't send" });
   await expect(alert).toContainText("Couldn't send");
+  await expect(alert).toBeFocused();
   await expect(alert.getByRole("link", { name: "sales@example.test" })).toHaveAttribute("href", "mailto:sales@example.test");
   await expect(page.getByLabel("Name")).toHaveValue("Ada Lovelace");
 });

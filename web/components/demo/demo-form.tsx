@@ -25,6 +25,8 @@ function ErrorText({ field, errors }: { field: DemoField; errors: Partial<Record
 export function DemoForm({ plan, startedAt }: { plan: PlanId | undefined; startedAt: number }) {
   const [state, action, pending] = useActionState<DemoState, FormData>(submitDemoAction, { status: "idle" });
   const formRef = useRef<HTMLFormElement>(null);
+  const statusRef = useRef<HTMLParagraphElement>(null);
+  const alertRef = useRef<HTMLDivElement>(null);
   const [webmail, setWebmail] = useState(false);
 
   const errors = useMemo(() => (state.status === "invalid" ? state.fieldErrors : {}), [state]);
@@ -40,9 +42,17 @@ export function DemoForm({ plan, startedAt }: { plan: PlanId | undefined; starte
     el?.focus();
   }, [state, errors]);
 
+  useEffect(() => {
+    if (state.status === "ok") statusRef.current?.focus();
+  }, [state]);
+
+  useEffect(() => {
+    if (state.status === "failed") alertRef.current?.focus();
+  }, [state]);
+
   if (state.status === "ok") {
     return (
-      <p role="status" className="mt-10 rounded-lg border border-border bg-card p-6">
+      <p ref={statusRef} tabIndex={-1} role="status" className="mt-10 rounded-lg border border-border bg-card p-6">
         Thanks — we have your request and will reply by email.
       </p>
     );
@@ -54,7 +64,7 @@ export function DemoForm({ plan, startedAt }: { plan: PlanId | undefined; starte
   return (
     <form ref={formRef} action={action} noValidate key={JSON.stringify(values)} className="mt-10 flex flex-col gap-6">
       {state.status === "failed" ? (
-        <div role="alert" className="rounded-lg border border-destructive/50 p-4 text-sm">
+        <div ref={alertRef} tabIndex={-1} role="alert" className="rounded-lg border border-destructive/50 p-4 text-sm">
           Couldn&apos;t send your request.{" "}
           {state.inbox ? (
             <>
