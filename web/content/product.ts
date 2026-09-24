@@ -10,7 +10,7 @@ export const product = {
     {
       id: "signed-bundles",
       title: "Signed bundles",
-      body: "The control plane signs each machine's bundle. The sync agent verifies the signature before writing anything, so a tampered bundle never reaches an agent.",
+      body: "When you configure a signing key, the control plane signs each machine's bundle and aw-sync verifies it against the key pinned at enrollment before writing anything, so a tampered bundle never reaches an agent.",
     },
     {
       id: "scim",

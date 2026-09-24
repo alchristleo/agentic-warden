@@ -34,7 +34,7 @@ test("pricing FAQ answers are in the page", async ({ page }) => {
   const faq = page.getByRole("region", { name: "Frequently asked questions" });
   await expect(faq.locator("details")).toHaveCount(6);
   await faq.getByText("What happens if the control plane is down?").click();
-  await expect(faq.getByText(/last signed bundle/)).toBeVisible();
+  await expect(faq.getByText(/last synced bundle/)).toBeVisible();
 });
 
 test("header navigation reaches both pages", async ({ page }) => {

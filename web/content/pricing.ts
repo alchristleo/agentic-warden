@@ -21,7 +21,7 @@ export const pricing = {
       badge: null,
       summary: "For organizations provisioning users from an identity provider.",
       price: "Contact us",
-      features: ["Everything in Team", "SCIM provisioning (Okta, Entra ID)", "Rollout help for your policy", "Hosted or self-hosted"],
+      features: ["Everything in Team", "SCIM provisioning (Okta, Entra ID)", "Rollout help for your policy", "Self-hosted today; hosted when the console launches"],
       cta: "Request demo",
     },
     {
@@ -50,7 +50,7 @@ export const pricing = {
       { feature: "Signed bundles", values: ["Yes", "Yes", "Yes"] },
       { feature: "SCIM provisioning", values: ["—", "Yes", "Yes"] },
       { feature: "Hosted console", values: ["Coming soon", "Coming soon", "—"] },
-      { feature: "Runs on your infrastructure", values: ["—", "Optional", "Yes"] },
+      { feature: "Runs on your infrastructure", values: ["—", "Yes (hosted coming soon)", "Yes"] },
     ],
   },
   faq: [
@@ -60,15 +60,15 @@ export const pricing = {
     },
     {
       q: "What happens if the control plane is down?",
-      a: "Nothing changes for developers. The helper reads the last signed bundle on disk, so Claude Code keeps starting with the last policy it received.",
+      a: "Nothing changes for developers. The helper reads the last synced bundle on disk, so Claude Code keeps starting with the last policy it received.",
     },
     {
       q: "Can a developer bypass it by running claude directly?",
-      a: "Not for Claude Code: it runs the policy helper on every launch, wrapper or not. For Codex and Gemini CLI the machine-wide files always apply; repository-specific rules apply when launched through aw codex or aw gemini.",
+      a: "Not for Claude Code, short of local administrator rights: it runs the policy helper on every launch, wrapper or not. For Codex and Gemini CLI the machine-wide files always apply; repository-specific rules apply when launched through aw codex or aw gemini.",
     },
     {
       q: "Which identity providers work?",
-      a: "Any SCIM 2.0 client. The endpoint handles the request shapes Okta and Microsoft Entra ID send.",
+      a: "Okta and Microsoft Entra ID. The endpoint speaks SCIM 2.0 and handles the request shapes those two send.",
     },
     {
       q: "Is the hosted console available?",

@@ -53,7 +53,7 @@ export const home = {
       {
         command: "awd",
         title: "Author one policy",
-        body: "The control plane holds your rules, your groups and your SCIM-provisioned users, and signs a bundle for each enrolled machine.",
+        body: "The control plane holds your rules, your groups and your SCIM-provisioned users, and builds a bundle for each enrolled machine — signed, when you configure a signing key.",
       },
       {
         command: "aw-sync",
