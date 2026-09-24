@@ -1,6 +1,7 @@
 package scim
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -73,9 +74,21 @@ func stringValue(raw json.RawMessage, attr string, allowEmpty bool) (*string, er
 	return &s, nil
 }
 
+// isNull reports whether a value is absent or the JSON literal null. Both
+// unmarshal into a bool as false without error, so callers that care about
+// the difference between "false" and "not set" must check this first.
+func isNull(raw json.RawMessage) bool {
+	trimmed := bytes.TrimSpace(raw)
+	return len(trimmed) == 0 || bytes.Equal(trimmed, []byte("null"))
+}
+
 // boolValue accepts a JSON boolean or, as Entra sends, the strings "True"
-// and "False" in any case.
+// and "False" in any case. A JSON null is rejected rather than read as
+// false, since json.Unmarshal into a bool otherwise accepts null silently.
 func boolValue(raw json.RawMessage, attr string) (*bool, error) {
+	if isNull(raw) {
+		return nil, InvalidValue(attr + " must be a boolean")
+	}
 	var b bool
 	if err := json.Unmarshal(raw, &b); err == nil {
 		return &b, nil
@@ -212,7 +225,10 @@ func GroupPatch(r io.Reader) (model.SCIMGroupChange, error) {
 			c.ExternalID = v
 			return err
 		case "members":
-			if op == "remove" && len(raw) == 0 {
+			// An absent or null value on a bare "members" remove clears the
+			// group; an explicit empty list is a literal no-op remove, so
+			// the two are kept distinct here.
+			if op == "remove" && isNull(raw) {
 				c.Members = append(c.Members, model.SCIMMemberOp{Kind: model.SCIMMembersReplace, Users: []string{}})
 				return nil
 			}

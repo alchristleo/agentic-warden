@@ -79,6 +79,7 @@ func TestUserPatchRejects(t *testing.T) {
 		"no operations":   `{` + patchSchema + `,"Operations":[]}`,
 		"unknown op":      `{` + patchSchema + `,"Operations":[{"op":"move","path":"active","value":false}]}`,
 		"bad boolean":     `{` + patchSchema + `,"Operations":[{"op":"replace","path":"active","value":"maybe"}]}`,
+		"null active":     `{` + patchSchema + `,"Operations":[{"op":"replace","path":"active","value":null}]}`,
 		"remove userName": `{` + patchSchema + `,"Operations":[{"op":"remove","path":"userName"}]}`,
 		"empty userName":  `{` + patchSchema + `,"Operations":[{"op":"replace","path":"userName","value":""}]}`,
 		"non-string name": `{` + patchSchema + `,"Operations":[{"op":"replace","path":"userName","value":7}]}`,
@@ -142,6 +143,20 @@ func TestGroupPatchReplaceMembersAndRemoveAll(t *testing.T) {
 func TestGroupPatchNoPathMembers(t *testing.T) {
 	c := groupPatch(t, `[{"op":"replace","value":{"members":[{"value":"u1"}]}}]`)
 	if !equalOps(c.Members, []model.SCIMMemberOp{{Kind: "replace", Users: []string{"u1"}}}) {
+		t.Errorf("members = %+v", c.Members)
+	}
+}
+
+func TestGroupPatchRemoveMembersNullValueClearsAll(t *testing.T) {
+	c := groupPatch(t, `[{"op":"remove","path":"members","value":null}]`)
+	if !equalOps(c.Members, []model.SCIMMemberOp{{Kind: "replace", Users: []string{}}}) {
+		t.Errorf("members = %+v", c.Members)
+	}
+}
+
+func TestGroupPatchRemoveMembersEmptyListIsLiteralNoOp(t *testing.T) {
+	c := groupPatch(t, `[{"op":"remove","path":"members","value":[]}]`)
+	if !equalOps(c.Members, []model.SCIMMemberOp{{Kind: "remove", Users: []string{}}}) {
 		t.Errorf("members = %+v", c.Members)
 	}
 }
