@@ -39,7 +39,7 @@ function resendSender(apiKey: string): Sender {
 }
 
 export function senderFromEnv(env: Env = process.env): Sender | null {
-  if (env.DEMO_SENDER === "fake") return fakeSender;
+  if (env.DEMO_SENDER === "fake" && env.VERCEL_ENV !== "production") return fakeSender;
   if (env.RESEND_API_KEY) return resendSender(env.RESEND_API_KEY);
   return null;
 }

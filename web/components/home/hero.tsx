@@ -1,7 +1,7 @@
 import type { CSSProperties } from "react";
 import Link from "next/link";
 import { buttonVariants } from "@/components/ui/button";
-import { PolicySnippet } from "@/components/home/terminal";
+import { PolicySnippet } from "@/components/home/policy-snippet";
 import { home } from "@/content/home";
 import { cn } from "@/lib/utils";
 

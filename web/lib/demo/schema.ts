@@ -25,7 +25,11 @@ const values = <T extends readonly { value: string }[]>(opts: T) =>
 
 export const demoSchema = z.object({
   name: z.string().trim().min(1, "Enter your name.").max(100, "Use at most 100 characters."),
-  email: z.email("Enter a valid email address.").trim().max(254, "Use at most 254 characters."),
+  email: z
+    .string()
+    .trim()
+    .max(254, "Use at most 254 characters.")
+    .pipe(z.email("Enter a valid email address.")),
   company: z.string().trim().min(1, "Enter your company.").max(100, "Use at most 100 characters."),
   size: z.enum(values(sizeOptions), { error: "Choose a company size." }),
   agents: z.array(z.enum(values(agentOptions))).min(1, "Choose at least one agent."),

@@ -13,6 +13,12 @@ describe("senderFromEnv", () => {
   it("returns a Resend sender when a key is set", () => {
     expect(typeof senderFromEnv({ RESEND_API_KEY: "re_x" })).toBe("function");
   });
+  it("ignores DEMO_SENDER in production", () => {
+    expect(senderFromEnv({ DEMO_SENDER: "fake", VERCEL_ENV: "production" })).toBeNull();
+  });
+  it("falls through to Resend in production even when DEMO_SENDER is set", () => {
+    expect(typeof senderFromEnv({ DEMO_SENDER: "fake", VERCEL_ENV: "production", RESEND_API_KEY: "re_x" })).toBe("function");
+  });
 });
 
 describe("fakeSender", () => {

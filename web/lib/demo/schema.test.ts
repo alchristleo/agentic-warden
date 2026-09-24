@@ -39,6 +39,10 @@ describe("demoSchema", () => {
     const result = demoSchema.parse({ ...valid, name: "  Ada  " });
     expect(result.name).toBe("Ada");
   });
+  it("trims the email before validating", () => {
+    const result = demoSchema.parse({ ...valid, email: " ada@acme.com " });
+    expect(result.email).toBe("ada@acme.com");
+  });
 });
 
 describe("isWebmail", () => {

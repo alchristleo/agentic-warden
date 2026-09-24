@@ -2,7 +2,12 @@ import Link from "next/link";
 import { buttonVariants } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
-export const metadata = { title: "Page not found — Agentic Warden", robots: { index: false } };
+export const metadata = {
+  title: "Page not found — Agentic Warden",
+  robots: { index: false },
+  alternates: { canonical: null },
+  openGraph: null,
+};
 
 export default function NotFound() {
   return (
