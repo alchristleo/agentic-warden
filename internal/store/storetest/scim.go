@@ -41,6 +41,7 @@ var scimCases = []struct {
 	{"a scim group can be created with members and read back", scimGroupRoundTrip},
 	{"a scim group member must be a stored user", scimGroupMemberMustExist},
 	{"a scim displayName is unique ignoring case", scimGroupNameUnique},
+	{"replacing a scim group replaces its members and keeps created", scimGroupReplace},
 	{"a group patch applies member operations in order", scimGroupPatchOrder},
 	{"a failed group patch changes nothing", scimGroupPatchAtomic},
 	{"concurrent member patches lose nothing", scimGroupPatchConcurrent},
@@ -264,6 +265,53 @@ func scimGroupNameUnique(t *testing.T, s store.SCIMStore) {
 	}
 	if err := s.CreateSCIMGroup(ctx, scimGroup("g2", "Platform")); !errors.Is(err, model.ErrConflict) {
 		t.Errorf("err = %v, want ErrConflict", err)
+	}
+}
+
+func scimGroupReplace(t *testing.T, s store.SCIMStore) {
+	ctx := context.Background()
+	mustCreateUsers(t, s, scimUser("u1", "a@acme.com", scimAt), scimUser("u2", "b@acme.com", scimAt), scimUser("u3", "c@acme.com", scimAt))
+	if err := s.CreateSCIMGroup(ctx, scimGroup("g1", "platform", "u1")); err != nil {
+		t.Fatal(err)
+	}
+	later := scimAt.Add(time.Hour)
+	replacement := model.SCIMGroup{ID: "g1", DisplayName: "platform-eng", ExternalID: "x", Members: []string{"u2", "u3"}, Created: later, Modified: later}
+	if err := s.ReplaceSCIMGroup(ctx, replacement); err != nil {
+		t.Fatal(err)
+	}
+	got, err := s.SCIMGroup(ctx, "g1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.DisplayName != "platform-eng" || got.ExternalID != "x" || !equalStrings(got.Members, []string{"u2", "u3"}) ||
+		!got.Created.Equal(scimAt) || !got.Modified.Equal(later) {
+		t.Errorf("got %+v, want platform-eng/x with [u2 u3], created unchanged, modified updated", got)
+	}
+
+	// A replace with a member that is not a stored user is rejected and
+	// leaves the group exactly as it was.
+	ghost := model.SCIMGroup{ID: "g1", DisplayName: "ghosted", Members: []string{"ghost"}, Created: later, Modified: later}
+	if err := s.ReplaceSCIMGroup(ctx, ghost); !errors.Is(err, model.ErrBadInput) {
+		t.Errorf("replace with ghost member: err = %v, want ErrBadInput", err)
+	}
+	unchanged, _ := s.SCIMGroup(ctx, "g1")
+	if unchanged.DisplayName != "platform-eng" || unchanged.ExternalID != "x" || !equalStrings(unchanged.Members, []string{"u2", "u3"}) ||
+		!unchanged.Created.Equal(scimAt) || !unchanged.Modified.Equal(later) {
+		t.Errorf("got %+v; a rejected replace must change nothing", unchanged)
+	}
+
+	// A replace that collides with another group's name, ignoring case, is
+	// a conflict, not silently accepted.
+	if err := s.CreateSCIMGroup(ctx, scimGroup("g2", "mobile")); err != nil {
+		t.Fatal(err)
+	}
+	clash := model.SCIMGroup{ID: "g2", DisplayName: "PLATFORM-ENG", Created: later, Modified: later}
+	if err := s.ReplaceSCIMGroup(ctx, clash); !errors.Is(err, model.ErrConflict) {
+		t.Errorf("replace onto another group's name: err = %v, want ErrConflict", err)
+	}
+
+	if err := s.ReplaceSCIMGroup(ctx, model.SCIMGroup{ID: "nope", DisplayName: "x", Created: later, Modified: later}); !errors.Is(err, model.ErrNotFound) {
+		t.Errorf("replace unknown: err = %v, want ErrNotFound", err)
 	}
 }
 
