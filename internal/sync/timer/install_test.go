@@ -14,11 +14,13 @@ import (
 )
 
 // recorder stands in for the OS tools: it records every command and fails
-// the ones listed in fail.
+// the ones listed in fail, printing output[cmd] if set and "tool said no"
+// otherwise.
 type recorder struct {
-	calls []string
-	fail  map[string]bool
-	seen  map[string][]byte // a copy of any file named by schtasks /XML
+	calls  []string
+	fail   map[string]bool
+	output map[string]string
+	seen   map[string][]byte // a copy of any file named by schtasks /XML
 }
 
 func (r *recorder) run(_ context.Context, name string, args ...string) ([]byte, error) {
@@ -32,6 +34,9 @@ func (r *recorder) run(_ context.Context, name string, args ...string) ([]byte, 
 		r.seen["xml"] = raw
 	}
 	if r.fail[cmd] {
+		if out, ok := r.output[cmd]; ok {
+			return []byte(out), errors.New("exit status 1")
+		}
 		return []byte("tool said no"), errors.New("exit status 1")
 	}
 	return nil, nil
@@ -182,9 +187,12 @@ func TestUninstallLinuxRemovesFilesEvenWhenDisableFails(t *testing.T) {
 
 func TestUninstallWithNothingInstalled(t *testing.T) {
 	for goos, r := range map[string]*recorder{
-		"linux":   {},
-		"darwin":  {fail: map[string]bool{"launchctl print system/com.agent-wrapper.aw-sync": true}},
-		"windows": {fail: map[string]bool{`schtasks /Query /TN agent-wrapper\aw-sync`: true}},
+		"linux":  {},
+		"darwin": {fail: map[string]bool{"launchctl print system/com.agent-wrapper.aw-sync": true}},
+		"windows": {
+			fail:   map[string]bool{queryTask: true},
+			output: map[string]string{queryTask: "ERROR: The system cannot find the file specified.\r\n"},
+		},
 	} {
 		in := installer(t, goos, r)
 		if err := in.Uninstall(context.Background()); !errors.Is(err, timer.ErrNotInstalled) {
@@ -232,4 +240,22 @@ func TestInstallRejectsBadParamsBeforeWriting(t *testing.T) {
 	if entries, _ := os.ReadDir(in.Root); len(entries) != 0 {
 		t.Errorf("wrote %v", entries)
 	}
+}
+
+const queryTask = `schtasks /Query /TN agent-wrapper\aw-sync`
+
+// A non-elevated query of a task an administrator created fails for access,
+// not absence; saying "no timer installed" then would leave the task
+// running while claiming it is gone.
+func TestUninstallWindowsReportsAQueryItCannotRun(t *testing.T) {
+	r := &recorder{
+		fail:   map[string]bool{queryTask: true},
+		output: map[string]string{queryTask: "ERROR: Access is denied.\r\n"},
+	}
+	err := installer(t, "windows", r).Uninstall(context.Background())
+	var cmdErr *timer.CommandError
+	if errors.Is(err, timer.ErrNotInstalled) || !errors.As(err, &cmdErr) || !strings.Contains(err.Error(), queryTask) || !strings.Contains(err.Error(), "Access is denied") {
+		t.Fatalf("err = %v; want a CommandError naming the query and its output", err)
+	}
+	equalCalls(t, r.calls, []string{queryTask})
 }

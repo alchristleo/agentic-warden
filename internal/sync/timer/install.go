@@ -207,8 +207,16 @@ func (in Installer) Uninstall(ctx context.Context) error {
 		errs = append(errs, remove(plist))
 		return errors.Join(errs...)
 	default: // windows
-		if _, err := in.Run(ctx, "schtasks", "/Query", "/TN", TaskName); err != nil {
-			return ErrNotInstalled
+		// A non-elevated /Query of a task an administrator created can fail
+		// for access, not absence; only "cannot find" means nothing is
+		// installed, and anything else is reported so the caller can say
+		// to elevate.
+		if err := in.run(ctx, "schtasks", "/Query", "/TN", TaskName); err != nil {
+			var cmdErr *CommandError
+			if errors.As(err, &cmdErr) && strings.Contains(strings.ToLower(cmdErr.Output), "cannot find") {
+				return ErrNotInstalled
+			}
+			return err
 		}
 		return in.run(ctx, "schtasks", "/Delete", "/TN", TaskName, "/F")
 	}
