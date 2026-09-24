@@ -105,6 +105,7 @@ func TestInstallDarwinNotLoaded(t *testing.T) {
 	}
 	equalCalls(t, r.calls, []string{
 		"launchctl print system/com.agent-wrapper.aw-sync",
+		"launchctl enable system/com.agent-wrapper.aw-sync",
 		"launchctl bootstrap system " + filepath.Join(in.Root, timer.PlistPath),
 	})
 	if info, err := os.Stat(filepath.Join(in.Root, timer.LogDir)); err != nil || !info.IsDir() {
@@ -121,6 +122,7 @@ func TestInstallDarwinLoadedBootsOutFirst(t *testing.T) {
 	equalCalls(t, r.calls, []string{
 		"launchctl print system/com.agent-wrapper.aw-sync",
 		"launchctl bootout system/com.agent-wrapper.aw-sync",
+		"launchctl enable system/com.agent-wrapper.aw-sync",
 		"launchctl bootstrap system " + filepath.Join(in.Root, timer.PlistPath),
 	})
 }
@@ -258,4 +260,85 @@ func TestUninstallWindowsReportsAQueryItCannotRun(t *testing.T) {
 		t.Fatalf("err = %v; want a CommandError naming the query and its output", err)
 	}
 	equalCalls(t, r.calls, []string{queryTask})
+}
+
+// Without root, /Library/LaunchDaemons refuses the plist; that has to fail
+// before /Library/Logs/agent-wrapper exists, or a later root install would
+// find the log dir owned by whoever tried first.
+func TestInstallDarwinWritesThePlistBeforeTheLogDir(t *testing.T) {
+	r := &recorder{}
+	in := installer(t, "darwin", r)
+	daemons := filepath.Join(in.Root, filepath.Dir(timer.PlistPath))
+	if err := os.MkdirAll(filepath.Dir(daemons), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	// A file where the directory should be makes the plist write fail
+	// even for root, standing in for a permission error.
+	if err := os.WriteFile(daemons, nil, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := in.Install(context.Background(), params); err == nil {
+		t.Fatal("install succeeded without a LaunchDaemons directory")
+	}
+	if _, err := os.Stat(filepath.Join(in.Root, timer.LogDir)); !errors.Is(err, os.ErrNotExist) {
+		t.Errorf("log dir created before the plist was written: %v", err)
+	}
+	if len(r.calls) != 0 {
+		t.Errorf("ran %v", r.calls)
+	}
+}
+
+func TestInstallDarwinStopsWhenBootoutFails(t *testing.T) {
+	bootout := "launchctl bootout system/com.agent-wrapper.aw-sync"
+	r := &recorder{fail: map[string]bool{bootout: true}}
+	in := installer(t, "darwin", r)
+	err := in.Install(context.Background(), params)
+	var cmdErr *timer.CommandError
+	if !errors.As(err, &cmdErr) || !strings.Contains(err.Error(), bootout) {
+		t.Fatalf("err = %v; want the bootout named", err)
+	}
+	for _, c := range r.calls {
+		if strings.Contains(c, "bootstrap") || strings.Contains(c, "enable") {
+			t.Errorf("ran %q after bootout failed", c)
+		}
+	}
+}
+
+func TestUninstallDarwinRemovesThePlistEvenWhenBootoutFails(t *testing.T) {
+	r := &recorder{}
+	in := installer(t, "darwin", r)
+	if err := in.Install(context.Background(), params); err != nil {
+		t.Fatal(err)
+	}
+	r.fail = map[string]bool{"launchctl bootout system/com.agent-wrapper.aw-sync": true}
+	err := in.Uninstall(context.Background())
+	if err == nil || !strings.Contains(err.Error(), "launchctl bootout system/com.agent-wrapper.aw-sync") {
+		t.Fatalf("err = %v; want the bootout named", err)
+	}
+	if _, err := os.Stat(filepath.Join(in.Root, timer.PlistPath)); !errors.Is(err, os.ErrNotExist) {
+		t.Errorf("plist kept after a failed bootout: %v", err)
+	}
+}
+
+func TestInstallWindowsRemovesTheStagedFileWhenCreateFails(t *testing.T) {
+	r := &recorder{}
+	in := installer(t, "windows", r)
+	// The staged file's name is random, so the failure is keyed on the
+	// command the recorder sees.
+	run := r.run
+	in.Run = func(ctx context.Context, name string, args ...string) ([]byte, error) {
+		out, _ := run(ctx, name, args...)
+		return append(out, "ERROR: Access is denied."...), errors.New("exit status 1")
+	}
+	err := in.Install(context.Background(), timer.Params{Binary: `C:\aw\aw-sync.exe`, Interval: 5 * time.Minute})
+	var cmdErr *timer.CommandError
+	if !errors.As(err, &cmdErr) || !strings.Contains(err.Error(), "schtasks /Create") {
+		t.Fatalf("err = %v; want the /Create named", err)
+	}
+	if len(r.seen["xml"]) == 0 {
+		t.Fatal("the task XML was never staged")
+	}
+	if left, _ := os.ReadDir(in.TempDir); len(left) != 0 {
+		t.Errorf("staged file left behind after /Create failed: %v", left)
+	}
 }

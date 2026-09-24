@@ -30,6 +30,44 @@ func TestRenderLinuxDefault(t *testing.T) {
 	if !strings.Contains(got["aw-sync.timer"], "\nOnUnitActiveSec=300s\n") {
 		t.Errorf("timer:\n%s", got["aw-sync.timer"])
 	}
+	if !strings.HasSuffix(got["aw-sync.service"], "\nStateDirectory=agent-wrapper\nStateDirectoryMode=0755\n") {
+		t.Errorf("the default state dir must be created by systemd:\n%s", got["aw-sync.service"])
+	}
+	if strings.Contains(got["aw-sync.timer"], "Persistent=") {
+		t.Errorf("Persistent= is inert with OnUnitActiveSec= and must not render:\n%s", got["aw-sync.timer"])
+	}
+}
+
+// StateDirectory= would make systemd create /var/lib/agent-wrapper, which a
+// custom state dir never uses.
+func TestRenderLinuxOmitsStateDirectoryForACustomDir(t *testing.T) {
+	service := render(t, "linux", timer.Params{Binary: "/usr/local/bin/aw-sync", StateDir: "/srv/aw", Interval: 5 * time.Minute})["aw-sync.service"]
+	if strings.Contains(service, "StateDirectory") {
+		t.Errorf("service:\n%s", service)
+	}
+	if !strings.HasSuffix(service, "\nExecStart=/usr/local/bin/aw-sync once --state-dir /srv/aw\n") {
+		t.Errorf("service must end at ExecStart:\n%q", service)
+	}
+}
+
+// A newline in a path would inject systemd directives; every control
+// character is refused, naming the field.
+func TestRenderRejectsControlCharacters(t *testing.T) {
+	for _, c := range []struct {
+		field string
+		p     timer.Params
+	}{
+		{"Binary", timer.Params{Binary: "/usr/local/bin/aw-sync\nExecStartPre=/bin/sh", Interval: time.Minute}},
+		{"StateDir", timer.Params{Binary: "/b", StateDir: "/srv/aw\tx", Interval: time.Minute}},
+		{"StateDir", timer.Params{Binary: "/b", StateDir: "/srv/aw\x7f", Interval: time.Minute}},
+	} {
+		for _, goos := range []string{"linux", "darwin", "windows"} {
+			_, err := timer.Render(goos, c.p)
+			if err == nil || !strings.Contains(err.Error(), c.field) || !strings.Contains(err.Error(), "control character") {
+				t.Errorf("%s %+v: err = %v; want a refusal naming %s", goos, c.p, err, c.field)
+			}
+		}
+	}
 }
 
 func TestRenderLinuxQuotesAndPassesACustomStateDir(t *testing.T) {
@@ -58,6 +96,7 @@ func TestRenderDarwinDefault(t *testing.T) {
 		"<string>com.agent-wrapper.aw-sync</string>",
 		"        <string>/usr/local/bin/aw-sync</string>\n        <string>once</string>\n    </array>",
 		"<integer>300</integer>",
+		"<string>" + timer.LogDir + "/aw-sync.log</string>",
 	} {
 		if !strings.Contains(plist, want) {
 			t.Errorf("plist lacks %q:\n%s", want, plist)

@@ -102,16 +102,24 @@ func (in Installer) Install(ctx context.Context, p Params) error {
 		}
 		return in.run(ctx, "systemctl", "enable", "--now", TimerUnit)
 	case "darwin":
-		if err := os.MkdirAll(in.path(LogDir), 0o755); err != nil {
-			return fmt.Errorf("timer: creating %s: %w", in.path(LogDir), err)
-		}
+		// The plist first: without root, writing /Library/LaunchDaemons
+		// fails before /Library/Logs/agent-wrapper can be created under
+		// the wrong owner.
 		if err := in.write(units); err != nil {
 			return err
+		}
+		if err := os.MkdirAll(in.path(LogDir), 0o755); err != nil {
+			return fmt.Errorf("timer: creating %s: %w", in.path(LogDir), err)
 		}
 		if in.loaded(ctx) {
 			if err := in.run(ctx, "launchctl", "bootout", "system/"+Label); err != nil {
 				return err
 			}
+		}
+		// A label someone once ran `launchctl disable` on stays disabled
+		// across bootstrap; enable clears that, so the job actually runs.
+		if err := in.run(ctx, "launchctl", "enable", "system/"+Label); err != nil {
+			return err
 		}
 		return in.run(ctx, "launchctl", "bootstrap", "system", in.path(PlistPath))
 	default: // windows; Render has already refused anything else

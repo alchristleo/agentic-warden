@@ -15,8 +15,8 @@
     <key>RunAtLoad</key>
     <true/>
     <key>StandardOutPath</key>
-    <string>/Library/Logs/agent-wrapper/aw-sync.log</string>
+    <string>{{xml .LogDir}}/aw-sync.log</string>
     <key>StandardErrorPath</key>
-    <string>/Library/Logs/agent-wrapper/aw-sync.log</string>
+    <string>{{xml .LogDir}}/aw-sync.log</string>
 </dict>
 </plist>

@@ -6,6 +6,9 @@ Wants=network-online.target
 [Service]
 Type=oneshot
 ExecStart={{.ExecStart}}
-# The state directory holds the machine credential; nothing else needs it.
+{{if .StateDirectory -}}
+# systemd creates the state directory world-readable, so any user can run
+# `aw-sync status`; the machine credential inside it, machine.json, is 0600.
 StateDirectory=agent-wrapper
 StateDirectoryMode=0755
+{{end -}}

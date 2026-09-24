@@ -125,16 +125,27 @@ func Render(goos string, p Params) ([]Unit, error) {
 	if p.Binary == "" {
 		return nil, errors.New("timer: no binary to run")
 	}
+	// A newline in a path would end the ExecStart line and start a systemd
+	// directive of the path's choosing; no format here wants any control
+	// character, so none is let through.
+	for field, v := range map[string]string{"Binary": p.Binary, "StateDir": p.StateDir} {
+		if i := strings.IndexFunc(v, isControl); i >= 0 {
+			return nil, fmt.Errorf("timer: %s %q contains a control character", field, v)
+		}
+	}
 	// The default state directory is left implicit, so the deploy files
 	// read exactly as an operator would write them by hand.
+	defaultDir := p.StateDir == "" || p.StateDir == sync.StateDir(goos)
 	args := []string{"once"}
-	if p.StateDir != "" && p.StateDir != sync.StateDir(goos) {
+	if !defaultDir {
 		args = append(args, "--state-dir", p.StateDir)
 	}
 	seconds := int(p.Interval / time.Second)
 	switch goos {
 	case "linux":
-		data := map[string]any{"ExecStart": systemdCommand(append([]string{p.Binary}, args...)), "Seconds": seconds}
+		// StateDirectory= creates /var/lib/agent-wrapper, which is only
+		// the directory in use when it is the default.
+		data := map[string]any{"ExecStart": systemdCommand(append([]string{p.Binary}, args...)), "Seconds": seconds, "StateDirectory": defaultDir}
 		service, err := execute("aw-sync.service", data)
 		if err != nil {
 			return nil, err
@@ -148,7 +159,7 @@ func Render(goos string, p Params) ([]Unit, error) {
 			{Name: "aw-sync.timer", Path: TimerPath, Content: timerUnit},
 		}, nil
 	case "darwin":
-		data := map[string]any{"Label": Label, "Args": append([]string{p.Binary}, args...), "Seconds": seconds}
+		data := map[string]any{"Label": Label, "Args": append([]string{p.Binary}, args...), "Seconds": seconds, "LogDir": LogDir}
 		plist, err := execute("com.agent-wrapper.aw-sync.plist", data)
 		if err != nil {
 			return nil, err
@@ -163,6 +174,9 @@ func Render(goos string, p Params) ([]Unit, error) {
 		return []Unit{{Name: "aw-sync-task.xml", Content: task}}, nil
 	}
 }
+
+// isControl reports an ASCII control character: below 0x20, or DEL.
+func isControl(r rune) bool { return r < 0x20 || r == 0x7f }
 
 func execute(name string, data any) ([]byte, error) {
 	var buf bytes.Buffer
