@@ -10,6 +10,7 @@ import (
 	"log/slog"
 	"net/http"
 	"strconv"
+	"strings"
 
 	"github.com/acme/agent-wrapper/internal/credential"
 	"github.com/acme/agent-wrapper/internal/model"
@@ -36,6 +37,12 @@ func (h *Handler) scimRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("PUT /scim/v2/Users/{id}", h.requireSCIM(h.scimReplaceUser))
 	mux.HandleFunc("PATCH /scim/v2/Users/{id}", h.requireSCIM(h.scimPatchUser))
 	mux.HandleFunc("DELETE /scim/v2/Users/{id}", h.requireSCIM(h.scimDeleteUser))
+	mux.HandleFunc("GET /scim/v2/Groups", h.requireSCIM(h.scimListGroups))
+	mux.HandleFunc("POST /scim/v2/Groups", h.requireSCIM(h.scimCreateGroup))
+	mux.HandleFunc("GET /scim/v2/Groups/{id}", h.requireSCIM(h.scimGetGroup))
+	mux.HandleFunc("PUT /scim/v2/Groups/{id}", h.requireSCIM(h.scimReplaceGroup))
+	mux.HandleFunc("PATCH /scim/v2/Groups/{id}", h.requireSCIM(h.scimPatchGroup))
+	mux.HandleFunc("DELETE /scim/v2/Groups/{id}", h.requireSCIM(h.scimDeleteGroup))
 	// A method-less catch-all: Go 1.22's ServeMux prefers a more specific
 	// method+path pattern, so every route above still wins; this only
 	// catches what none of them do, and answers with the SCIM error body
@@ -256,4 +263,134 @@ func (h *Handler) scimDeleteUser(w http.ResponseWriter, r *http.Request) {
 // matched, whether the path is unknown or the method is wrong for it.
 func (h *Handler) scimNoRoute(w http.ResponseWriter, r *http.Request) {
 	writeSCIMError(w, scim.NotFound("no such SCIM endpoint or method: "+r.Method+" "+r.URL.Path))
+}
+
+func (h *Handler) groupLocation(r *http.Request, id string) string {
+	return scimBase(r) + "/Groups/" + id
+}
+
+// withMembers reports whether the IdP wants members in the answer. Both
+// target IdPs ask to exclude them when reading large groups.
+func withMembers(r *http.Request) bool {
+	for _, attr := range strings.Split(r.URL.Query().Get("excludedAttributes"), ",") {
+		if strings.EqualFold(strings.TrimSpace(attr), "members") {
+			return false
+		}
+	}
+	return true
+}
+
+func (h *Handler) scimListGroups(w http.ResponseWriter, r *http.Request) {
+	filter, err := scim.ParseFilter(r.URL.Query().Get("filter"), model.SCIMAttrDisplayName, model.SCIMAttrExternalID)
+	if err != nil {
+		h.scimFail(w, r, err)
+		return
+	}
+	startIndex, count, err := listParams(r)
+	if err != nil {
+		h.scimFail(w, r, err)
+		return
+	}
+	groups, total, err := h.store.ListSCIMGroups(r.Context(), filter, startIndex, count)
+	if err != nil {
+		h.scimFail(w, r, err)
+		return
+	}
+	members := withMembers(r)
+	out := make([]scim.Group, 0, len(groups))
+	for _, g := range groups {
+		out = append(out, scim.EncodeGroup(g, h.groupLocation(r, g.ID), members))
+	}
+	writeSCIM(w, http.StatusOK, scim.NewListResponse(out, total, startIndex, len(out)))
+}
+
+func (h *Handler) scimCreateGroup(w http.ResponseWriter, r *http.Request) {
+	body, err := scimBody(w, r)
+	if err != nil {
+		h.scimFail(w, r, err)
+		return
+	}
+	g, err := scim.DecodeGroup(bytes.NewReader(body))
+	if err != nil {
+		h.scimFail(w, r, err)
+		return
+	}
+	if g.ID, err = credential.NewID(); err != nil {
+		h.scimFail(w, r, err)
+		return
+	}
+	g.Created, g.Modified = h.Now(), h.Now()
+	if err := h.store.CreateSCIMGroup(r.Context(), g); err != nil {
+		h.scimFail(w, r, err)
+		return
+	}
+	stored, err := h.store.SCIMGroup(r.Context(), g.ID)
+	if err != nil {
+		h.scimFail(w, r, err)
+		return
+	}
+	location := h.groupLocation(r, g.ID)
+	w.Header().Set("Location", location)
+	writeSCIM(w, http.StatusCreated, scim.EncodeGroup(stored, location, true))
+}
+
+func (h *Handler) scimGetGroup(w http.ResponseWriter, r *http.Request) {
+	g, err := h.store.SCIMGroup(r.Context(), r.PathValue("id"))
+	if err != nil {
+		h.scimFail(w, r, err)
+		return
+	}
+	writeSCIM(w, http.StatusOK, scim.EncodeGroup(g, h.groupLocation(r, g.ID), withMembers(r)))
+}
+
+func (h *Handler) scimReplaceGroup(w http.ResponseWriter, r *http.Request) {
+	body, err := scimBody(w, r)
+	if err != nil {
+		h.scimFail(w, r, err)
+		return
+	}
+	g, err := scim.DecodeGroup(bytes.NewReader(body))
+	if err != nil {
+		h.scimFail(w, r, err)
+		return
+	}
+	g.ID, g.Modified = r.PathValue("id"), h.Now()
+	if err := h.store.ReplaceSCIMGroup(r.Context(), g); err != nil {
+		h.scimFail(w, r, err)
+		return
+	}
+	h.scimGetGroup(w, r)
+}
+
+// scimPatchGroup answers 204 unless the IdP asked for attributes back;
+// Entra accepts either, and 204 spares serializing a large member list.
+func (h *Handler) scimPatchGroup(w http.ResponseWriter, r *http.Request) {
+	body, err := scimBody(w, r)
+	if err != nil {
+		h.scimFail(w, r, err)
+		return
+	}
+	change, err := scim.GroupPatch(bytes.NewReader(body))
+	if err != nil {
+		h.scimFail(w, r, err)
+		return
+	}
+	g, err := h.store.PatchSCIMGroup(r.Context(), r.PathValue("id"), change, h.Now())
+	if err != nil {
+		h.scimFail(w, r, err)
+		return
+	}
+	if r.URL.Query().Get("attributes") == "" {
+		w.WriteHeader(http.StatusNoContent)
+		return
+	}
+	writeSCIM(w, http.StatusOK, scim.EncodeGroup(g, h.groupLocation(r, g.ID), withMembers(r)))
+}
+
+func (h *Handler) scimDeleteGroup(w http.ResponseWriter, r *http.Request) {
+	if err := h.store.DeleteSCIMGroup(r.Context(), r.PathValue("id")); err != nil {
+		h.scimFail(w, r, err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
 }
