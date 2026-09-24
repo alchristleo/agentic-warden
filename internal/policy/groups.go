@@ -2,15 +2,15 @@ package policy
 
 import "sort"
 
-// UnionGroups merges the authored memberships with the synced ones, sorted
-// and without duplicates. Union, not replacement: the authored map is the
-// manual override and nothing an author wrote disappears when the first
-// snapshot lands. The result is never nil, since it is JSON-encoded as a
-// list.
-func UnionGroups(a, b []string) []string {
-	seen := make(map[string]bool, len(a)+len(b))
-	out := make([]string, 0, len(a)+len(b))
-	for _, list := range [][]string{a, b} {
+// UnionGroups merges a user's memberships from every source — the authored
+// map, the IdP snapshot, SCIM — sorted and without duplicates. Union, not
+// replacement: the authored map is the manual override and nothing an
+// author wrote disappears when an IdP starts feeding the server. The result
+// is never nil, since it is JSON-encoded as a list.
+func UnionGroups(lists ...[]string) []string {
+	seen := make(map[string]bool)
+	out := make([]string, 0)
+	for _, list := range lists {
 		for _, g := range list {
 			if !seen[g] {
 				seen[g] = true
