@@ -58,3 +58,54 @@ type Store interface {
 	// when none has ever been posted.
 	CurrentGroupSnapshot(ctx context.Context) (model.GroupSnapshot, error)
 }
+
+// SCIMStore holds what the identity provider provisioned over SCIM.
+type SCIMStore interface {
+	// CreateSCIMUser stores a provisioned user. model.ErrBadInput without an
+	// ID or userName; model.ErrConflict when the ID exists or another user
+	// has the same userName ignoring case.
+	CreateSCIMUser(ctx context.Context, u model.SCIMUser) error
+	// SCIMUser returns one user, or model.ErrNotFound.
+	SCIMUser(ctx context.Context, id string) (model.SCIMUser, error)
+	// ReplaceSCIMUser overwrites userName, externalId, active and Modified;
+	// Created is kept. Errors as CreateSCIMUser, plus model.ErrNotFound.
+	ReplaceSCIMUser(ctx context.Context, u model.SCIMUser) error
+	// PatchSCIMUser applies c atomically, sets Modified to at and returns the
+	// result. Errors as ReplaceSCIMUser.
+	PatchSCIMUser(ctx context.Context, id string, c model.SCIMUserChange, at time.Time) (model.SCIMUser, error)
+	// DeleteSCIMUser removes a user and every membership it had, or
+	// model.ErrNotFound.
+	DeleteSCIMUser(ctx context.Context, id string) error
+	// ListSCIMUsers returns one page of the users f matches, ordered by
+	// Created then ID, and the total number matched. startIndex is 1-based;
+	// a page past the end is empty, never nil. model.ErrBadInput for a
+	// filter attribute users do not have.
+	ListSCIMUsers(ctx context.Context, f model.SCIMFilter, startIndex, count int) ([]model.SCIMUser, int, error)
+
+	// CreateSCIMGroup stores a group. model.ErrBadInput without an ID or
+	// displayName, or when a member is not a stored user; model.ErrConflict
+	// when the ID exists or another group has the displayName ignoring case.
+	CreateSCIMGroup(ctx context.Context, g model.SCIMGroup) error
+	// SCIMGroup returns one group with its members sorted, or
+	// model.ErrNotFound.
+	SCIMGroup(ctx context.Context, id string) (model.SCIMGroup, error)
+	// ReplaceSCIMGroup overwrites displayName, externalId, members and
+	// Modified. Errors as CreateSCIMGroup, plus model.ErrNotFound.
+	ReplaceSCIMGroup(ctx context.Context, g model.SCIMGroup) error
+	// PatchSCIMGroup applies c in one transaction, member operations in
+	// order, sets Modified to at and returns the result. Errors as
+	// ReplaceSCIMGroup; on any error nothing changes.
+	PatchSCIMGroup(ctx context.Context, id string, c model.SCIMGroupChange, at time.Time) (model.SCIMGroup, error)
+	// DeleteSCIMGroup removes a group and its memberships, or
+	// model.ErrNotFound.
+	DeleteSCIMGroup(ctx context.Context, id string) error
+	// ListSCIMGroups is ListSCIMUsers for groups, members included.
+	ListSCIMGroups(ctx context.Context, f model.SCIMFilter, startIndex, count int) ([]model.SCIMGroup, int, error)
+
+	// SCIMGroupsFor returns the sorted display names of the groups holding
+	// the active user whose userName equals userName exactly; an empty,
+	// non-nil slice for an unknown or inactive user.
+	SCIMGroupsFor(ctx context.Context, userName string) ([]string, error)
+	// SCIMCounts counts provisioned users, active users and groups.
+	SCIMCounts(ctx context.Context) (model.SCIMCounts, error)
+}
