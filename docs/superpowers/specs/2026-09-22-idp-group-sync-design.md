@@ -192,6 +192,7 @@ design's outage behaviour, unchanged.
 
 - Pulling from any IdP, and SCIM. Both would produce exactly this
   snapshot; build them when an organization needs one.
+  SCIM was later built as a third source: see 2026-09-24-scim-provisioning-design.md.
 - Group-name mapping or filtering (`idp:eng-platform` → `platform`). The
   exporter can rename; the policy can name IdP groups as they are.
 - Per-user audit of membership changes. The snapshot history in the store

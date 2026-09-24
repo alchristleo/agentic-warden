@@ -193,7 +193,7 @@ server and the CLI. Then enroll a machine and fetch its bundle:
     # {"machineId":"...","credential":"...","user":"alice@acme.com"}
     curl -s -H 'Authorization: Bearer <credential>' http://127.0.0.1:8080/v1/bundle
 
-Group membership has two sources. The policy's `groups` map is authored and
+Group membership has three sources. The policy's `groups` map is authored and
 reviewed with the rules; it is the manual override. An identity-provider
 snapshot is what the IdP says, posted whole by whatever export the operator
 already trusts:
@@ -208,6 +208,25 @@ bundle's ETag covers the resolved rules, so a new snapshot reaches every
 affected machine on its next `aw-sync` cycle. `awd groups` shows what the
 server holds; the `GET /v1/groups` body is a report, not a re-appliable
 file, because it carries fields the endpoint rejects on input.
+
+The third is SCIM 2.0 provisioning. Set `AWD_SCIM_TOKEN` and point the
+identity provider at `https://<awd>/scim/v2`:
+
+- **Okta**: add a SCIM 2.0 app integration with *HTTP Header* authentication
+  and the token as the bearer value; enable *Create Users*, *Update User
+  Attributes*, *Deactivate Users* and *Push Groups*. Map `userName` to the
+  email users enroll with.
+- **Entra ID**: in an enterprise application, set provisioning to
+  *Automatic*, the tenant URL to the SCIM root, and the secret token to
+  `AWD_SCIM_TOKEN`. Map `userName` to whichever of `userPrincipalName` or
+  `mail` equals the enrolled email.
+
+SCIM groups union with the other two sources. Deactivating or deleting a
+user in the IdP drops its SCIM groups on the next `aw-sync` cycle; it does
+**not** revoke the user's machines — use `awd revoke` for that. Resolution
+matches `userName` to the enrolled email exactly, and
+`awd groups resolve <user> [--url URL]` shows each source's groups and warns when SCIM
+holds the user under a different case.
 
 The bundle is every rule that could apply to that user, with repository
 matchers still in it; the machine resolves those per session. `aw-sync` does

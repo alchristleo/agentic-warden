@@ -1,6 +1,6 @@
 # SCIM provisioning: the identity provider pushes memberships to the control plane
 
-Date: 2026-09-24. Status: approved, not yet implemented. Extends
+Date: 2026-09-24. Status: implemented 2026-09-24. Extends
 `2026-09-22-idp-group-sync-design.md`, which left "pulling from any IdP,
 and SCIM" out of scope because either would produce the same memberships
 the snapshot holds. This is the SCIM half. A puller stays out of scope.
@@ -68,7 +68,7 @@ both vendors, needs no IdP credentials inside `awd`, and removes the cron.
 // SCIMUser is a user as the identity provider provisioned it. UserName is
 // what resolution matches against the enrolled user.
 type SCIMUser struct {
-	ID         string // server-generated UUID
+	ID         string // server-generated, 32 hex characters (credential.NewID)
 	UserName   string
 	ExternalID string
 	Active     bool
@@ -178,8 +178,7 @@ the IdP re-pushing a single membership.
 
 - `GET /v1/groups` (existing): the summary gains
   `"scim": {"users": N, "activeUsers": N, "groups": N}`. It is present
-  whenever SCIM is configured, even with no snapshot; the 404 for "no
-  snapshot" becomes a 200 with `snapshot: null` when SCIM holds data.
+  whenever SCIM is configured, even with no snapshot; the snapshot fields are omitted and `"hasSnapshot": false` is set when there is no snapshot but SCIM holds data; `hasSnapshot` is `true` whenever a snapshot exists. With neither, it is still a 404.
 - `GET /v1/groups/resolve?user=<enrolled user>` (new, admin): 
 
   ```json
@@ -245,6 +244,12 @@ the IdP re-pushing a single membership.
   the enrolled email), the three-source union, and that deprovisioning drops
   groups but does not revoke machines.
 - The group-sync design gets one line pointing here.
+
+## Decisions made during implementation
+
+- A PATCH that sets `active` to JSON `null` is rejected with 400 `invalidValue`; decoding it as `false` would silently deactivate the user.
+- `{"op":"remove","path":"members"}` with `"value": null` clears the group, as an absent value does (RFC 7644 remove without a value). An explicit `"value": []` names no members and removes none.
+- Any request under `/scim/v2` that matches no route, including a wrong method on a real path, gets a SCIM-format 404 behind the SCIM token, so every SCIM response carries the SCIM error body; the cost is a 404 where plain HTTP would say 405.
 
 ## Out of scope, deliberately
 
