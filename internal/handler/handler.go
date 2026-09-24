@@ -40,6 +40,11 @@ type Handler struct {
 	// AdminToken is the bearer token administrative routes require. Empty
 	// disables them with a 503; it never leaves them open.
 	AdminToken string
+	// SCIMToken is the bearer token the identity provider presents on
+	// /scim/v2. It is separate from AdminToken because it lives in the
+	// IdP's configuration, not with the operators. Empty disables SCIM
+	// with a 503.
+	SCIMToken string
 	// Signer signs every bundle this server serves, so a machine can check
 	// on disk that its policy came from here. Nil is an unsigned
 	// deployment: no headers, and every client behaves as it did before
@@ -85,6 +90,8 @@ func (h *Handler) Routes() http.Handler {
 	mux.HandleFunc("DELETE /v1/machines/{id}", h.requireAdmin(h.deleteMachine))
 	mux.HandleFunc("PUT /v1/groups", h.requireAdmin(h.putGroups))
 	mux.HandleFunc("GET /v1/groups", h.requireAdmin(h.getGroups))
+	mux.HandleFunc("GET /v1/groups/resolve", h.requireAdmin(h.getGroupsResolve))
+	h.scimRoutes(mux)
 	return Logging(h.log)(Recovery(h.log)(mux))
 }
 

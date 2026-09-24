@@ -22,6 +22,10 @@ type Memory struct {
 	byHash    map[string]string                // credential hash -> machine id
 	order     []string                         // machine ids in enrollment order
 	snapshots []model.GroupSnapshot
+
+	scimUsers   map[string]model.SCIMUser  // by id
+	scimGroups  map[string]model.SCIMGroup // by id, Members unused
+	scimMembers map[string]map[string]bool // group id -> user ids
 }
 
 // NewMemory returns an empty in-memory store.
@@ -31,6 +35,10 @@ func NewMemory() *Memory {
 		tokens:   make(map[string]model.EnrollmentToken),
 		machines: make(map[string]model.Machine),
 		byHash:   make(map[string]string),
+
+		scimUsers:   make(map[string]model.SCIMUser),
+		scimGroups:  make(map[string]model.SCIMGroup),
+		scimMembers: make(map[string]map[string]bool),
 	}
 }
 

@@ -30,20 +30,15 @@ func (h *Handler) getBundle(w http.ResponseWriter, r *http.Request, machine mode
 		return
 	}
 
-	// Group resolution is the union of what the policy authored and what the
-	// identity provider last exported; with no snapshot yet, the authored
-	// map alone, exactly as before the sync existed.
-	var synced []string
-	snapshot, err := h.store.CurrentGroupSnapshot(r.Context())
-	switch {
-	case err == nil:
-		synced = snapshot.Members[machine.User]
-	case errors.Is(err, model.ErrNotFound):
-	default:
+	// Group resolution is the union of what the policy authored, what the
+	// IdP last exported and what SCIM provisioned; with neither feed, the
+	// authored map alone, exactly as before either existed.
+	groups, err := h.resolveGroups(r.Context(), ruleSet, machine.User)
+	if err != nil {
 		h.fail(w, r, err)
 		return
 	}
-	bundle := ruleSet.Slice(policy.UnionGroups(ruleSet.GroupsFor(machine.User), synced))
+	bundle := ruleSet.Slice(groups.Effective)
 	bundle.User = machine.User
 	body, err := json.MarshalIndent(bundle, "", "  ")
 	if err != nil {

@@ -29,6 +29,20 @@ func TestUnionGroupsOfNothingIsAnEmptySliceNotNil(t *testing.T) {
 	}
 }
 
+func TestUnionGroupsOfThreeSources(t *testing.T) {
+	got := policy.UnionGroups([]string{"platform"}, nil, []string{"oncall", "platform", "mobile"})
+	if want := []string{"mobile", "oncall", "platform"}; !equal(got, want) {
+		t.Errorf("UnionGroups = %v, want %v", got, want)
+	}
+}
+
+func TestUnionGroupsOfNoListsIsAnEmptySliceNotNil(t *testing.T) {
+	got := policy.UnionGroups()
+	if got == nil || len(got) != 0 {
+		t.Errorf("UnionGroups() = %#v, want an empty, non-nil slice", got)
+	}
+}
+
 func equal(a, b []string) bool {
 	if len(a) != len(b) {
 		return false
