@@ -19,9 +19,11 @@ policy-YAML snippets as hero content.
 
 ## Stack
 
-Next.js 15 App Router, TypeScript strict, Tailwind v4 (`@theme`), shadcn/ui
-(new-york, `next-themes`), `lucide-react`, Framer Motion for the hero only,
-Geist Sans + Geist Mono, zod. Node 20, pnpm. Tests: Vitest, Playwright,
+Next.js 16 App Router (owner ruling 2026-09-24: 15 is backport-only),
+TypeScript strict, Tailwind v4 (`@theme`), shadcn/ui (new-york,
+`next-themes`), `lucide-react`, Geist Sans + Geist Mono, zod. The hero
+animates with CSS keyframes rather than Framer Motion, whose server render
+leaves the terminal at `opacity: 0` without JavaScript. Node 20, pnpm. Tests: Vitest, Playwright,
 `@axe-core/playwright`, Lighthouse CI (`@lhci/cli`).
 
 Location: `web/` in this repo as its own pnpm project. Root `.gitignore`
@@ -50,7 +52,8 @@ proposed to the owner before install.
 
 ## Pages
 
-All routes are statically rendered.
+All routes are statically rendered except `/demo`, which renders per request so
+`?plan=` pre-fill and the spam timer work without JavaScript.
 
 | Route | Content |
 | --- | --- |
