@@ -393,7 +393,7 @@ func (cfg Config) audit(state State, res Result) {
 	if info, err := os.Stat(path); err == nil && info.Size() > auditRotateAt {
 		_ = os.Rename(path, path+".1")
 	}
-	if err := cache.MkdirMode(cfg.StateDir, 0o755); err != nil {
+	if err := EnsureStateDir(cfg.StateDir); err != nil {
 		return
 	}
 	f, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644)

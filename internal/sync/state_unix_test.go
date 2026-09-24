@@ -31,3 +31,57 @@ func TestSaveStateDirSurvivesAStrictUmask(t *testing.T) {
 		t.Errorf("state dir mode = %o, want 0755 under umask 077: `aw-sync status` runs as the developer, not root", info.Mode().Perm())
 	}
 }
+
+// EnsureStateDir, unlike cache.MkdirMode, always sets the mode it is given:
+// aw-sync owns its own state directory, so it repairs a narrow one left by
+// an older binary rather than leaving it alone.
+
+func TestSaveMachineRepairsAPreexistingNarrowStateDir(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.Chmod(dir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	m := sync.Machine{Server: "http://awd", MachineID: "m1", Credential: "secret", Agents: []string{"claude"}}
+	if err := sync.SaveMachine(dir, m); err != nil {
+		t.Fatal(err)
+	}
+	info, err := os.Stat(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if info.Mode().Perm() != 0o755 {
+		t.Errorf("state dir mode = %o, want 0755: SaveMachine must repair a narrow directory left by an older binary", info.Mode().Perm())
+	}
+	fileInfo, err := os.Stat(filepath.Join(dir, sync.MachineFile))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if fileInfo.Mode().Perm() != 0o600 {
+		t.Errorf("%s mode = %o, want 0600", sync.MachineFile, fileInfo.Mode().Perm())
+	}
+}
+
+func TestSaveMachineIntoAFreshDirUnderStrictUmask(t *testing.T) {
+	old := syscall.Umask(0o077)
+	defer syscall.Umask(old)
+
+	dir := filepath.Join(t.TempDir(), "state")
+	m := sync.Machine{Server: "http://awd", MachineID: "m1", Credential: "secret", Agents: []string{"claude"}}
+	if err := sync.SaveMachine(dir, m); err != nil {
+		t.Fatal(err)
+	}
+	info, err := os.Stat(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if info.Mode().Perm() != 0o755 {
+		t.Errorf("state dir mode = %o, want 0755 under umask 077", info.Mode().Perm())
+	}
+	fileInfo, err := os.Stat(filepath.Join(dir, sync.MachineFile))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if fileInfo.Mode().Perm() != 0o600 {
+		t.Errorf("%s mode = %o, want 0600", sync.MachineFile, fileInfo.Mode().Perm())
+	}
+}

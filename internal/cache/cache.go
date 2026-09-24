@@ -64,17 +64,28 @@ func Replace(path string, data []byte) error {
 	return ReplaceMode(path, data, 0o600)
 }
 
-// MkdirMode creates path and any missing parents, then sets path's own mode
-// explicitly. os.MkdirAll alone applies the process umask to every directory
-// it creates, so under a strict umask (0077 is common for a root-run daemon
-// under systemd hardening) a directory meant to be readable by other users
-// comes out 0700 regardless of the mode passed in. Only the leaf gets the
-// explicit chmod: the parents above it are system directories the caller
-// does not own and must not change the mode of. On Windows Chmod only
-// affects the read-only bit, which is fine: there is no umask to fight there.
+// MkdirMode creates path if it does not already exist, setting its mode
+// explicitly so an admin-set umask cannot narrow it: os.MkdirAll alone
+// applies the process umask to every directory it creates, so a directory
+// meant to be readable by other users can come out 0700 regardless of the
+// mode passed in. The explicit chmod only ever applies to a directory this
+// call itself creates; a directory that already exists is left exactly as
+// it is, because it belongs to whoever created it — /etc/claude-code, a
+// --root directory, or any other path this package does not own — and
+// MkdirAll silently no-ops on it too, so touching its mode here would be
+// this package overstepping, not a umask fix. Only the leaf's mode is
+// fixed; any missing parents MkdirAll creates above it still take the
+// umask-filtered mode, because they are system directories this package
+// does not own either. On Windows Chmod only affects the read-only bit,
+// which is fine: there is no umask to fight there.
 func MkdirMode(path string, mode fs.FileMode) error {
+	_, statErr := os.Lstat(path)
+	existed := statErr == nil
 	if err := os.MkdirAll(path, mode); err != nil {
 		return fmt.Errorf("cache: creating %s: %w", path, err)
+	}
+	if existed {
+		return nil
 	}
 	if err := os.Chmod(path, mode); err != nil {
 		return fmt.Errorf("cache: setting permissions on %s: %w", path, err)
