@@ -36,6 +36,11 @@ func (h *Handler) scimRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("PUT /scim/v2/Users/{id}", h.requireSCIM(h.scimReplaceUser))
 	mux.HandleFunc("PATCH /scim/v2/Users/{id}", h.requireSCIM(h.scimPatchUser))
 	mux.HandleFunc("DELETE /scim/v2/Users/{id}", h.requireSCIM(h.scimDeleteUser))
+	// A method-less catch-all: Go 1.22's ServeMux prefers a more specific
+	// method+path pattern, so every route above still wins; this only
+	// catches what none of them do, and answers with the SCIM error body
+	// the RFC promises instead of ServeMux's default text/plain 405.
+	mux.HandleFunc("/scim/v2/", h.requireSCIM(h.scimNoRoute))
 }
 
 // requireSCIM admits the identity provider's token. Unset answers 503 so a
@@ -245,4 +250,10 @@ func (h *Handler) scimDeleteUser(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// scimNoRoute answers a request under /scim/v2 that no registered route
+// matched, whether the path is unknown or the method is wrong for it.
+func (h *Handler) scimNoRoute(w http.ResponseWriter, r *http.Request) {
+	writeSCIMError(w, scim.NotFound("no such SCIM endpoint or method: "+r.Method+" "+r.URL.Path))
 }

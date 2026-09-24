@@ -208,3 +208,17 @@ func TestSCIMUserListFiltersAndPages(t *testing.T) {
 		t.Errorf("empty list = %v; Resources must be [] not null", none)
 	}
 }
+
+func TestSCIMUnknownRouteIsASCIMError(t *testing.T) {
+	srv := newSCIMServer(t)
+	if status, out := scimDo(t, srv, http.MethodPatch, "/scim/v2/Users", ""); status != 404 || out["status"] != "404" {
+		t.Errorf("PATCH /scim/v2/Users = %d %v, want a 404 SCIM error", status, out)
+	}
+	if status, out := scimDo(t, srv, http.MethodGet, "/scim/v2/Nope", ""); status != 404 || out["status"] != "404" {
+		t.Errorf("GET /scim/v2/Nope = %d %v, want a 404 SCIM error", status, out)
+	}
+
+	if status, _ := scimDoAs(t, srv, http.MethodGet, "/scim/v2/Nope", "", ""); status != http.StatusUnauthorized {
+		t.Errorf("unauthenticated unknown route: status = %d, want 401", status)
+	}
+}
