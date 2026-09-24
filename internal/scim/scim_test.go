@@ -31,6 +31,23 @@ func TestDecodeUserDefaultsActiveToTrue(t *testing.T) {
 	}
 }
 
+func TestDecodeUserRejectsANullActive(t *testing.T) {
+	_, err := scim.DecodeUser(strings.NewReader(
+		`{"schemas":["urn:ietf:params:scim:schemas:core:2.0:User"],"userName":"a@acme.com","active":null}`))
+	var scimErr *scim.Error
+	if !errors.As(err, &scimErr) || scimErr.Status != 400 || scimErr.ScimType != "invalidValue" {
+		t.Errorf("err = %v, want a 400 invalidValue scim error", err)
+	}
+}
+
+func TestDecodeUserAcceptsAnExplicitFalseActive(t *testing.T) {
+	u, err := scim.DecodeUser(strings.NewReader(
+		`{"schemas":["urn:ietf:params:scim:schemas:core:2.0:User"],"userName":"a@acme.com","active":false}`))
+	if err != nil || u.Active {
+		t.Errorf("user = %+v, err = %v; an explicit false must stay false", u, err)
+	}
+}
+
 func TestDecodeUserRejects(t *testing.T) {
 	for name, body := range map[string]string{
 		"not json":     `{`,

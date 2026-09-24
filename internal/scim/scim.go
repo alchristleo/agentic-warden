@@ -120,16 +120,22 @@ func NewListResponse(resources any, total, startIndex, count int) ListResponse {
 }
 
 // incomingUser is what the server reads from a user body. Every other
-// attribute an IdP sends is accepted and dropped.
+// attribute an IdP sends is accepted and dropped. Active is read raw so
+// DecodeUser can tell an absent field, which both IdPs mean as active,
+// apart from an explicit JSON null, which is a value the SCIM store
+// refuses.
 type incomingUser struct {
-	Schemas    []string `json:"schemas"`
-	UserName   string   `json:"userName"`
-	ExternalID string   `json:"externalId"`
-	Active     *bool    `json:"active"`
+	Schemas    []string        `json:"schemas"`
+	UserName   string          `json:"userName"`
+	ExternalID string          `json:"externalId"`
+	Active     json.RawMessage `json:"active"`
 }
 
 // DecodeUser reads a POST or PUT user body. It leaves ID and timestamps
-// for the caller. An omitted active means active, as both IdPs assume.
+// for the caller. An omitted active means active, as both IdPs assume; an
+// explicit null is rejected rather than silently read as active, since a
+// null there almost always means the IdP sent a value it could not fill in
+// and the request needs to be corrected, not accepted as a no-op.
 func DecodeUser(r io.Reader) (model.SCIMUser, error) {
 	var in incomingUser
 	if err := json.NewDecoder(r).Decode(&in); err != nil {
@@ -142,8 +148,15 @@ func DecodeUser(r io.Reader) (model.SCIMUser, error) {
 		return model.SCIMUser{}, InvalidValue("userName is required")
 	}
 	active := true
-	if in.Active != nil {
-		active = *in.Active
+	switch {
+	case in.Active == nil:
+		// Absent: active stays true.
+	case isNull(in.Active):
+		return model.SCIMUser{}, InvalidValue("active must be a boolean")
+	default:
+		if err := json.Unmarshal(in.Active, &active); err != nil {
+			return model.SCIMUser{}, InvalidSyntax("active is not a boolean: " + err.Error())
+		}
 	}
 	return model.SCIMUser{UserName: in.UserName, ExternalID: in.ExternalID, Active: active}, nil
 }

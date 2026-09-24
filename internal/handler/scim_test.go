@@ -160,6 +160,8 @@ func TestSCIMUserErrors(t *testing.T) {
 			`{"schemas":["urn:ietf:params:scim:schemas:core:2.0:User"],"userName":"ALICE@acme.com"}`, 409, "uniqueness"},
 		{"not json", "POST", "/scim/v2/Users", `{`, 400, "invalidSyntax"},
 		{"no userName", "POST", "/scim/v2/Users", `{"schemas":["urn:ietf:params:scim:schemas:core:2.0:User"]}`, 400, "invalidValue"},
+		{"null active", "POST", "/scim/v2/Users",
+			`{"schemas":["urn:ietf:params:scim:schemas:core:2.0:User"],"userName":"null-active@acme.com","active":null}`, 400, "invalidValue"},
 		{"unsupported filter", "GET", "/scim/v2/Users?filter=userName%20co%20%22a%22", "", 400, "invalidFilter"},
 		{"bad count", "GET", "/scim/v2/Users?count=many", "", 400, "invalidValue"},
 		{"unknown id", "PATCH", "/scim/v2/Users/nope",
