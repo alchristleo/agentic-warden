@@ -69,6 +69,9 @@ func (rs *RuleSet) Validate(validators ...ManagedValidator) error {
 				if p := FirstNull(config.Launch, "launch"); p != "" {
 					return fmt.Errorf("rule %q, agent %q: %s is null, which TOML cannot represent", rule.Name, agentName, p)
 				}
+				if p, key := FirstBadKey(config.Launch, "launch"); p != "" {
+					return fmt.Errorf("rule %q, agent %q: %s: key %q must use only letters, digits, _ and - to reach codex -c", rule.Name, agentName, p, key)
+				}
 			}
 			for _, validate := range validators {
 				if err := validate(agentName, config.Managed); err != nil {

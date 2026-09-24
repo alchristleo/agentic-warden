@@ -380,6 +380,24 @@ func TestApplyRejectsANullLeafInALaunchDocument(t *testing.T) {
 	}
 }
 
+func TestApplyRejectsACodexLaunchKeyItsCsWouldMisparse(t *testing.T) {
+	// A key segment that is not a bare TOML key (here a space) would break
+	// codex's -c parsing, or silently address a different key, for every
+	// launch in the matching repository. Apply must catch it and name the
+	// path.
+	s := startServer(t)
+	path := writePolicy(t, "version: v1\nrules:\n  - name: baseline\n    agents:\n      codex:\n        launch:\n          mcp_servers:\n            my server:\n              command: x\n")
+
+	out, code := runAwd(t, "apply", path, "--url", s.url)
+
+	if code == 0 {
+		t.Fatalf("apply exited 0, want non-zero for a launch key codex -c cannot address: %s", out)
+	}
+	if !strings.Contains(out, "launch.mcp_servers.my server") {
+		t.Errorf("output %q does not name launch.mcp_servers.my server", out)
+	}
+}
+
 func TestApplyWithoutTheAdminTokenIsRefused(t *testing.T) {
 	s := startServer(t)
 	path := writePolicy(t, policyYAML)

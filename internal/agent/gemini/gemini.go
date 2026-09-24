@@ -148,7 +148,11 @@ func (a *Adapter) Build(ctx context.Context, o agent.BuildOptions) (*agent.Launc
 	}
 
 	if len(policies) > 0 {
-		policyBytes, err := policiesTOML(fmt.Sprintf(launchHeader, "unversioned"), policies)
+		version := o.Settings.Version
+		if version == "" {
+			version = "unversioned"
+		}
+		policyBytes, err := policiesTOML(fmt.Sprintf(launchHeader, version), policies)
 		if err != nil {
 			return nil, err
 		}
