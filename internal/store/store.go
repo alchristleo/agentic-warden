@@ -102,8 +102,12 @@ type SCIMStore interface {
 	// DeleteSCIMGroup removes a group and its memberships, or
 	// model.ErrNotFound.
 	DeleteSCIMGroup(ctx context.Context, id string) error
-	// ListSCIMGroups is ListSCIMUsers for groups, members included.
-	ListSCIMGroups(ctx context.Context, f model.SCIMFilter, startIndex, count int) ([]model.SCIMGroup, int, error)
+	// ListSCIMGroups is ListSCIMUsers for groups. withMembers false skips
+	// reading membership entirely, since an IdP paging a large directory
+	// asks for groups without members and Postgres would otherwise run a
+	// member query per page for nothing; each group's Members is then an
+	// empty, non-nil slice rather than what it actually holds.
+	ListSCIMGroups(ctx context.Context, f model.SCIMFilter, startIndex, count int, withMembers bool) ([]model.SCIMGroup, int, error)
 
 	// SCIMGroupsFor returns the sorted display names of the groups holding
 	// the active user whose userName equals userName exactly; an empty,
