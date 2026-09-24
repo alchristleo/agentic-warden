@@ -3,7 +3,7 @@ export const home = {
     eyebrow: "Claude Code · Codex · Gemini CLI",
     title: "One policy for every coding agent",
     lede:
-      "Write your organization's rules once. Every developer session gets the slice that applies to their groups and the repository they are in — applied at launch, even when nobody types the wrapper.",
+      "Write your organization's rules once. Every developer session gets the slice that applies to their groups and the repository they are in. For Claude Code it applies at launch, even when nobody types the wrapper.",
     primaryCta: { href: "/demo", label: "Request demo" },
     secondaryCta: { href: "/product", label: "See how it works" },
     terminal: [
@@ -63,7 +63,7 @@ export const home = {
       {
         command: "policyHelper",
         title: "Enforce it at launch",
-        body: "Claude Code runs the helper on every start, including a bare `claude`, and the helper applies the rules for the repository the session is in.",
+        body: "Claude Code runs the helper on every start, including a bare claude, and the helper applies the rules for the repository the session is in.",
       },
     ],
   },
@@ -71,8 +71,8 @@ export const home = {
     title: "Governs the agents your developers use",
     items: [
       { name: "Claude Code", body: "Managed settings and a policy helper computed per repository at every launch." },
-      { name: "Codex", body: "A machine-wide requirements.toml, plus repository rules through `aw codex`." },
-      { name: "Gemini CLI", body: "System settings and an admin policy file, plus repository rules through `aw gemini`." },
+      { name: "Codex", body: "A machine-wide requirements.toml, plus repository rules through aw codex." },
+      { name: "Gemini CLI", body: "System settings and an admin policy file, plus repository rules through aw gemini." },
     ],
   },
   closing: {

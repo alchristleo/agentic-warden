@@ -20,12 +20,12 @@ export const product = {
     {
       id: "sync",
       title: "Scheduled sync on every OS",
-      body: "`aw-sync install-timer` installs a systemd timer on Linux, a launchd daemon on macOS or a scheduled task on Windows, and refuses to schedule a binary a non-root user could replace.",
+      body: "aw-sync install-timer installs a systemd timer on Linux, a launchd daemon on macOS or a scheduled task on Windows. On Linux and macOS it refuses to schedule a binary a non-root user could replace.",
     },
     {
       id: "fail-safe",
-      title: "Claude Code always starts",
-      body: "The policy helper works offline from the last synced bundle, validates its output against Claude Code's settings schema and never exits non-zero, so a bad day on the network never blocks a developer.",
+      title: "Fails safe by default",
+      body: "The policy helper works offline from the last synced bundle, validates its output against Claude Code's settings schema and exits cleanly by default, so a network outage never blocks a developer. Organizations that must never run unmanaged can opt into requiring a bundle instead.",
     },
     {
       id: "doctor",

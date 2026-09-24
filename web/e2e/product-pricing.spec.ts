@@ -8,7 +8,7 @@ test("product lists shipped capabilities and badges the console", async ({ page 
     "Signed bundles",
     "SCIM provisioning",
     "Scheduled sync on every OS",
-    "Claude Code always starts",
+    "Fails safe by default",
     "aw doctor",
     "Hosted console",
   ]) {
