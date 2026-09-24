@@ -34,6 +34,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/acme/agent-wrapper/internal/agent/claude"
 	"github.com/acme/agent-wrapper/internal/policyhelper"
@@ -181,7 +182,15 @@ func writeNotes(stderr io.Writer, notes []string) {
 	}
 	text := "aw-policy: " + strings.Join(notes, "\naw-policy: ") + "\n"
 	if len(text) > maxStderr {
-		text = text[:maxStderr]
+		// A byte cut at exactly maxStderr can land inside a multi-byte
+		// rune, and Claude Code shows this text as-is, so walk back to the
+		// last full rune instead of splitting one and leaving invalid
+		// UTF-8 on stderr.
+		n := maxStderr
+		for n > 0 && !utf8.RuneStart(text[n]) {
+			n--
+		}
+		text = text[:n]
 	}
 	_, _ = io.WriteString(stderr, text)
 }

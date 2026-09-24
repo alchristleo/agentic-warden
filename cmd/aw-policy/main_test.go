@@ -1,10 +1,12 @@
 package main
 
 import (
+	"bytes"
 	"path/filepath"
 	"runtime"
 	"strings"
 	"testing"
+	"unicode/utf8"
 
 	"github.com/acme/agent-wrapper/internal/agent/claude"
 )
@@ -48,6 +50,43 @@ func TestATestBuildHonoursTheOverrides(t *testing.T) {
 
 	if cfg.BundlePath != "/tmp/fixture.json" {
 		t.Errorf("BundlePath = %q; a tagged build exists so tests can point at fixtures", cfg.BundlePath)
+	}
+}
+
+func TestWriteNotesCapsAtACompleteRuneNotAByte(t *testing.T) {
+	// "aw-policy: " is 11 bytes, an odd length, so a note built entirely of
+	// the 2-byte rune "é" has its pairs land on odd offsets: 11, 13, 15...
+	// That includes offset maxStderr-1 (16383, odd), so a naive
+	// text[:maxStderr] byte cut lands inside that pair and would split it,
+	// leaving invalid UTF-8 on stderr. The repeat count only needs to reach
+	// past maxStderr; the split happens at the cut point regardless of how
+	// far past.
+	note := strings.Repeat("é", 8300)
+	var buf bytes.Buffer
+
+	writeNotes(&buf, []string{note})
+
+	out := buf.Bytes()
+	if len(out) > maxStderr {
+		t.Fatalf("len(out) = %d, want <= maxStderr (%d)", len(out), maxStderr)
+	}
+	if !utf8.Valid(out) {
+		t.Fatalf("out is not valid UTF-8: %q", out)
+	}
+	trimmed := bytes.TrimSuffix(out, []byte("\n"))
+	r, size := utf8.DecodeLastRune(trimmed)
+	if r != 'é' || size != 2 {
+		t.Errorf("out does not end on a complete 'é': last rune = %q, size = %d", r, size)
+	}
+}
+
+func TestWriteNotesLeavesAShortNoteUnchanged(t *testing.T) {
+	var buf bytes.Buffer
+
+	writeNotes(&buf, []string{"hello"})
+
+	if got, want := buf.String(), "aw-policy: hello\n"; got != want {
+		t.Errorf("writeNotes output = %q, want %q", got, want)
 	}
 }
 
