@@ -29,18 +29,10 @@ const Name = "codex"
 func SystemDir(goos string) string {
 	switch goos {
 	case "windows":
-		return programData() + `\OpenAI\Codex`
+		return agent.ProgramData() + `\OpenAI\Codex`
 	default:
 		return "/etc/codex"
 	}
-}
-
-// programData is Windows' machine-wide data directory.
-func programData() string {
-	if dir := os.Getenv("ProgramData"); dir != "" {
-		return dir
-	}
-	return `C:\ProgramData`
 }
 
 // Adapter launches Codex and renders its requirements file. The exported
