@@ -289,6 +289,22 @@ administrator rights can edit the managed source or run a modified client. Pair
 it with scheduled MDM redeployment and network-level egress restriction. See
 `docs/threat-model.md` when it lands.
 
+## Marketing site
+
+`web/` is the marketing site: a Next.js project with its own pnpm lockfile,
+deployed to Vercel with `web/` as the project root. It does not share code
+with the Go module.
+
+    cd web
+    pnpm install
+    pnpm dev            # http://localhost:3000
+    pnpm test           # unit tests
+    pnpm test:e2e       # Playwright against a production build
+
+Production deploys (`VERCEL_ENV=production`) need `NEXT_PUBLIC_SITE_URL`,
+`RESEND_API_KEY`, `DEMO_INBOX` and `DEMO_FROM`; the build fails without
+them. See `web/.env.example`.
+
 ## License
 
 Apache License 2.0; see `LICENSE`.
