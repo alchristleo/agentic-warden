@@ -723,3 +723,37 @@ func TestInstallTimerRejectsStrayArguments(t *testing.T) {
 		t.Errorf("exit %d, stderr %q", code, stderr)
 	}
 }
+
+// TestInstallTimerRefusesABinaryAUserCanReplace pins that a root timer never
+// runs a file its owner can swap: the test binary lives in a temp dir this
+// (non-root) user owns, so install-timer must refuse, naming the path, and
+// before any tool runs or any file is written.
+func TestInstallTimerRefusesABinaryAUserCanReplace(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("Windows warns instead of refusing")
+	}
+	if os.Geteuid() == 0 {
+		t.Skip("running as root: the temp dirs are root-owned")
+	}
+	stateDir := t.TempDir()
+	machine := []byte(`{"server":"http://awd","machineId":"m1","credential":"c","agents":["claude"]}` + "\n")
+	if err := os.WriteFile(filepath.Join(stateDir, "machine.json"), machine, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	resolved, err := filepath.EvalSymlinks(builtSync)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// An empty PATH: were any tool to run, it could not be found, and the
+	// error would name it instead of the refusal.
+	stdout, stderr, code := runSync(t, []string{"PATH="}, "install-timer", "--state-dir", stateDir)
+	want := "refusing to schedule " + resolved + " as root: "
+	if code != 1 || !strings.Contains(stderr, want) || !strings.Contains(stderr, "is owned by uid") ||
+		!strings.Contains(stderr, "such as /usr/local/bin") {
+		t.Errorf("exit %d, stdout %q, stderr %q; want %q", code, stdout, stderr, want)
+	}
+	entries, _ := os.ReadDir(stateDir)
+	if len(entries) != 1 {
+		t.Errorf("state dir changed: %v", entries)
+	}
+}

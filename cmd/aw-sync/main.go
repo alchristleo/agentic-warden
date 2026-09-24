@@ -52,6 +52,7 @@ Environment:
 --root overrides where one agent's files are written and exists for testing.
 once exits 1 when the cycle fails; the files on disk are left as they were.
 install-timer and uninstall-timer need root (an elevated prompt on Windows).
+install-timer refuses a binary or state directory anyone but root could replace.
 `
 
 func main() {
@@ -345,7 +346,8 @@ func orNone(version string) string {
 
 // installTimer schedules `aw-sync once` for this machine. The unit runs the
 // binary that is running now, so a binary installed somewhere other than
-// /usr/local/bin still syncs; re-running it changes the interval.
+// /usr/local/bin still syncs, provided only root can replace it (see
+// checkRootOnly); re-running it changes the interval.
 func installTimer(argv []string, stdout io.Writer) error {
 	flags, stateDir := newFlagSet("install-timer")
 	interval := flags.Duration("interval", timer.DefaultInterval, "how often to run once (1m to 24h, whole minutes)")
@@ -364,20 +366,22 @@ func installTimer(argv []string, stdout io.Writer) error {
 	if err := timer.Supported(runtime.GOOS); err != nil {
 		return err
 	}
-	dir, err := filepath.Abs(*stateDir)
+	binary, err := runningBinary()
+	if err != nil {
+		return err
+	}
+	p, err := timerParams(binary, *stateDir, *interval)
 	if err != nil {
 		return err
 	}
 	// A timer on an unenrolled machine would only log "not enrolled" every
 	// interval. machine.json is root-only, so its existence is the test.
-	if _, err := os.Stat(filepath.Join(dir, sync.MachineFile)); err != nil {
+	if _, err := os.Stat(filepath.Join(p.StateDir, sync.MachineFile)); err != nil {
 		return errors.New("not enrolled; run aw-sync enroll first")
 	}
-	binary, err := runningBinary()
-	if err != nil {
+	if err := checkRootOnly(runtime.GOOS, p, os.Stderr); err != nil {
 		return err
 	}
-	p := timer.Params{Binary: binary, StateDir: dir, Interval: *interval}
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
 	if err := timer.NewInstaller(runtime.GOOS).Install(ctx, p); err != nil {
@@ -395,6 +399,50 @@ func installTimer(argv []string, stdout io.Writer) error {
 	}
 	fmt.Fprintln(stdout, "check it with: aw-sync status")
 	return nil
+}
+
+// timerParams is what install-timer renders: binary, and stateDir made
+// absolute, since the unit runs from / and a relative path would name a
+// different directory there.
+func timerParams(binary, stateDir string, interval time.Duration) (timer.Params, error) {
+	dir, err := filepath.Abs(stateDir)
+	if err != nil {
+		return timer.Params{}, err
+	}
+	return timer.Params{Binary: binary, StateDir: dir, Interval: interval}, nil
+}
+
+// checkRootOnly refuses, on Unix, a timer whose binary or state directory
+// someone other than root could replace: the job runs as root every
+// interval, so a user-writable binary (a build dir, ~/Downloads, ~/go/bin)
+// or a user-writable machine.json would hand that user root. There is no
+// override. Windows keeps ownership in ACLs the standard library cannot
+// read, so there it only warns when the binary is outside Program Files.
+func checkRootOnly(goos string, p timer.Params, stderr io.Writer) error {
+	if goos == "windows" {
+		programFiles := os.Getenv("ProgramFiles")
+		if programFiles == "" {
+			programFiles = `C:\Program Files`
+		}
+		if !underDir(p.Binary, programFiles) {
+			fmt.Fprintf(stderr, "warning: %s is outside Program Files; make sure only administrators can write it, since the task runs it as SYSTEM\n", p.Binary)
+		}
+		return nil
+	}
+	if err := rootOnly(p.Binary); err != nil {
+		return fmt.Errorf("refusing to schedule %s as root: %v; install aw-sync somewhere only root can write, such as /usr/local/bin", p.Binary, err)
+	}
+	if err := rootOnly(p.StateDir); err != nil {
+		return fmt.Errorf("refusing to schedule %s as root with state dir %s: %v; use a state directory only root can write, such as %s", p.Binary, p.StateDir, err, sync.StateDir(goos))
+	}
+	return nil
+}
+
+// underDir reports whether the Windows path is inside dir, ignoring case
+// as Windows does.
+func underDir(path, dir string) bool {
+	dir = strings.TrimRight(strings.ToLower(dir), `\`) + `\`
+	return strings.HasPrefix(strings.ToLower(path), dir)
 }
 
 // uninstallTimer stops future syncs. Enrollment, state and the rendered
