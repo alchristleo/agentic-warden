@@ -603,6 +603,51 @@ func TestEnrollRefusesWhileAnotherCycleHoldsTheLock(t *testing.T) {
 	}
 }
 
+// TestEnrollChecksEnrollmentUnderTheLock pins the fix for a TOCTOU: the
+// already-enrolled check must run under the same lock as the write, so a
+// second concurrent enroll without --force sees the first one's
+// machine.json instead of racing it. While the lock is held, a second
+// enroll must be refused for holding the lock, before it ever reads
+// machine.json; once released, the same enroll must be refused for already
+// being enrolled, with machine.json unchanged.
+func TestEnrollChecksEnrollmentUnderTheLock(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("see TestOnceSkipsWhileAnotherCycleHoldsTheLock")
+	}
+	stateDir := t.TempDir()
+	machine := []byte(`{"server":"http://awd","machineId":"m1","credential":"c","agents":["claude"]}` + "\n")
+	machinePath := filepath.Join(stateDir, "machine.json")
+	if err := os.WriteFile(machinePath, machine, 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	release, err := sync.Lock(stateDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// A closed port: if the lock check did not come first, this would reach
+	// the network (or the already-enrolled check) instead.
+	_, stderr, code := runSync(t, []string{"AW_SYNC_TOKEN=x"},
+		"enroll", "--server", "http://127.0.0.1:1", "--agents", "claude", "--state-dir", stateDir)
+	if code != 1 || !strings.Contains(stderr, "another aw-sync is running; retry") {
+		t.Errorf("while locked: exit %d, stderr %q; want the lock refusal first", code, stderr)
+	}
+	release()
+
+	_, stderr, code = runSync(t, []string{"AW_SYNC_TOKEN=x"},
+		"enroll", "--server", "http://127.0.0.1:1", "--agents", "claude", "--state-dir", stateDir)
+	if code != 1 || !strings.Contains(stderr, "--force") {
+		t.Errorf("after release: exit %d, stderr %q; want the already-enrolled refusal", code, stderr)
+	}
+	got, err := os.ReadFile(machinePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(got, machine) {
+		t.Errorf("machine.json changed: %q", got)
+	}
+}
+
 func TestEnrollRejectsAnAgentWithoutARenderer(t *testing.T) {
 	_, stderr, code := runSync(t, []string{"AW_SYNC_TOKEN=x"},
 		"enroll", "--server", "http://127.0.0.1:1", "--agents", "claude,copilot", "--state-dir", t.TempDir())

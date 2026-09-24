@@ -173,13 +173,6 @@ func enroll(argv []string, stdout io.Writer) error {
 			}
 		}
 	}
-	existing, loadErr := sync.LoadMachine(*stateDir)
-	switch {
-	case loadErr == nil && !*force:
-		return fmt.Errorf("already enrolled as machine %s against %s; pass --force to re-enroll", existing.MachineID, existing.Server)
-	case loadErr != nil && !errors.Is(loadErr, sync.ErrNotEnrolled) && !*force:
-		return fmt.Errorf("an enrollment exists in %s but cannot be read (%s); pass --force to replace it", *stateDir, loadErr)
-	}
 	if *name == "" {
 		if host, err := os.Hostname(); err == nil {
 			*name = host
@@ -196,6 +189,11 @@ func enroll(argv []string, stdout io.Writer) error {
 	// Enrollment rewrites machine.json, which a running cycle may be about
 	// to rewrite too during a key rollover; it waits for nobody, so a held
 	// lock is an error to retry, and it comes before the token is spent.
+	// The lock also covers the already-enrolled check below: without it,
+	// two concurrent enrolls without --force could both read no conflict
+	// and both write, the second silently overwriting the first's
+	// enrollment. Under the lock, a second concurrent enroll sees the
+	// first one's machine.json and is refused normally.
 	release, err := sync.Lock(*stateDir)
 	if errors.Is(err, sync.ErrLocked) {
 		return errors.New("another aw-sync is running; retry")
@@ -204,6 +202,14 @@ func enroll(argv []string, stdout io.Writer) error {
 		return err
 	}
 	defer release()
+
+	existing, loadErr := sync.LoadMachine(*stateDir)
+	switch {
+	case loadErr == nil && !*force:
+		return fmt.Errorf("already enrolled as machine %s against %s; pass --force to re-enroll", existing.MachineID, existing.Server)
+	case loadErr != nil && !errors.Is(loadErr, sync.ErrNotEnrolled) && !*force:
+		return fmt.Errorf("an enrollment exists in %s but cannot be read (%s); pass --force to replace it", *stateDir, loadErr)
+	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
