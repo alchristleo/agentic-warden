@@ -697,3 +697,85 @@ func TestGroupsWithoutASnapshotSaysSo(t *testing.T) {
 		t.Errorf("groups apply without the admin token exited 0: %s", out)
 	}
 }
+
+const e2eSCIMToken = "e2e-scim-token"
+
+// scimRequest sends a SCIM request to the e2e server and returns the
+// decoded body.
+func scimRequest(t *testing.T, base, method, path, body string) map[string]any {
+	t.Helper()
+	req, _ := http.NewRequest(method, base+path, strings.NewReader(body))
+	req.Header.Set("Authorization", "Bearer "+e2eSCIMToken)
+	req.Header.Set("Content-Type", "application/scim+json")
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	var out map[string]any
+	_ = json.NewDecoder(resp.Body).Decode(&out)
+	if resp.StatusCode >= 300 {
+		t.Fatalf("%s %s: %d %v", method, path, resp.StatusCode, out)
+	}
+	return out
+}
+
+func TestSCIMProvisionedGroupReachesTheBundle(t *testing.T) {
+	s := startServerEnv(t, []string{"AWD_SCIM_TOKEN=" + e2eSCIMToken})
+	if out, code := runAwd(t, "apply", writePolicy(t, groupedPolicyYAML), "--url", s.url); code != 0 {
+		t.Fatalf("apply: %s", out)
+	}
+	user := scimRequest(t, s.url, http.MethodPost, "/scim/v2/Users",
+		`{"schemas":["urn:ietf:params:scim:schemas:core:2.0:User"],"userName":"alice@acme.com"}`)
+	scimRequest(t, s.url, http.MethodPost, "/scim/v2/Groups",
+		`{"schemas":["urn:ietf:params:scim:schemas:core:2.0:Group"],"displayName":"mobile","members":[{"value":"`+user["id"].(string)+`"}]}`)
+	scimRequest(t, s.url, http.MethodPost, "/scim/v2/Users",
+		`{"schemas":["urn:ietf:params:scim:schemas:core:2.0:User"],"userName":"Bob@acme.com"}`)
+
+	out, code := runAwd(t, "enroll-token", "alice@acme.com", "--url", s.url)
+	if code != 0 {
+		t.Fatal(out)
+	}
+	resp, err := http.Post(s.url+"/v1/machines/enroll", "application/json",
+		strings.NewReader(`{"token":"`+strings.TrimSpace(out)+`","name":"h","os":"linux"}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	var enrolled struct {
+		Credential string `json:"credential"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&enrolled); err != nil {
+		t.Fatal(err)
+	}
+	req, _ := http.NewRequest(http.MethodGet, s.url+"/v1/bundle", nil)
+	req.Header.Set("Authorization", "Bearer "+enrolled.Credential)
+	bundleResp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer bundleResp.Body.Close()
+	var bundle struct {
+		Groups []string `json:"groups"`
+	}
+	if err := json.NewDecoder(bundleResp.Body).Decode(&bundle); err != nil {
+		t.Fatal(err)
+	}
+	if strings.Join(bundle.Groups, ",") != "mobile,platform" {
+		t.Errorf("groups = %v, want authored platform ∪ scim mobile", bundle.Groups)
+	}
+
+	summary, code := runAwd(t, "groups", "--url", s.url)
+	if code != 0 || !strings.Contains(summary, "no group snapshot") || !strings.Contains(summary, "scim users: 2 (2 active)") {
+		t.Errorf("groups exited %d: %s", code, summary)
+	}
+
+	resolved, code := runAwd(t, "groups", "resolve", "alice@acme.com", "--url", s.url)
+	if code != 0 || !strings.Contains(resolved, "scim: mobile") || !strings.Contains(resolved, "effective: mobile, platform") {
+		t.Errorf("groups resolve exited %d: %s", code, resolved)
+	}
+	warned, _ := runAwd(t, "groups", "resolve", "bob@acme.com", "--url", s.url)
+	if !strings.Contains(warned, `"Bob@acme.com"`) {
+		t.Errorf("no near-match warning: %s", warned)
+	}
+}

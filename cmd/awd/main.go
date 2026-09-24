@@ -21,6 +21,7 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
+	"net/url"
 	"os"
 	"os/signal"
 	"strings"
@@ -51,6 +52,7 @@ Usage:
   awd revoke <id> [--url URL]                       revoke a machine's credential
   awd groups apply FILE [--url URL]   push an identity-provider membership snapshot
   awd groups [--url URL]              show the current membership snapshot
+  awd groups resolve USER [--url URL] show one user's groups by source
   awd help
 
 Environment:
@@ -63,6 +65,7 @@ Environment:
   AWD_SHUTDOWN_TIMEOUT       how long in-flight requests may drain (default 30s)
   AWD_URL                    control plane URL used by apply (default http://localhost:8080)
   AWD_ADMIN_TOKEN            bearer token for apply and machine administration; unset disables them
+  AWD_SCIM_TOKEN             bearer token the identity provider presents on /scim/v2; unset disables SCIM
   AWD_SIGNING_KEY            path to the signing key written by keygen; unset means bundles are not signed
   AWD_SIGNING_KEY_PREVIOUS   path to the key being rotated out, signed over during a rotation
 `
@@ -99,6 +102,9 @@ func run(argv []string) error {
 		if len(argv) > 1 && argv[1] == "apply" {
 			return groupsApply(argv[2:])
 		}
+		if len(argv) > 1 && argv[1] == "resolve" {
+			return groupsResolve(argv[2:])
+		}
 		return groups(argv[1:])
 	default:
 		return fmt.Errorf("unknown command %q; run `awd help`", argv[0])
@@ -122,6 +128,10 @@ func serve() error {
 	h.AdminToken = cfg.AdminToken
 	if cfg.AdminToken == "" {
 		log.Warn("AWD_ADMIN_TOKEN is unset; apply and machine administration are disabled")
+	}
+	h.SCIMToken = cfg.SCIMToken
+	if cfg.SCIMToken != "" {
+		log.Info("SCIM provisioning is enabled at /scim/v2")
 	}
 
 	// Signing is opt-in: a deployment with no key keeps serving exactly as
@@ -500,6 +510,15 @@ type groupSummary struct {
 	Users int `json:"users"`
 	// Groups is the number of distinct group names across all members.
 	Groups int `json:"groups"`
+	// HasSnapshot is false when only SCIM data exists. A server from
+	// before SCIM never sends it, and always had a snapshot on a 200.
+	HasSnapshot *bool `json:"hasSnapshot"`
+	// SCIM is present when the server has SCIM enabled.
+	SCIM *struct {
+		Users       int `json:"users"`
+		ActiveUsers int `json:"activeUsers"`
+		Groups      int `json:"groups"`
+	} `json:"scim"`
 }
 
 // groupsApply posts a membership snapshot from a JSON or YAML file. The
@@ -554,8 +573,50 @@ func groups(argv []string) error {
 		}
 		return err
 	}
-	fmt.Printf("source: %s\nsynced: %s\nby: %s\nusers: %d\ngroups: %d\n",
-		orUnknownSource(summary.Source), summary.SyncedAt.Format(time.RFC3339), orNoneString(summary.AppliedBy), summary.Users, summary.Groups)
+	if summary.HasSnapshot == nil || *summary.HasSnapshot {
+		fmt.Printf("source: %s\nsynced: %s\nby: %s\nusers: %d\ngroups: %d\n",
+			orUnknownSource(summary.Source), summary.SyncedAt.Format(time.RFC3339), orNoneString(summary.AppliedBy), summary.Users, summary.Groups)
+	} else {
+		fmt.Println("no group snapshot has been applied")
+	}
+	if summary.SCIM != nil {
+		fmt.Printf("scim users: %d (%d active)\nscim groups: %d\n", summary.SCIM.Users, summary.SCIM.ActiveUsers, summary.SCIM.Groups)
+	}
+	return nil
+}
+
+// groupsResolve prints one user's groups by source, and warns when SCIM
+// holds the user under a different case — the mapping mistake resolution
+// deliberately does not paper over.
+func groupsResolve(argv []string) error {
+	a, err := parseAdminArgs(argv)
+	if err != nil {
+		return err
+	}
+	if len(a.positional) != 1 {
+		return errors.New("groups resolve takes one argument: the enrolled user")
+	}
+	var s struct {
+		Authored      []string `json:"authored"`
+		Snapshot      []string `json:"snapshot"`
+		SCIM          []string `json:"scim"`
+		Effective     []string `json:"effective"`
+		SCIMNearMatch *string  `json:"scimNearMatch"`
+	}
+	if err := adminRequest(http.MethodGet, a.url, "/v1/groups/resolve?user="+url.QueryEscape(a.positional[0]), nil, &s); err != nil {
+		return err
+	}
+	list := func(groups []string) string {
+		if len(groups) == 0 {
+			return "(none)"
+		}
+		return strings.Join(groups, ", ")
+	}
+	fmt.Printf("authored: %s\nsnapshot: %s\nscim: %s\neffective: %s\n", list(s.Authored), list(s.Snapshot), list(s.SCIM), list(s.Effective))
+	if s.SCIMNearMatch != nil {
+		fmt.Printf("warning: SCIM has %q, which differs from %q only in case; resolution matches exactly, so its SCIM groups do not apply. Fix the IdP's userName mapping.\n",
+			*s.SCIMNearMatch, a.positional[0])
+	}
 	return nil
 }
 

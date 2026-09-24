@@ -31,6 +31,9 @@ type Config struct {
 	// AdminToken is the bearer token for administrative routes. Unset means
 	// those routes are disabled.
 	AdminToken string
+	// SCIMToken is the bearer token the identity provider presents on
+	// /scim/v2. Unset means SCIM is disabled.
+	SCIMToken string
 }
 
 // FromEnv builds a Config from the environment.
@@ -39,6 +42,7 @@ func FromEnv() (Config, error) {
 		Addr:        env("AWD_ADDR", ":8080"),
 		DatabaseURL: os.Getenv("AWD_DATABASE_URL"),
 		AdminToken:  os.Getenv("AWD_ADMIN_TOKEN"),
+		SCIMToken:   os.Getenv("AWD_SCIM_TOKEN"),
 	}
 
 	level, err := logLevel(env("AWD_LOG_LEVEL", "info"))
