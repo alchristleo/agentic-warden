@@ -121,25 +121,25 @@ func LoadMachine(dir string) (Machine, error) {
 }
 
 // SaveMachine writes the enrollment, private to the owner. The directory is
-// created (or widened) to 0755 first: ReplaceMode would otherwise create it
-// 0700 to match machine.json's own 0600, and a 0700 state directory hides
+// widened to 0755 afterward, unconditionally: ReplaceMode creates it 0700 to
+// match machine.json's own 0600, and a 0700 state directory hides
 // state.json and the audit log from the developer running `status` even
-// though those files are themselves world-readable.
+// though those files are themselves world-readable. Widening must come
+// after the write, not before: MkdirMode always sets the mode it is given,
+// so a widen done first would just be narrowed straight back by
+// ReplaceMode's own directory creation.
 func SaveMachine(dir string, m Machine) error {
 	if m.Agents == nil {
 		m.Agents = make([]string, 0)
-	}
-	if err := os.MkdirAll(dir, 0o755); err != nil {
-		return fmt.Errorf("sync: creating %s: %w", dir, err)
-	}
-	if err := os.Chmod(dir, 0o755); err != nil {
-		return fmt.Errorf("sync: %w", err)
 	}
 	raw, err := json.MarshalIndent(m, "", "  ")
 	if err != nil {
 		return fmt.Errorf("sync: encoding the enrollment: %w", err)
 	}
 	if err := cache.ReplaceMode(filepath.Join(dir, MachineFile), append(raw, '\n'), 0o600); err != nil {
+		return fmt.Errorf("sync: %w", err)
+	}
+	if err := cache.MkdirMode(dir, 0o755); err != nil {
 		return fmt.Errorf("sync: %w", err)
 	}
 	return nil

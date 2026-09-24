@@ -31,6 +31,7 @@ import (
 	"github.com/acme/agent-wrapper/internal/agent/claude"
 	"github.com/acme/agent-wrapper/internal/agent/codex"
 	"github.com/acme/agent-wrapper/internal/agent/gemini"
+	"github.com/acme/agent-wrapper/internal/cache"
 	"github.com/acme/agent-wrapper/internal/sync"
 	"github.com/acme/agent-wrapper/internal/sync/timer"
 )
@@ -193,7 +194,7 @@ func enroll(argv []string, stdout io.Writer) error {
 	// Created before the token is spent, so a state directory this process
 	// cannot write to fails loudly here rather than after the single-use
 	// token is already consumed.
-	if err := os.MkdirAll(*stateDir, 0o755); err != nil {
+	if err := cache.MkdirMode(*stateDir, 0o755); err != nil {
 		return fmt.Errorf("creating %s: %w", *stateDir, err)
 	}
 

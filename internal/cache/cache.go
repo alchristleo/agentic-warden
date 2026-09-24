@@ -64,6 +64,24 @@ func Replace(path string, data []byte) error {
 	return ReplaceMode(path, data, 0o600)
 }
 
+// MkdirMode creates path and any missing parents, then sets path's own mode
+// explicitly. os.MkdirAll alone applies the process umask to every directory
+// it creates, so under a strict umask (0077 is common for a root-run daemon
+// under systemd hardening) a directory meant to be readable by other users
+// comes out 0700 regardless of the mode passed in. Only the leaf gets the
+// explicit chmod: the parents above it are system directories the caller
+// does not own and must not change the mode of. On Windows Chmod only
+// affects the read-only bit, which is fine: there is no umask to fight there.
+func MkdirMode(path string, mode fs.FileMode) error {
+	if err := os.MkdirAll(path, mode); err != nil {
+		return fmt.Errorf("cache: creating %s: %w", path, err)
+	}
+	if err := os.Chmod(path, mode); err != nil {
+		return fmt.Errorf("cache: setting permissions on %s: %w", path, err)
+	}
+	return nil
+}
+
 // ReplaceMode is Replace with an explicit file mode, for files that other
 // users must read: a policy bundle that root writes and a developer's helper
 // reads. The parent directory is created 0755 when the file is readable
@@ -75,8 +93,8 @@ func ReplaceMode(path string, data []byte, mode fs.FileMode) error {
 	if mode&0o044 != 0 {
 		dirMode = 0o755
 	}
-	if err := os.MkdirAll(dir, dirMode); err != nil {
-		return fmt.Errorf("cache: creating %s: %w", dir, err)
+	if err := MkdirMode(dir, dirMode); err != nil {
+		return err
 	}
 	temp, err := os.CreateTemp(dir, filepath.Base(path)+".tmp-*")
 	if err != nil {
