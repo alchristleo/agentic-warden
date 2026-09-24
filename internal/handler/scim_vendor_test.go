@@ -30,6 +30,11 @@ func replay(t *testing.T, steps []provisioningStep) {
 		}
 		return s
 	}
+	// The baseline before any step, so the first step's ETag comparison has
+	// something to compare against.
+	initial := fetchBundle(t, srv, credential, nil)
+	prevGroups := decodeBundle(t, initial).Groups
+	prevETag := initial.Header.Get("ETag")
 	for _, step := range steps {
 		status, out := scimDo(t, srv, step.method, fill(step.path), fill(step.body))
 		if status != step.wantStatus {
@@ -42,9 +47,23 @@ func replay(t *testing.T, steps []provisioningStep) {
 				ids["{group}"] = id
 			}
 		}
-		if b := decodeBundle(t, fetchBundle(t, srv, credential, nil)); !equal(b.Groups, step.wantGroups) {
+		resp := fetchBundle(t, srv, credential, nil)
+		b := decodeBundle(t, resp)
+		if !equal(b.Groups, step.wantGroups) {
 			t.Errorf("%s: bundle groups = %v, want %v", step.name, b.Groups, step.wantGroups)
 		}
+		// The ETag covers the bundle body, and Groups is always part of it
+		// (json:"groups", never omitted), so it must move exactly when the
+		// group list actually changed from the previous step, and hold
+		// steady when it didn't.
+		etag := resp.Header.Get("ETag")
+		switch changed := !equal(step.wantGroups, prevGroups); {
+		case changed && etag == prevETag:
+			t.Errorf("%s: ETag unchanged (%s) though groups changed %v -> %v", step.name, etag, prevGroups, step.wantGroups)
+		case !changed && etag != prevETag:
+			t.Errorf("%s: ETag changed (%s -> %s) though groups stayed %v", step.name, prevETag, etag, step.wantGroups)
+		}
+		prevGroups, prevETag = step.wantGroups, etag
 	}
 }
 

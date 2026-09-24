@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/acme/agent-wrapper/internal/credential"
 	"github.com/acme/agent-wrapper/internal/model"
@@ -26,6 +27,14 @@ const (
 	defaultSCIMCount = 100
 	maxSCIMCount     = 1000
 )
+
+// scimNow is the timestamp every SCIM write stamps Created, Modified and a
+// PATCH's at with. Truncating to microseconds matches what Postgres's
+// TIMESTAMPTZ actually stores, so a POST's response time equals what a
+// later GET reads back instead of losing sub-microsecond precision.
+func (h *Handler) scimNow() time.Time {
+	return h.Now().UTC().Truncate(time.Microsecond)
+}
 
 func (h *Handler) scimRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /scim/v2/ServiceProviderConfig", h.requireSCIM(h.scimServiceProviderConfig))
@@ -194,7 +203,7 @@ func (h *Handler) scimCreateUser(w http.ResponseWriter, r *http.Request) {
 		h.scimFail(w, r, err)
 		return
 	}
-	u.Created, u.Modified = h.Now(), h.Now()
+	u.Created, u.Modified = h.scimNow(), h.scimNow()
 	if err := h.store.CreateSCIMUser(r.Context(), u); err != nil {
 		h.scimFail(w, r, err)
 		return
@@ -224,7 +233,7 @@ func (h *Handler) scimReplaceUser(w http.ResponseWriter, r *http.Request) {
 		h.scimFail(w, r, err)
 		return
 	}
-	u.ID, u.Modified = r.PathValue("id"), h.Now()
+	u.ID, u.Modified = r.PathValue("id"), h.scimNow()
 	if err := h.store.ReplaceSCIMUser(r.Context(), u); err != nil {
 		h.scimFail(w, r, err)
 		return
@@ -243,7 +252,7 @@ func (h *Handler) scimPatchUser(w http.ResponseWriter, r *http.Request) {
 		h.scimFail(w, r, err)
 		return
 	}
-	u, err := h.store.PatchSCIMUser(r.Context(), r.PathValue("id"), change, h.Now())
+	u, err := h.store.PatchSCIMUser(r.Context(), r.PathValue("id"), change, h.scimNow())
 	if err != nil {
 		h.scimFail(w, r, err)
 		return
@@ -319,7 +328,7 @@ func (h *Handler) scimCreateGroup(w http.ResponseWriter, r *http.Request) {
 		h.scimFail(w, r, err)
 		return
 	}
-	g.Created, g.Modified = h.Now(), h.Now()
+	g.Created, g.Modified = h.scimNow(), h.scimNow()
 	if err := h.store.CreateSCIMGroup(r.Context(), g); err != nil {
 		h.scimFail(w, r, err)
 		return
@@ -354,7 +363,7 @@ func (h *Handler) scimReplaceGroup(w http.ResponseWriter, r *http.Request) {
 		h.scimFail(w, r, err)
 		return
 	}
-	g.ID, g.Modified = r.PathValue("id"), h.Now()
+	g.ID, g.Modified = r.PathValue("id"), h.scimNow()
 	if err := h.store.ReplaceSCIMGroup(r.Context(), g); err != nil {
 		h.scimFail(w, r, err)
 		return
@@ -375,7 +384,7 @@ func (h *Handler) scimPatchGroup(w http.ResponseWriter, r *http.Request) {
 		h.scimFail(w, r, err)
 		return
 	}
-	g, err := h.store.PatchSCIMGroup(r.Context(), r.PathValue("id"), change, h.Now())
+	g, err := h.store.PatchSCIMGroup(r.Context(), r.PathValue("id"), change, h.scimNow())
 	if err != nil {
 		h.scimFail(w, r, err)
 		return

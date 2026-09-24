@@ -132,6 +132,13 @@ func serve() error {
 	h.SCIMToken = cfg.SCIMToken
 	if cfg.SCIMToken != "" {
 		log.Info("SCIM provisioning is enabled at /scim/v2")
+		// The IdP's token lives in its own configuration, separate from
+		// operators; sharing it with AdminToken means anyone who can
+		// provision users can also administer the control plane, and vice
+		// versa. Never log either token's value.
+		if cfg.SCIMToken == cfg.AdminToken {
+			log.Warn("AWD_SCIM_TOKEN equals AWD_ADMIN_TOKEN; they should be distinct")
+		}
 	}
 
 	// Signing is opt-in: a deployment with no key keeps serving exactly as

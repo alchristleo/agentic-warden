@@ -201,7 +201,7 @@ already trusts:
     awd groups apply examples/groups.yaml --url http://127.0.0.1:8080
     awd groups --url http://127.0.0.1:8080
 
-A machine's bundle resolves its user's groups as the union of the two, so
+A machine's bundle resolves its user's groups as the union of the three, so
 a membership that must go away is removed from the source that added it.
 User keys match the enrolled email exactly; there is no case folding. The
 bundle's ETag covers the resolved rules, so a new snapshot reaches every
