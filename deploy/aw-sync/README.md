@@ -60,21 +60,58 @@ needs `--force`.
 
 ## 3. Install the timer
 
+    sudo aw-sync install-timer
+
+(On Windows, `aw-sync.exe install-timer` from an elevated prompt.) It
+refuses a machine that is not enrolled, schedules `aw-sync once` every five
+minutes — `--interval 15m` changes that, from 1m to 24h in whole minutes —
+and runs the binary you invoked, wherever it is installed. Because the timer
+runs that binary as root, on Linux and macOS it refuses unless the binary and
+the state directory, and every directory above them, are owned by root and
+writable by no one else — install aw-sync somewhere like `/usr/local/bin`,
+not a build directory or `~/Downloads`. On Windows it warns when the binary
+is outside `Program Files`. Running it again replaces the timer.
+`sudo aw-sync uninstall-timer` removes it and leaves the enrollment and the
+rendered files alone.
+
+| OS | What it installs |
+| --- | --- |
+| Linux | `/etc/systemd/system/aw-sync.service` and `aw-sync.timer`, enabled and started |
+| macOS | `/Library/LaunchDaemons/com.agent-wrapper.aw-sync.plist`, bootstrapped into the system domain; logs to `/Library/Logs/agent-wrapper/aw-sync.log` |
+| Windows | the scheduled task `agent-wrapper\aw-sync`, as SYSTEM, every interval and at startup |
+
+### Shipping the units yourself
+
+MDM pipelines that push files rather than run commands can ship the units
+in this directory; they are exactly what `install-timer` writes for
+`/usr/local/bin/aw-sync` (`C:\Program Files\AgentWrapper\aw-sync.exe`) and a
+five-minute interval, and a test keeps them that way.
+
 Linux (systemd):
 
     install -m 0644 systemd/aw-sync.service systemd/aw-sync.timer /etc/systemd/system/
     systemctl daemon-reload
     systemctl enable --now aw-sync.timer
 
+Linux without systemd has no unit here; run `aw-sync once` from cron every
+five minutes instead.
+
 macOS (launchd):
 
     install -d -m 0755 /Library/Logs/agent-wrapper
     install -m 0644 launchd/com.agent-wrapper.aw-sync.plist /Library/LaunchDaemons/
+    launchctl enable system/com.agent-wrapper.aw-sync
     launchctl bootstrap system /Library/LaunchDaemons/com.agent-wrapper.aw-sync.plist
 
-Windows (Task Scheduler), from an elevated PowerShell:
+Windows (Task Scheduler), elevated:
 
-    .\windows\register-task.ps1
+    schtasks /Create /TN "agent-wrapper\aw-sync" /XML windows\aw-sync-task.xml /F
+
+This Windows path has not yet been run on a real Windows host. `schtasks` can
+be particular about the XML file's encoding; PowerShell (elevated) reads the
+file as text and does not care:
+
+    Register-ScheduledTask -TaskName 'aw-sync' -TaskPath '\agent-wrapper\' -Xml (Get-Content -Raw windows\aw-sync-task.xml)
 
 ## 4. Verify
 
@@ -84,6 +121,10 @@ Windows (Task Scheduler), from an elevated PowerShell:
 `status` shows the last sync, the bundle version, every rendered file with
 `ok`, `drift` or `missing`, and the last error. It runs as any user, so
 developers can check it too.
+
+Only one cycle runs at a time: a `once` that starts while another is
+running (a timer tick during a manual run) prints
+`note: another aw-sync cycle is running; skipped` and exits 0.
 
 ## Where things live
 

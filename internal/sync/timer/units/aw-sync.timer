@@ -3,7 +3,7 @@ Description=Run aw-sync on a timer
 
 [Timer]
 OnBootSec=2min
-OnUnitActiveSec=300s
+OnUnitActiveSec={{.Seconds}}s
 RandomizedDelaySec=60
 
 [Install]

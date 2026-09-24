@@ -15,6 +15,8 @@ import (
 	"syscall"
 	"testing"
 	"time"
+
+	"github.com/acme/agent-wrapper/internal/sync"
 )
 
 var (
@@ -557,6 +559,95 @@ func TestOnceWithoutEnrollmentExits1(t *testing.T) {
 	}
 }
 
+func TestOnceWithAMissingStateDirSaysNotEnrolled(t *testing.T) {
+	_, stderr, code := runSync(t, nil, "once", "--state-dir", filepath.Join(t.TempDir(), "absent"))
+	if code != 1 || !strings.Contains(stderr, "enroll") {
+		t.Errorf("exit %d, stderr %q; a missing state dir is 'not enrolled', not a lock error", code, stderr)
+	}
+}
+
+func TestOnceSkipsWhileAnotherCycleHoldsTheLock(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("the lock test holds the lock from this process; covered by the sync package test on Windows")
+	}
+	stateDir := t.TempDir()
+	release, err := sync.Lock(stateDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer release()
+	stdout, stderr, code := runSync(t, nil, "once", "--state-dir", stateDir)
+	if code != 0 || !strings.Contains(stdout, "another aw-sync cycle is running; skipped") {
+		t.Errorf("exit %d, stdout %q, stderr %q; want a clean skip", code, stdout, stderr)
+	}
+}
+
+func TestEnrollRefusesWhileAnotherCycleHoldsTheLock(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("see TestOnceSkipsWhileAnotherCycleHoldsTheLock")
+	}
+	stateDir := t.TempDir()
+	release, err := sync.Lock(stateDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer release()
+	// A closed port: the refusal must come before any network call.
+	_, stderr, code := runSync(t, []string{"AW_SYNC_TOKEN=x"},
+		"enroll", "--server", "http://127.0.0.1:1", "--agents", "claude", "--state-dir", stateDir)
+	if code != 1 || !strings.Contains(stderr, "another aw-sync is running; retry") {
+		t.Errorf("exit %d, stderr %q", code, stderr)
+	}
+	if _, err := os.Stat(filepath.Join(stateDir, "machine.json")); !errors.Is(err, os.ErrNotExist) {
+		t.Errorf("machine.json written while locked: %v", err)
+	}
+}
+
+// TestEnrollChecksEnrollmentUnderTheLock pins the fix for a TOCTOU: the
+// already-enrolled check must run under the same lock as the write, so a
+// second concurrent enroll without --force sees the first one's
+// machine.json instead of racing it. While the lock is held, a second
+// enroll must be refused for holding the lock, before it ever reads
+// machine.json; once released, the same enroll must be refused for already
+// being enrolled, with machine.json unchanged.
+func TestEnrollChecksEnrollmentUnderTheLock(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("see TestOnceSkipsWhileAnotherCycleHoldsTheLock")
+	}
+	stateDir := t.TempDir()
+	machine := []byte(`{"server":"http://awd","machineId":"m1","credential":"c","agents":["claude"]}` + "\n")
+	machinePath := filepath.Join(stateDir, "machine.json")
+	if err := os.WriteFile(machinePath, machine, 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	release, err := sync.Lock(stateDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// A closed port: if the lock check did not come first, this would reach
+	// the network (or the already-enrolled check) instead.
+	_, stderr, code := runSync(t, []string{"AW_SYNC_TOKEN=x"},
+		"enroll", "--server", "http://127.0.0.1:1", "--agents", "claude", "--state-dir", stateDir)
+	if code != 1 || !strings.Contains(stderr, "another aw-sync is running; retry") {
+		t.Errorf("while locked: exit %d, stderr %q; want the lock refusal first", code, stderr)
+	}
+	release()
+
+	_, stderr, code = runSync(t, []string{"AW_SYNC_TOKEN=x"},
+		"enroll", "--server", "http://127.0.0.1:1", "--agents", "claude", "--state-dir", stateDir)
+	if code != 1 || !strings.Contains(stderr, "--force") {
+		t.Errorf("after release: exit %d, stderr %q; want the already-enrolled refusal", code, stderr)
+	}
+	got, err := os.ReadFile(machinePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(got, machine) {
+		t.Errorf("machine.json changed: %q", got)
+	}
+}
+
 func TestEnrollRejectsAnAgentWithoutARenderer(t *testing.T) {
 	_, stderr, code := runSync(t, []string{"AW_SYNC_TOKEN=x"},
 		"enroll", "--server", "http://127.0.0.1:1", "--agents", "claude,copilot", "--state-dir", t.TempDir())
@@ -593,9 +684,76 @@ func TestHelpListsTheCommands(t *testing.T) {
 	if code != 0 {
 		t.Fatalf("help exited %d", code)
 	}
-	for _, want := range []string{"enroll", "once", "status", "AW_SYNC_TOKEN"} {
+	for _, want := range []string{"enroll", "once", "status", "install-timer", "uninstall-timer", "AW_SYNC_TOKEN"} {
 		if !strings.Contains(stdout, want) {
 			t.Errorf("help lacks %q", want)
 		}
+	}
+}
+
+func TestInstallTimerRefusesAnUnenrolledMachine(t *testing.T) {
+	stateDir := t.TempDir()
+	_, stderr, code := runSync(t, nil, "install-timer", "--state-dir", stateDir)
+	if code != 1 || !strings.Contains(stderr, "not enrolled; run aw-sync enroll first") {
+		t.Errorf("exit %d, stderr %q", code, stderr)
+	}
+	if entries, _ := os.ReadDir(stateDir); len(entries) != 0 {
+		t.Errorf("wrote into the state dir: %v", entries)
+	}
+}
+
+func TestInstallTimerRejectsBadIntervalsFirst(t *testing.T) {
+	for _, interval := range []string{"30s", "90s", "25h", "soon"} {
+		// Even on an unenrolled dir the interval is the reported problem:
+		// it is checked before anything else.
+		_, stderr, code := runSync(t, nil, "install-timer", "--interval", interval, "--state-dir", t.TempDir())
+		if code != 1 || !strings.Contains(stderr, "interval") {
+			t.Errorf("--interval %s: exit %d, stderr %q", interval, code, stderr)
+		}
+	}
+}
+
+func TestInstallTimerRejectsStrayArguments(t *testing.T) {
+	_, stderr, code := runSync(t, nil, "install-timer", "now")
+	if code != 1 || !strings.Contains(stderr, "no arguments") {
+		t.Errorf("exit %d, stderr %q", code, stderr)
+	}
+	_, stderr, code = runSync(t, nil, "uninstall-timer", "now")
+	if code != 1 || !strings.Contains(stderr, "no arguments") {
+		t.Errorf("exit %d, stderr %q", code, stderr)
+	}
+}
+
+// TestInstallTimerRefusesABinaryAUserCanReplace pins that a root timer never
+// runs a file its owner can swap: the test binary lives in a temp dir this
+// (non-root) user owns, so install-timer must refuse, naming the path, and
+// before any tool runs or any file is written.
+func TestInstallTimerRefusesABinaryAUserCanReplace(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("Windows warns instead of refusing")
+	}
+	if os.Geteuid() == 0 {
+		t.Skip("running as root: the temp dirs are root-owned")
+	}
+	stateDir := t.TempDir()
+	machine := []byte(`{"server":"http://awd","machineId":"m1","credential":"c","agents":["claude"]}` + "\n")
+	if err := os.WriteFile(filepath.Join(stateDir, "machine.json"), machine, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	resolved, err := filepath.EvalSymlinks(builtSync)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// An empty PATH: were any tool to run, it could not be found, and the
+	// error would name it instead of the refusal.
+	stdout, stderr, code := runSync(t, []string{"PATH="}, "install-timer", "--state-dir", stateDir)
+	want := "refusing to schedule " + resolved + " as root: "
+	if code != 1 || !strings.Contains(stderr, want) || !strings.Contains(stderr, "is owned by uid") ||
+		!strings.Contains(stderr, "such as /usr/local/bin") {
+		t.Errorf("exit %d, stdout %q, stderr %q; want %q", code, stdout, stderr, want)
+	}
+	entries, _ := os.ReadDir(stateDir)
+	if len(entries) != 1 {
+		t.Errorf("state dir changed: %v", entries)
 	}
 }

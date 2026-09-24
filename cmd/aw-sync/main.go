@@ -5,6 +5,8 @@
 //	aw-sync enroll --server URL --token T    exchange an enrollment token for this machine's credential
 //	aw-sync once                             fetch the bundle and render every enrolled agent's files
 //	aw-sync status                           last sync, bundle version, per-file drift, last error
+//	aw-sync install-timer [--interval 5m]      run `once` periodically (systemd, launchd or Task Scheduler)
+//	aw-sync uninstall-timer                    stop and remove that timer; enrollment and files stay
 //
 // The rendered files are never deleted on failure: a machine that cannot
 // reach the control plane keeps the policy it last received.
@@ -17,6 +19,7 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -29,6 +32,7 @@ import (
 	"github.com/acme/agent-wrapper/internal/agent/codex"
 	"github.com/acme/agent-wrapper/internal/agent/gemini"
 	"github.com/acme/agent-wrapper/internal/sync"
+	"github.com/acme/agent-wrapper/internal/sync/timer"
 )
 
 const usage = `aw-sync keeps this machine's agent configuration in step with the control plane.
@@ -37,6 +41,8 @@ Usage:
   aw-sync enroll --server URL [--token T] [--name HOST] [--agents claude,codex,gemini] [--force] [--state-dir DIR]
   aw-sync once [--state-dir DIR] [--root agent=DIR ...]
   aw-sync status [--json] [--state-dir DIR]
+  aw-sync install-timer [--interval 5m] [--state-dir DIR]
+  aw-sync uninstall-timer
   aw-sync help
 
 Environment:
@@ -45,6 +51,8 @@ Environment:
 --state-dir defaults to the OS state directory (/var/lib/agent-wrapper on Linux).
 --root overrides where one agent's files are written and exists for testing.
 once exits 1 when the cycle fails; the files on disk are left as they were.
+install-timer and uninstall-timer need root (an elevated prompt on Windows).
+install-timer refuses a binary or state directory anyone but root could replace.
 `
 
 func main() {
@@ -69,6 +77,10 @@ func run(argv []string, stdout io.Writer) error {
 		return helpOr(once(argv[1:], stdout), stdout)
 	case "status":
 		return helpOr(status(argv[1:], stdout), stdout)
+	case "install-timer":
+		return helpOr(installTimer(argv[1:], stdout), stdout)
+	case "uninstall-timer":
+		return helpOr(uninstallTimer(argv[1:], stdout), stdout)
 	default:
 		return fmt.Errorf("unknown command %q; run `aw-sync help`", argv[0])
 	}
@@ -172,13 +184,6 @@ func enroll(argv []string, stdout io.Writer) error {
 			}
 		}
 	}
-	existing, loadErr := sync.LoadMachine(*stateDir)
-	switch {
-	case loadErr == nil && !*force:
-		return fmt.Errorf("already enrolled as machine %s against %s; pass --force to re-enroll", existing.MachineID, existing.Server)
-	case loadErr != nil && !errors.Is(loadErr, sync.ErrNotEnrolled) && !*force:
-		return fmt.Errorf("an enrollment exists in %s but cannot be read (%s); pass --force to replace it", *stateDir, loadErr)
-	}
 	if *name == "" {
 		if host, err := os.Hostname(); err == nil {
 			*name = host
@@ -190,6 +195,31 @@ func enroll(argv []string, stdout io.Writer) error {
 	// token is already consumed.
 	if err := os.MkdirAll(*stateDir, 0o755); err != nil {
 		return fmt.Errorf("creating %s: %w", *stateDir, err)
+	}
+
+	// Enrollment rewrites machine.json, which a running cycle may be about
+	// to rewrite too during a key rollover; it waits for nobody, so a held
+	// lock is an error to retry, and it comes before the token is spent.
+	// The lock also covers the already-enrolled check below: without it,
+	// two concurrent enrolls without --force could both read no conflict
+	// and both write, the second silently overwriting the first's
+	// enrollment. Under the lock, a second concurrent enroll sees the
+	// first one's machine.json and is refused normally.
+	release, err := sync.Lock(*stateDir)
+	if errors.Is(err, sync.ErrLocked) {
+		return errors.New("another aw-sync is running; retry")
+	}
+	if err != nil {
+		return err
+	}
+	defer release()
+
+	existing, loadErr := sync.LoadMachine(*stateDir)
+	switch {
+	case loadErr == nil && !*force:
+		return fmt.Errorf("already enrolled as machine %s against %s; pass --force to re-enroll", existing.MachineID, existing.Server)
+	case loadErr != nil && !errors.Is(loadErr, sync.ErrNotEnrolled) && !*force:
+		return fmt.Errorf("an enrollment exists in %s but cannot be read (%s); pass --force to replace it", *stateDir, loadErr)
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
@@ -215,12 +245,29 @@ func enroll(argv []string, stdout io.Writer) error {
 }
 
 func once(argv []string, stdout io.Writer) error {
-	fs, stateDir := newFlagSet("once")
+	flags, stateDir := newFlagSet("once")
 	roots := rootFlags{}
-	fs.Var(roots, "root", "agent=DIR override for one agent's system directory")
-	if err := fs.Parse(argv); err != nil {
+	flags.Var(roots, "root", "agent=DIR override for one agent's system directory")
+	if err := flags.Parse(argv); err != nil {
 		return err
 	}
+
+	// One cycle at a time: a timer tick that lands on a manual run is not a
+	// failure worth retrying, so it is skipped with exit 0. A state
+	// directory that does not exist yet means the machine is not enrolled,
+	// which sync.Run reports exactly as it did before the lock existed.
+	release, err := sync.Lock(*stateDir)
+	switch {
+	case errors.Is(err, sync.ErrLocked):
+		fmt.Fprintln(stdout, "note: another aw-sync cycle is running; skipped")
+		return nil
+	case errors.Is(err, fs.ErrNotExist):
+	case err != nil:
+		return err
+	default:
+		defer release()
+	}
+
 	reg, err := newRegistry()
 	if err != nil {
 		return err
@@ -295,4 +342,159 @@ func orNone(version string) string {
 		return "(none)"
 	}
 	return version
+}
+
+// installTimer schedules `aw-sync once` for this machine. The unit runs the
+// binary that is running now, so a binary installed somewhere other than
+// /usr/local/bin still syncs, provided only root can replace it (see
+// checkRootOnly); re-running it changes the interval.
+func installTimer(argv []string, stdout io.Writer) error {
+	flags, stateDir := newFlagSet("install-timer")
+	interval := flags.Duration("interval", timer.DefaultInterval, "how often to run once (1m to 24h, whole minutes)")
+	if err := flags.Parse(argv); err != nil {
+		if strings.Contains(err.Error(), "interval") {
+			return fmt.Errorf("--interval: %w", err)
+		}
+		return err
+	}
+	if flags.NArg() != 0 {
+		return errors.New("install-timer takes no arguments")
+	}
+	if err := timer.ValidateInterval(*interval); err != nil {
+		return err
+	}
+	if err := timer.Supported(runtime.GOOS); err != nil {
+		return err
+	}
+	binary, err := runningBinary()
+	if err != nil {
+		return err
+	}
+	p, err := timerParams(binary, *stateDir, *interval)
+	if err != nil {
+		return err
+	}
+	// A timer on an unenrolled machine would only log "not enrolled" every
+	// interval. machine.json is root-only, so its existence is the test.
+	if _, err := os.Stat(filepath.Join(p.StateDir, sync.MachineFile)); err != nil {
+		return errors.New("not enrolled; run aw-sync enroll first")
+	}
+	if err := checkRootOnly(runtime.GOOS, p, os.Stderr); err != nil {
+		return err
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+	if err := timer.NewInstaller(runtime.GOOS).Install(ctx, p); err != nil {
+		return privilegeHint(err, "install-timer")
+	}
+	fmt.Fprintf(stdout, "installed the aw-sync timer: %s once, every %s\n", binary, *interval)
+	units, _ := timer.Render(runtime.GOOS, p)
+	for _, u := range units {
+		if u.Path != "" {
+			fmt.Fprintln(stdout, "  "+u.Path)
+		}
+	}
+	if runtime.GOOS == "windows" {
+		fmt.Fprintln(stdout, "  scheduled task "+timer.TaskName)
+	}
+	fmt.Fprintln(stdout, "check it with: aw-sync status")
+	return nil
+}
+
+// timerParams is what install-timer renders: binary, and stateDir made
+// absolute, since the unit runs from / and a relative path would name a
+// different directory there.
+func timerParams(binary, stateDir string, interval time.Duration) (timer.Params, error) {
+	dir, err := filepath.Abs(stateDir)
+	if err != nil {
+		return timer.Params{}, err
+	}
+	return timer.Params{Binary: binary, StateDir: dir, Interval: interval}, nil
+}
+
+// checkRootOnly refuses, on Unix, a timer whose binary or state directory
+// someone other than root could replace: the job runs as root every
+// interval, so a user-writable binary (a build dir, ~/Downloads, ~/go/bin)
+// or a user-writable machine.json would hand that user root. There is no
+// override. Windows keeps ownership in ACLs the standard library cannot
+// read, so there it only warns when the binary is outside Program Files.
+func checkRootOnly(goos string, p timer.Params, stderr io.Writer) error {
+	if goos == "windows" {
+		programFiles := os.Getenv("ProgramFiles")
+		if programFiles == "" {
+			programFiles = `C:\Program Files`
+		}
+		if !underDir(p.Binary, programFiles) {
+			fmt.Fprintf(stderr, "warning: %s is outside Program Files; make sure only administrators can write it, since the task runs it as SYSTEM\n", p.Binary)
+		}
+		return nil
+	}
+	if err := rootOnly(p.Binary); err != nil {
+		return fmt.Errorf("refusing to schedule %s as root: %v; install aw-sync somewhere only root can write, such as /usr/local/bin", p.Binary, err)
+	}
+	if err := rootOnly(p.StateDir); err != nil {
+		return fmt.Errorf("refusing to schedule %s as root with state dir %s: %v; use a state directory only root can write, such as %s", p.Binary, p.StateDir, err, sync.StateDir(goos))
+	}
+	return nil
+}
+
+// underDir reports whether the Windows path is inside dir, ignoring case
+// as Windows does.
+func underDir(path, dir string) bool {
+	dir = strings.TrimRight(strings.ToLower(dir), `\`) + `\`
+	return strings.HasPrefix(strings.ToLower(path), dir)
+}
+
+// uninstallTimer stops future syncs. Enrollment, state and the rendered
+// files are left exactly as they are.
+func uninstallTimer(argv []string, stdout io.Writer) error {
+	flags, _ := newFlagSet("uninstall-timer")
+	if err := flags.Parse(argv); err != nil {
+		return err
+	}
+	if flags.NArg() != 0 {
+		return errors.New("uninstall-timer takes no arguments")
+	}
+	if err := timer.Supported(runtime.GOOS); err != nil {
+		return err
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+	err := timer.NewInstaller(runtime.GOOS).Uninstall(ctx)
+	switch {
+	case errors.Is(err, timer.ErrNotInstalled):
+		fmt.Fprintln(stdout, "no timer installed")
+		return nil
+	case err != nil:
+		return privilegeHint(err, "uninstall-timer")
+	}
+	fmt.Fprintln(stdout, "removed the aw-sync timer; this machine stays enrolled and keeps its files")
+	return nil
+}
+
+// runningBinary is the path of this executable with symlinks resolved, so
+// the unit keeps working if a convenience symlink is later removed. It
+// never guesses: an unresolvable path is an error.
+func runningBinary() (string, error) {
+	exe, err := os.Executable()
+	if err != nil {
+		return "", fmt.Errorf("cannot resolve the running aw-sync binary: %w", err)
+	}
+	resolved, err := filepath.EvalSymlinks(exe)
+	if err != nil {
+		return "", fmt.Errorf("cannot resolve the running aw-sync binary: %w", err)
+	}
+	return resolved, nil
+}
+
+// privilegeHint adds how to get the privilege the timer commands need,
+// since "permission denied" from systemctl does not say what to do.
+func privilegeHint(err error, command string) error {
+	if runtime.GOOS == "windows" {
+		return fmt.Errorf("%w (run aw-sync %s from an elevated prompt)", err, command)
+	}
+	if errors.Is(err, fs.ErrPermission) || os.Geteuid() != 0 {
+		return fmt.Errorf("%w (run as root: sudo aw-sync %s)", err, command)
+	}
+	return err
 }

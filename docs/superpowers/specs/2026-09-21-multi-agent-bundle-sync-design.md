@@ -131,7 +131,8 @@ daemon: `once` is restart-safe and is what MDM tooling expects.
 - `aw-sync status [--json]`: last sync, bundle version, per-agent files with
   hashes, drift, last error, renderer notes.
 - Timer units for systemd, launchd and Task Scheduler ship under
-  `deploy/aw-sync/`. `install-timer` is deferred.
+  `deploy/aw-sync/`. `install-timer` shipped later: see
+  `2026-09-24-aw-sync-install-timer-design.md`.
 
 State lives in a root-owned directory that other users can read, because
 `aw doctor` runs as the developer and reports from it:
