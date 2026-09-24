@@ -13,7 +13,9 @@ import (
 const errSharingViolation syscall.Errno = 32
 
 // lockFile opens path with no sharing at all, so any other open fails until
-// this handle is closed; Windows closes it when the process exits.
+// this handle is closed; Windows closes it when the process exits. Another
+// program briefly opening aw-sync.lock (antivirus, backup) therefore also
+// reads as "held", which only makes that cycle skip.
 func lockFile(path string) (func(), error) {
 	name, err := syscall.UTF16PtrFromString(path)
 	if err != nil {

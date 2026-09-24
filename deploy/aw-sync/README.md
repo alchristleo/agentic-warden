@@ -65,9 +65,14 @@ needs `--force`.
 (On Windows, `aw-sync.exe install-timer` from an elevated prompt.) It
 refuses a machine that is not enrolled, schedules `aw-sync once` every five
 minutes — `--interval 15m` changes that, from 1m to 24h in whole minutes —
-and runs the binary you invoked, wherever it is installed. Running it again
-replaces the timer. `sudo aw-sync uninstall-timer` removes it and leaves the
-enrollment and the rendered files alone.
+and runs the binary you invoked, wherever it is installed. Because the timer
+runs that binary as root, on Linux and macOS it refuses unless the binary and
+the state directory, and every directory above them, are owned by root and
+writable by no one else — install aw-sync somewhere like `/usr/local/bin`,
+not a build directory or `~/Downloads`. On Windows it warns when the binary
+is outside `Program Files`. Running it again replaces the timer.
+`sudo aw-sync uninstall-timer` removes it and leaves the enrollment and the
+rendered files alone.
 
 | OS | What it installs |
 | --- | --- |
@@ -95,11 +100,18 @@ macOS (launchd):
 
     install -d -m 0755 /Library/Logs/agent-wrapper
     install -m 0644 launchd/com.agent-wrapper.aw-sync.plist /Library/LaunchDaemons/
+    launchctl enable system/com.agent-wrapper.aw-sync
     launchctl bootstrap system /Library/LaunchDaemons/com.agent-wrapper.aw-sync.plist
 
 Windows (Task Scheduler), elevated:
 
     schtasks /Create /TN "agent-wrapper\aw-sync" /XML windows\aw-sync-task.xml /F
+
+This Windows path has not yet been run on a real Windows host. `schtasks` can
+be particular about the XML file's encoding; PowerShell (elevated) reads the
+file as text and does not care:
+
+    Register-ScheduledTask -TaskName 'aw-sync' -TaskPath '\agent-wrapper\' -Xml (Get-Content -Raw windows\aw-sync-task.xml)
 
 ## 4. Verify
 

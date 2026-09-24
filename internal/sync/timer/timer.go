@@ -56,8 +56,13 @@ const (
 // Params is what a unit needs: which binary to run, which state directory
 // to pass it, and how often.
 type Params struct {
-	Binary   string
+	// Binary is the absolute path of the aw-sync the unit runs.
+	Binary string
+	// StateDir is passed as --state-dir unless it is empty or the OS
+	// default, which the unit leaves implicit.
 	StateDir string
+	// Interval is how often the unit runs `aw-sync once`; see
+	// ValidateInterval.
 	Interval time.Duration
 }
 

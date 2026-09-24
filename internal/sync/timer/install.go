@@ -30,11 +30,15 @@ var ErrNotInstalled = errors.New("no timer installed")
 // CommandError is an OS tool that failed. It carries the command line and
 // what the tool printed, which is what an MDM log needs to diagnose it.
 type CommandError struct {
+	// Command is the command line that failed, space-joined.
 	Command string
-	Output  string
-	Err     error
+	// Output is what the tool printed, stdout and stderr combined.
+	Output string
+	// Err is how it failed, usually an *exec.ExitError.
+	Err error
 }
 
+// Error names the command, how it failed and what it printed.
 func (e *CommandError) Error() string {
 	msg := fmt.Sprintf("running `%s`: %v", e.Command, e.Err)
 	if out := strings.TrimSpace(e.Output); out != "" {
@@ -43,12 +47,15 @@ func (e *CommandError) Error() string {
 	return msg
 }
 
+// Unwrap returns Err, so errors.Is and errors.As see the underlying failure.
 func (e *CommandError) Unwrap() error { return e.Err }
 
 // Installer installs and removes the timer on one OS.
 type Installer struct {
+	// GOOS picks the scheduler: linux, darwin or windows.
 	GOOS string
-	Run  Runner
+	// Run runs the OS tools; NewInstaller sets ExecRunner.
+	Run Runner
 	// Root prefixes every file path written or removed; empty means the
 	// real filesystem root. Tests point it at a temporary directory.
 	Root string
