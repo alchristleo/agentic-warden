@@ -110,6 +110,48 @@ func TestRenderWindowsQuotesAStateDirWithSpaces(t *testing.T) {
 	}
 }
 
+// TestRenderWindowsEscapesArgumentsForCommandLineToArgvW guards against a
+// naive quoter: an argument that ends in a backslash, or that contains a
+// quote (already escaped or not), must round-trip through
+// CommandLineToArgvW back to the exact word given.
+func TestRenderWindowsEscapesArgumentsForCommandLineToArgvW(t *testing.T) {
+	cases := []struct {
+		name     string
+		stateDir string
+		want     string
+	}{
+		{
+			name:     "a trailing backslash must not swallow the closing quote",
+			stateDir: `D:\Agent Wrapper\`,
+			want:     `<Arguments>once --state-dir &#34;D:\Agent Wrapper\\&#34;</Arguments>`,
+		},
+		{
+			name:     "a bare quote inside a quoted argument is escaped",
+			stateDir: `D:\a"b c`,
+			want:     `<Arguments>once --state-dir &#34;D:\a\&#34;b c&#34;</Arguments>`,
+		},
+		{
+			name:     "a backslash already preceding a quote is doubled",
+			stateDir: `D:\a\"b c`,
+			want:     `<Arguments>once --state-dir &#34;D:\a\\\&#34;b c&#34;</Arguments>`,
+		},
+		{
+			name:     "no space, tab or quote needs no quoting at all",
+			stateDir: `D:\plain`,
+			want:     `<Arguments>once --state-dir D:\plain</Arguments>`,
+		},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			p := timer.Params{Binary: `C:\aw\aw-sync.exe`, StateDir: c.stateDir, Interval: 5 * time.Minute}
+			xml := render(t, "windows", p)["aw-sync-task.xml"]
+			if !strings.Contains(xml, c.want) {
+				t.Errorf("task xml:\n%s\nwant substring %q", xml, c.want)
+			}
+		})
+	}
+}
+
 func TestUnitsCarryTheirInstallPaths(t *testing.T) {
 	for goos, want := range map[string][]string{
 		"linux":   {timer.ServicePath, timer.TimerPath},

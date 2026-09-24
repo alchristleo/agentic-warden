@@ -22,21 +22,35 @@ var unitFS embed.FS
 
 // Where the units live and what they are called.
 const (
+	// ServicePath is where install-timer writes the systemd service unit.
 	ServicePath = "/etc/systemd/system/aw-sync.service"
-	TimerPath   = "/etc/systemd/system/aw-sync.timer"
-	TimerUnit   = "aw-sync.timer"
-	PlistPath   = "/Library/LaunchDaemons/com.agent-wrapper.aw-sync.plist"
-	Label       = "com.agent-wrapper.aw-sync"
-	LogDir      = "/Library/Logs/agent-wrapper"
-	TaskName    = `agent-wrapper\aw-sync`
+	// TimerPath is where install-timer writes the systemd timer unit.
+	TimerPath = "/etc/systemd/system/aw-sync.timer"
+	// TimerUnit is the systemd unit name install-timer enables and starts,
+	// and uninstall-timer disables and stops.
+	TimerUnit = "aw-sync.timer"
+	// PlistPath is where install-timer writes the launchd daemon's plist.
+	PlistPath = "/Library/LaunchDaemons/com.agent-wrapper.aw-sync.plist"
+	// Label is this job's identity to launchd: the plist's own Label key
+	// and what bootout/bootstrap and print address it by.
+	Label = "com.agent-wrapper.aw-sync"
+	// LogDir is where launchd redirects the job's stdout and stderr.
+	LogDir = "/Library/Logs/agent-wrapper"
+	// TaskName is the Task Scheduler task's full path, used to create,
+	// query and delete it.
+	TaskName = `agent-wrapper\aw-sync`
 )
 
 // Interval bounds. Task Scheduler repeats in whole minutes, so every OS
 // takes the same rule rather than Windows alone rejecting 90s.
 const (
+	// DefaultInterval is how often the deploy files and a bare
+	// install-timer (no --interval) run aw-sync.
 	DefaultInterval = 5 * time.Minute
-	MinInterval     = time.Minute
-	MaxInterval     = 24 * time.Hour
+	// MinInterval is the shortest interval ValidateInterval accepts.
+	MinInterval = time.Minute
+	// MaxInterval is the longest interval ValidateInterval accepts.
+	MaxInterval = 24 * time.Hour
 )
 
 // Params is what a unit needs: which binary to run, which state directory
@@ -180,16 +194,64 @@ func systemdCommand(words []string) string {
 	return strings.Join(out, " ")
 }
 
-// windowsArgs joins arguments the way Windows' command-line parser splits
-// them back: an argument with a space or quote is quoted, inner quotes
-// escaped.
+// windowsArgs joins arguments into a Task Scheduler <Arguments> value using
+// the same escaping CommandLineToArgvW expects, so schtasks reconstructs
+// exactly the words given.
 func windowsArgs(args []string) string {
 	out := make([]string, 0, len(args))
 	for _, a := range args {
-		if strings.ContainsAny(a, " \t\"") {
-			a = `"` + strings.ReplaceAll(a, `"`, `\"`) + `"`
-		}
-		out = append(out, a)
+		out = append(out, escapeWindowsArg(a))
 	}
 	return strings.Join(out, " ")
+}
+
+// escapeWindowsArg quotes and escapes one argument the way
+// CommandLineToArgvW parses it back apart: a run of backslashes is literal
+// unless it immediately precedes a double quote, in which case the run is
+// doubled and the quote itself is escaped with one more backslash. Naively
+// quoting on space/tab/quote alone, without this rule, corrupts a value
+// like `D:\Agent Wrapper\`: its trailing backslash would merge with the
+// closing quote this function adds, so the parser reads it as an escaped
+// literal quote and never sees the argument end. This mirrors
+// syscall.EscapeArg, which is Windows-only in the standard library and so
+// cannot be called from code that must also build for linux and darwin.
+func escapeWindowsArg(s string) string {
+	if s == "" {
+		return `""`
+	}
+	if !strings.ContainsAny(s, " \t\"\\") {
+		return s
+	}
+	needsBackslash := strings.ContainsAny(s, `"\`)
+	hasSpace := strings.ContainsAny(s, " \t")
+	if !needsBackslash {
+		// Only a space or tab: no embedded quote or backslash to escape.
+		return `"` + s + `"`
+	}
+	var b strings.Builder
+	if hasSpace {
+		b.WriteByte('"')
+	}
+	slashes := 0
+	for i := 0; i < len(s); i++ {
+		switch s[i] {
+		case '\\':
+			slashes++
+		case '"':
+			for ; slashes > 0; slashes-- {
+				b.WriteByte('\\')
+			}
+			b.WriteByte('\\')
+		default:
+			slashes = 0
+		}
+		b.WriteByte(s[i])
+	}
+	if hasSpace {
+		for ; slashes > 0; slashes-- {
+			b.WriteByte('\\')
+		}
+		b.WriteByte('"')
+	}
+	return b.String()
 }
