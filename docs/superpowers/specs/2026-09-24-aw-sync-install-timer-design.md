@@ -175,6 +175,33 @@ line in the README.
   note under Verify.
 - The bundle-sync spec's "`install-timer` is deferred" line points here.
 
+## Refinements from planning
+
+Settled while writing the implementation plan; they refine, not change,
+the decisions above.
+
+- `--interval` must also be a whole number of minutes: Task Scheduler
+  repeats in minutes, and one rule for every OS beats a Windows-only
+  surprise.
+- The systemd timer renders the interval in seconds
+  (`OnUnitActiveSec=300s`) and its description no longer names a period,
+  so one template serves every interval.
+- launchd: `launchctl print system/com.agent-wrapper.aw-sync` decides
+  whether the job is loaded. Install boots it out only when loaded, and a
+  bootout failure is then reported, not ignored.
+- "Nothing installed" for uninstall means: Linux, neither unit file
+  exists; macOS, no plist and the job is not loaded; Windows,
+  `schtasks /Query /TN agent-wrapper\aw-sync` fails.
+- The task XML is UTF-8 on disk under `deploy/`; install-timer stages it
+  for `schtasks` as UTF-16LE with a BOM and a UTF-16 declaration, the
+  encoding Task Scheduler itself exports. Nobody has run this on a real
+  Windows host yet; the first Windows install is its test.
+- Unit files are always 0644, so a rendered unit is `{Name, Path, Content}`
+  (`Name` is its file name under `deploy/aw-sync/<dir>/`, `Path` its install
+  location, empty on Windows).
+- `once` with no state directory skips the lock (there is nothing to
+  protect) and reports "not enrolled" exactly as today.
+
 ## Out of scope, deliberately
 
 - User-level (non-root) timers.
