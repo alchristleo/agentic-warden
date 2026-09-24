@@ -1,5 +1,8 @@
 import { DemoForm } from "@/components/demo/demo-form";
 import { parsePlan } from "@/lib/demo/schema";
+import { pageMetadata } from "@/lib/seo";
+
+export const metadata = pageMetadata("/demo");
 
 export default async function DemoPage({
   searchParams,

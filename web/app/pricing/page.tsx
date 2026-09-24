@@ -1,14 +1,19 @@
 import Link from "next/link";
 import { Check } from "lucide-react";
+import { JsonLd } from "@/components/json-ld";
 import { Badge } from "@/components/ui/badge";
 import { buttonVariants } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { pricing } from "@/content/pricing";
 import { cn } from "@/lib/utils";
+import { faqJsonLd, pageMetadata } from "@/lib/seo";
+
+export const metadata = pageMetadata("/pricing");
 
 export default function PricingPage() {
   return (
     <div className="mx-auto max-w-6xl px-4 py-16 sm:px-6">
+      <JsonLd data={faqJsonLd()} />
       <h1 className="text-4xl font-semibold tracking-tight">{pricing.title}</h1>
       <p className="mt-4 text-lg text-muted-foreground">{pricing.lede}</p>
 

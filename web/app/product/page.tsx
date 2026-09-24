@@ -3,6 +3,9 @@ import { Badge } from "@/components/ui/badge";
 import { buttonVariants } from "@/components/ui/button";
 import { product } from "@/content/product";
 import { cn } from "@/lib/utils";
+import { pageMetadata } from "@/lib/seo";
+
+export const metadata = pageMetadata("/product");
 
 export default function ProductPage() {
   return (

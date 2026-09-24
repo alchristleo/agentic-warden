@@ -4,6 +4,9 @@ import { buttonVariants } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { home } from "@/content/home";
 import { cn } from "@/lib/utils";
+import { pageMetadata } from "@/lib/seo";
+
+export const metadata = pageMetadata("/");
 
 export default function HomePage() {
   return (
