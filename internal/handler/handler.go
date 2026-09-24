@@ -90,6 +90,7 @@ func (h *Handler) Routes() http.Handler {
 	mux.HandleFunc("DELETE /v1/machines/{id}", h.requireAdmin(h.deleteMachine))
 	mux.HandleFunc("PUT /v1/groups", h.requireAdmin(h.putGroups))
 	mux.HandleFunc("GET /v1/groups", h.requireAdmin(h.getGroups))
+	mux.HandleFunc("GET /v1/groups/resolve", h.requireAdmin(h.getGroupsResolve))
 	h.scimRoutes(mux)
 	return Logging(h.log)(Recovery(h.log)(mux))
 }

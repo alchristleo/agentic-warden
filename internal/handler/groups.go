@@ -112,13 +112,41 @@ func (h *Handler) putGroups(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, summarise(snapshot))
 }
 
-// getGroups shows the current snapshot, members included, for an operator
-// checking what the server resolves against.
+// groupsView is GET /v1/groups: the snapshot's detail when there is one,
+// and SCIM's counts when SCIM is configured. The embedded pointer drops
+// the snapshot fields entirely when there is no snapshot, so a caller
+// never mistakes zero values for an empty export.
+type groupsView struct {
+	*groupsDetail
+	HasSnapshot bool              `json:"hasSnapshot"`
+	SCIM        *model.SCIMCounts `json:"scim,omitempty"`
+}
+
+// getGroups shows what the server resolves against. With no snapshot and
+// no SCIM data it is a 404, as before SCIM existed.
 func (h *Handler) getGroups(w http.ResponseWriter, r *http.Request) {
+	var view groupsView
 	snapshot, err := h.store.CurrentGroupSnapshot(r.Context())
-	if err != nil {
+	switch {
+	case err == nil:
+		d := detail(snapshot)
+		view.groupsDetail, view.HasSnapshot = &d, true
+	case errors.Is(err, model.ErrNotFound):
+	default:
 		h.fail(w, r, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, detail(snapshot))
+	if h.SCIMToken != "" {
+		counts, err := h.store.SCIMCounts(r.Context())
+		if err != nil {
+			h.fail(w, r, err)
+			return
+		}
+		view.SCIM = &counts
+	}
+	if !view.HasSnapshot && (view.SCIM == nil || *view.SCIM == (model.SCIMCounts{})) {
+		writeError(w, http.StatusNotFound, "no group snapshot has been posted and SCIM holds nothing")
+		return
+	}
+	writeJSON(w, http.StatusOK, view)
 }
