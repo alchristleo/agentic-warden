@@ -41,7 +41,12 @@ func (h *Handler) resolveGroups(ctx context.Context, ruleSet *policy.RuleSet, us
 		return groupSources{}, err
 	}
 
-	if s.SCIM, err = h.store.SCIMGroupsFor(ctx, user); err != nil {
+	// A disabled SCIM token must not keep granting SCIM groups invisibly:
+	// GET /v1/groups already hides SCIM data when the token is unset, so
+	// bundle resolution matches it rather than reaching into the store.
+	if h.SCIMToken == "" {
+		s.SCIM = []string{}
+	} else if s.SCIM, err = h.store.SCIMGroupsFor(ctx, user); err != nil {
 		return groupSources{}, err
 	}
 	s.Effective = policy.UnionGroups(s.Authored, s.Snapshot, s.SCIM)
@@ -70,13 +75,17 @@ func (h *Handler) getGroupsResolve(w http.ResponseWriter, r *http.Request) {
 		h.fail(w, r, err)
 		return
 	}
-	near, _, err := h.store.ListSCIMUsers(r.Context(), model.SCIMFilter{Attribute: model.SCIMAttrUserName, Value: user}, 1, 1)
-	if err != nil {
-		h.fail(w, r, err)
-		return
-	}
-	if len(near) == 1 && near[0].UserName != user {
-		s.SCIMNearMatch = &near[0].UserName
+	// With SCIM disabled there is nothing to warn about, and no token to
+	// read the store with even if there were.
+	if h.SCIMToken != "" {
+		near, _, err := h.store.ListSCIMUsers(r.Context(), model.SCIMFilter{Attribute: model.SCIMAttrUserName, Value: user}, 1, 1)
+		if err != nil {
+			h.fail(w, r, err)
+			return
+		}
+		if len(near) == 1 && near[0].UserName != user {
+			s.SCIMNearMatch = &near[0].UserName
+		}
 	}
 	writeJSON(w, http.StatusOK, s)
 }

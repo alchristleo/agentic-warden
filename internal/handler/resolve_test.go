@@ -1,10 +1,16 @@
 package handler_test
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
+
+	"github.com/acme/agent-wrapper/internal/handler"
+	"github.com/acme/agent-wrapper/internal/model"
+	"github.com/acme/agent-wrapper/internal/store"
 )
 
 func TestBundleGroupsIncludeActiveSCIMGroups(t *testing.T) {
@@ -127,6 +133,44 @@ func TestGetGroupsReportsSCIMCounts(t *testing.T) {
 	decodeJSON(t, resp, &got)
 	if !got.HasSnapshot || got.Source == nil || *got.Source != "okta-export" || got.SCIM == nil {
 		t.Errorf("groups with a snapshot = %+v", got)
+	}
+}
+
+// TestSCIMGroupsHiddenWhenSCIMDisabled covers Important-1: a store that
+// still holds SCIM data (e.g. left over from when SCIM was enabled) must
+// not leak it into bundles or resolution once AWD_SCIM_TOKEN is unset.
+func TestSCIMGroupsHiddenWhenSCIMDisabled(t *testing.T) {
+	ctx := context.Background()
+	s := store.NewMemory()
+	at := time.Date(2026, 9, 24, 10, 0, 0, 0, time.UTC)
+	if err := s.CreateSCIMUser(ctx, model.SCIMUser{ID: "u1", UserName: "alice@acme.com", Active: true, Created: at, Modified: at}); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.CreateSCIMGroup(ctx, model.SCIMGroup{ID: "g1", DisplayName: "mobile", Members: []string{"u1"}, Created: at, Modified: at}); err != nil {
+		t.Fatal(err)
+	}
+
+	h := handler.New(s, nil)
+	h.AdminToken = adminToken
+	h.SCIMToken = "" // SCIM disabled; the store still has SCIM data from before
+	h.Now = func() time.Time { return at }
+	srv := httptest.NewServer(h.Routes())
+	t.Cleanup(srv.Close)
+
+	post(t, srv, "/v1/policy/revisions", groupedRuleSet)
+	_, credential := enroll(t, srv, mintToken(t, srv, "alice@acme.com"))
+
+	if b := decodeBundle(t, fetchBundle(t, srv, credential, nil)); !equal(b.Groups, []string{"platform"}) {
+		t.Errorf("bundle groups = %v, want [platform]: a disabled SCIM token must not leak SCIM groups", b.Groups)
+	}
+
+	resp := getAs(t, srv, "/v1/groups/resolve?user=alice@acme.com", adminToken)
+	var got struct {
+		SCIM []string `json:"scim"`
+	}
+	decodeJSON(t, resp, &got)
+	if resp.StatusCode != 200 || got.SCIM == nil || len(got.SCIM) != 0 {
+		t.Errorf("resolve scim = %#v (status %d), want empty non-nil", got.SCIM, resp.StatusCode)
 	}
 }
 
