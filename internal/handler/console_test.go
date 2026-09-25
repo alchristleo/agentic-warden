@@ -123,8 +123,10 @@ var admins = map[string][]string{"alice@example.com": {"console-admins"}, "bob@e
 // wrapped store, so only the method under test needs to be set.
 type failingStore struct {
 	store.Store
-	sessionByHash func(ctx context.Context, hash string) (model.ConsoleSession, error)
-	recordAudit   func(ctx context.Context, e model.AuditEvent) error
+	sessionByHash        func(ctx context.Context, hash string) (model.ConsoleSession, error)
+	recordAudit          func(ctx context.Context, e model.AuditEvent) error
+	currentGroupSnapshot func(ctx context.Context) (model.GroupSnapshot, error)
+	scimCounts           func(ctx context.Context) (model.SCIMCounts, error)
 }
 
 func (f failingStore) SessionByHash(ctx context.Context, hash string) (model.ConsoleSession, error) {
@@ -139,6 +141,20 @@ func (f failingStore) RecordAudit(ctx context.Context, e model.AuditEvent) error
 		return f.recordAudit(ctx, e)
 	}
 	return f.Store.RecordAudit(ctx, e)
+}
+
+func (f failingStore) CurrentGroupSnapshot(ctx context.Context) (model.GroupSnapshot, error) {
+	if f.currentGroupSnapshot != nil {
+		return f.currentGroupSnapshot(ctx)
+	}
+	return f.Store.CurrentGroupSnapshot(ctx)
+}
+
+func (f failingStore) SCIMCounts(ctx context.Context) (model.SCIMCounts, error) {
+	if f.scimCounts != nil {
+		return f.scimCounts(ctx)
+	}
+	return f.Store.SCIMCounts(ctx)
 }
 
 func TestConsoleOffAnswers404(t *testing.T) {
@@ -368,6 +384,50 @@ func TestConsoleNoGroupDataIs503(t *testing.T) {
 	body, _ := io.ReadAll(cb.Body)
 	if cb.StatusCode != http.StatusServiceUnavailable || !strings.Contains(string(body), "console needs group data") {
 		t.Fatalf("login = %d %s", cb.StatusCode, body)
+	}
+}
+
+// TestConsoleNoGroupDataMidSessionIs503AndKeepsSession covers the
+// per-request half of the "no group data" failure-mode row: a user who
+// logged in while group data existed keeps hitting 503 on every request
+// once it disappears (no snapshot and zero SCIM groups), and — unlike a
+// user who is simply no longer in the admin group — the session itself
+// survives: it comes back to life once group data is restored.
+func TestConsoleNoGroupDataMidSessionIs503AndKeepsSession(t *testing.T) {
+	mem := store.NewMemory()
+	var noGroupData atomic.Bool
+	fs := failingStore{
+		Store: mem,
+		currentGroupSnapshot: func(ctx context.Context) (model.GroupSnapshot, error) {
+			if noGroupData.Load() {
+				return model.GroupSnapshot{}, model.ErrNotFound
+			}
+			return mem.CurrentGroupSnapshot(ctx)
+		},
+		scimCounts: func(ctx context.Context) (model.SCIMCounts, error) {
+			if noGroupData.Load() {
+				return model.SCIMCounts{}, nil
+			}
+			return mem.SCIMCounts(ctx)
+		},
+	}
+	e := newConsoleWithStore(t, fs, admins)
+	e.login(t, "alice@example.com")
+
+	noGroupData.Store(true)
+
+	me := e.do(t, "GET", "/console/api/me", nil)
+	body, _ := io.ReadAll(me.Body)
+	if me.StatusCode != http.StatusServiceUnavailable || !strings.Contains(string(body), "console needs group data") {
+		t.Fatalf("me = %d %s", me.StatusCode, body)
+	}
+	if resp := e.do(t, "GET", "/v1/machines", nil); resp.StatusCode != http.StatusServiceUnavailable {
+		t.Fatalf("machines = %d, want 503", resp.StatusCode)
+	}
+
+	noGroupData.Store(false)
+	if me := e.do(t, "GET", "/console/api/me", nil); me.StatusCode != http.StatusOK {
+		t.Fatalf("session was deleted while group data was missing: %d", me.StatusCode)
 	}
 }
 
