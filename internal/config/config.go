@@ -8,6 +8,7 @@ package config
 import (
 	"fmt"
 	"log/slog"
+	"net/url"
 	"os"
 	"strings"
 	"time"
@@ -34,6 +35,28 @@ type Config struct {
 	// SCIMToken is the bearer token the identity provider presents on
 	// /scim/v2. Unset means SCIM is disabled.
 	SCIMToken string
+	// PublicURL is awd's external https origin. Nil means the admin console
+	// is disabled.
+	PublicURL *url.URL
+	// Console holds the admin console's OIDC settings. Zero when the
+	// console is disabled.
+	Console ConsoleConfig
+}
+
+// ConsoleConfig configures the admin console's OpenID Connect sign-in.
+type ConsoleConfig struct {
+	// Issuer is the identity provider's OIDC issuer URL.
+	Issuer string
+	// ClientID is awd's client id at the identity provider.
+	ClientID string
+	// ClientSecretFile is the path to a file holding the OIDC client secret.
+	ClientSecretFile string
+	// AdminGroup is the identity-provider group whose members administer
+	// the console.
+	AdminGroup string
+	// UserClaim names the ID token claim that identifies the user; default
+	// "email".
+	UserClaim string
 }
 
 // FromEnv builds a Config from the environment.
@@ -68,7 +91,84 @@ func FromEnv() (Config, error) {
 		}
 		*d.target = parsed
 	}
+
+	console := []struct {
+		key    string
+		target *string
+	}{
+		{"AWD_CONSOLE_ISSUER", &cfg.Console.Issuer},
+		{"AWD_CONSOLE_CLIENT_ID", &cfg.Console.ClientID},
+		{"AWD_CONSOLE_CLIENT_SECRET_FILE", &cfg.Console.ClientSecretFile},
+		{"AWD_CONSOLE_ADMIN_GROUP", &cfg.Console.AdminGroup},
+	}
+	publicURL := os.Getenv("AWD_PUBLIC_URL")
+	var set, missing []string
+	if publicURL != "" {
+		set = append(set, "AWD_PUBLIC_URL")
+	} else {
+		missing = append(missing, "AWD_PUBLIC_URL")
+	}
+	for _, c := range console {
+		*c.target = os.Getenv(c.key)
+		if *c.target != "" {
+			set = append(set, c.key)
+		} else {
+			missing = append(missing, c.key)
+		}
+	}
+	cfg.Console.UserClaim = env("AWD_CONSOLE_USER_CLAIM", "email")
+	if len(set) > 0 && len(missing) > 0 {
+		return Config{}, fmt.Errorf("config: the console needs all of its settings; missing %s", strings.Join(missing, ", "))
+	}
+	if len(set) > 0 {
+		u, err := parsePublicURL(publicURL)
+		if err != nil {
+			return Config{}, err
+		}
+		cfg.PublicURL = u
+	}
 	return cfg, nil
+}
+
+// ConsoleEnabled reports whether every console setting is present.
+func (c Config) ConsoleEnabled() bool { return c.PublicURL != nil }
+
+// parsePublicURL accepts a bare origin: https anywhere, http only on
+// loopback. The redirect URI and the Origin check are both built from it,
+// so a path, query or fragment would break one of them silently.
+//
+// The scheme and host are lowercased and an explicit default port (:443 on
+// https, :80 on http) is stripped, so the stored URL's origin equals what
+// browsers send in the Origin header on a same-origin request.
+func parsePublicURL(raw string) (*url.URL, error) {
+	u, err := url.Parse(strings.TrimSuffix(raw, "/"))
+	if err != nil || u.Host == "" {
+		return nil, fmt.Errorf("config: AWD_PUBLIC_URL=%q must be an absolute https URL", raw)
+	}
+	switch {
+	case u.Path != "":
+		return nil, fmt.Errorf("config: AWD_PUBLIC_URL=%q must not have a path", raw)
+	case u.RawQuery != "" || u.ForceQuery:
+		return nil, fmt.Errorf("config: AWD_PUBLIC_URL=%q must not have a query", raw)
+	case u.Fragment != "":
+		return nil, fmt.Errorf("config: AWD_PUBLIC_URL=%q must not have a fragment", raw)
+	}
+	scheme := strings.ToLower(u.Scheme)
+	host := strings.ToLower(u.Hostname())
+	loopback := host == "localhost" || host == "127.0.0.1"
+	if scheme != "https" && !(scheme == "http" && loopback) {
+		return nil, fmt.Errorf("config: AWD_PUBLIC_URL=%q must use https (plain http only on localhost)", raw)
+	}
+	port := u.Port()
+	if (scheme == "https" && port == "443") || (scheme == "http" && port == "80") {
+		port = ""
+	}
+	u.Scheme = scheme
+	u.Host = host
+	if port != "" {
+		u.Host += ":" + port
+	}
+	return u, nil
 }
 
 func env(key, fallback string) string {

@@ -50,6 +50,9 @@ type Handler struct {
 	// deployment: no headers, and every client behaves as it did before
 	// signing existed.
 	Signer *Signer
+	// Console wires the web console on. Nil (the default) leaves every
+	// /console path a 404 and requireAdmin token-only.
+	Console *Console
 }
 
 // Signer holds the control plane's signing key, and during a rotation the
@@ -76,6 +79,10 @@ func New(s store.Store, log *slog.Logger) *Handler {
 }
 
 // Routes returns the router with middleware applied.
+//
+// Call it only after Console is set: requireAdmin binds the console's
+// admin path when routes are built, so a Console assigned afterward would
+// leave existing admin routes token-only.
 func (h *Handler) Routes() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /healthz", h.healthz)
@@ -91,7 +98,9 @@ func (h *Handler) Routes() http.Handler {
 	mux.HandleFunc("PUT /v1/groups", h.requireAdmin(h.putGroups))
 	mux.HandleFunc("GET /v1/groups", h.requireAdmin(h.getGroups))
 	mux.HandleFunc("GET /v1/groups/resolve", h.requireAdmin(h.getGroupsResolve))
+	mux.HandleFunc("GET /v1/audit", h.requireAdmin(h.getAudit))
 	h.scimRoutes(mux)
+	h.consoleRoutes(mux)
 	return Logging(h.log)(Recovery(h.log)(mux))
 }
 
@@ -176,9 +185,10 @@ func (h *Handler) postRevision(w http.ResponseWriter, r *http.Request) {
 		Version:   ruleSet.Version,
 		RuleSet:   ruleSet,
 		CreatedAt: h.Now(),
-		CreatedBy: r.Header.Get("X-Applied-By"),
+		CreatedBy: actorOf(r.Context()),
 	}
-	if err := h.store.PutRuleSet(r.Context(), revision); err != nil {
+	event := model.AuditEvent{At: h.Now(), Actor: actorOf(r.Context()), Action: model.AuditRevisionCreate, Target: revision.Version}
+	if err := h.store.PutRuleSet(r.Context(), revision, event); err != nil {
 		h.fail(w, r, err)
 		return
 	}

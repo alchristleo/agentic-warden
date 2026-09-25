@@ -19,3 +19,9 @@ web/.env*
 !web/.env.example
 web/next-env.d.ts
 web/*.tsbuildinfo
+
+# Admin console (console/)
+console/node_modules
+console/test-results
+console/playwright-report
+console/*.tsbuildinfo

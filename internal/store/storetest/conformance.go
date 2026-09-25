@@ -59,6 +59,7 @@ func Run(t *testing.T, newStore Factory) {
 		})
 	}
 	RunSCIM(t, func(t *testing.T) store.SCIMStore { return newStore(t) })
+	RunConsole(t, newStore)
 }
 
 func revision(version string, at time.Time) model.Revision {
@@ -88,7 +89,7 @@ func currentOnEmpty(t *testing.T, s store.Store) {
 func putThenCurrent(t *testing.T, s store.Store) {
 	ctx := context.Background()
 	want := revision("v1", epoch)
-	if err := s.PutRuleSet(ctx, want); err != nil {
+	if err := s.PutRuleSet(ctx, want, audit(model.AuditRevisionCreate, want.Version)); err != nil {
 		t.Fatalf("PutRuleSet: %v", err)
 	}
 
@@ -109,10 +110,10 @@ func putThenCurrent(t *testing.T, s store.Store) {
 
 func newestWins(t *testing.T, s store.Store) {
 	ctx := context.Background()
-	if err := s.PutRuleSet(ctx, revision("v1", epoch)); err != nil {
+	if err := s.PutRuleSet(ctx, revision("v1", epoch), audit(model.AuditRevisionCreate, "v1")); err != nil {
 		t.Fatalf("PutRuleSet v1: %v", err)
 	}
-	if err := s.PutRuleSet(ctx, revision("v2", epoch.Add(time.Hour))); err != nil {
+	if err := s.PutRuleSet(ctx, revision("v2", epoch.Add(time.Hour)), audit(model.AuditRevisionCreate, "v2")); err != nil {
 		t.Fatalf("PutRuleSet v2: %v", err)
 	}
 
@@ -127,11 +128,11 @@ func newestWins(t *testing.T, s store.Store) {
 
 func duplicateVersion(t *testing.T, s store.Store) {
 	ctx := context.Background()
-	if err := s.PutRuleSet(ctx, revision("v1", epoch)); err != nil {
+	if err := s.PutRuleSet(ctx, revision("v1", epoch), audit(model.AuditRevisionCreate, "v1")); err != nil {
 		t.Fatalf("PutRuleSet: %v", err)
 	}
 
-	err := s.PutRuleSet(ctx, revision("v1", epoch.Add(time.Hour)))
+	err := s.PutRuleSet(ctx, revision("v1", epoch.Add(time.Hour)), audit(model.AuditRevisionCreate, "v1"))
 
 	if !errors.Is(err, model.ErrConflict) {
 		t.Errorf("PutRuleSet() error = %v, want ErrConflict", err)
@@ -139,7 +140,7 @@ func duplicateVersion(t *testing.T, s store.Store) {
 }
 
 func versionRequired(t *testing.T, s store.Store) {
-	err := s.PutRuleSet(context.Background(), revision("", epoch))
+	err := s.PutRuleSet(context.Background(), revision("", epoch), audit(model.AuditRevisionCreate, ""))
 
 	if !errors.Is(err, model.ErrBadInput) {
 		t.Errorf("PutRuleSet() error = %v, want ErrBadInput", err)
@@ -149,7 +150,7 @@ func versionRequired(t *testing.T, s store.Store) {
 func listNewestFirst(t *testing.T, s store.Store) {
 	ctx := context.Background()
 	for i, version := range []string{"v1", "v2", "v3"} {
-		if err := s.PutRuleSet(ctx, revision(version, epoch.Add(time.Duration(i)*time.Hour))); err != nil {
+		if err := s.PutRuleSet(ctx, revision(version, epoch.Add(time.Duration(i)*time.Hour)), audit(model.AuditRevisionCreate, version)); err != nil {
 			t.Fatalf("PutRuleSet %s: %v", version, err)
 		}
 	}
@@ -172,7 +173,7 @@ func listNewestFirst(t *testing.T, s store.Store) {
 func listLimit(t *testing.T, s store.Store) {
 	ctx := context.Background()
 	for i, version := range []string{"v1", "v2", "v3"} {
-		if err := s.PutRuleSet(ctx, revision(version, epoch.Add(time.Duration(i)*time.Hour))); err != nil {
+		if err := s.PutRuleSet(ctx, revision(version, epoch.Add(time.Duration(i)*time.Hour)), audit(model.AuditRevisionCreate, version)); err != nil {
 			t.Fatalf("PutRuleSet %s: %v", version, err)
 		}
 	}
@@ -193,7 +194,7 @@ func listLimit(t *testing.T, s store.Store) {
 func sameInstantOrder(t *testing.T, s store.Store) {
 	ctx := context.Background()
 	for _, version := range []string{"v1", "v2", "v3"} {
-		if err := s.PutRuleSet(ctx, revision(version, epoch)); err != nil {
+		if err := s.PutRuleSet(ctx, revision(version, epoch), audit(model.AuditRevisionCreate, version)); err != nil {
 			t.Fatalf("PutRuleSet %s: %v", version, err)
 		}
 	}
@@ -224,7 +225,7 @@ func sameInstantOrder(t *testing.T, s store.Store) {
 func sequenceAssigned(t *testing.T, s store.Store) {
 	ctx := context.Background()
 	for _, version := range []string{"v1", "v2"} {
-		if err := s.PutRuleSet(ctx, revision(version, epoch)); err != nil {
+		if err := s.PutRuleSet(ctx, revision(version, epoch), audit(model.AuditRevisionCreate, version)); err != nil {
 			t.Fatalf("PutRuleSet %s: %v", version, err)
 		}
 	}
@@ -274,7 +275,7 @@ func machine(id, user, hash string, at time.Time) model.Machine {
 func tokenConsumedOnce(t *testing.T, s store.Store) {
 	ctx := context.Background()
 	now := time.Date(2026, 9, 21, 12, 0, 0, 0, time.UTC)
-	if err := s.PutEnrollmentToken(ctx, token("h1", "alice@acme.com", now.Add(time.Hour))); err != nil {
+	if err := s.PutEnrollmentToken(ctx, token("h1", "alice@acme.com", now.Add(time.Hour)), audit(model.AuditTokenCreate, "alice@acme.com")); err != nil {
 		t.Fatalf("PutEnrollmentToken: %v", err)
 	}
 
@@ -298,7 +299,7 @@ func tokenUnknown(t *testing.T, s store.Store) {
 func tokenExpired(t *testing.T, s store.Store) {
 	ctx := context.Background()
 	now := time.Date(2026, 9, 21, 12, 0, 0, 0, time.UTC)
-	if err := s.PutEnrollmentToken(ctx, token("h1", "alice@acme.com", now)); err != nil {
+	if err := s.PutEnrollmentToken(ctx, token("h1", "alice@acme.com", now), audit(model.AuditTokenCreate, "alice@acme.com")); err != nil {
 		t.Fatal(err)
 	}
 	_, err := s.ConsumeEnrollmentToken(ctx, "h1", now)
@@ -314,11 +315,11 @@ func tokenExpired(t *testing.T, s store.Store) {
 func tokenHashUnique(t *testing.T, s store.Store) {
 	ctx := context.Background()
 	now := time.Date(2026, 9, 21, 12, 0, 0, 0, time.UTC)
-	if err := s.PutEnrollmentToken(ctx, token("h1", "alice@acme.com", now.Add(time.Hour))); err != nil {
+	if err := s.PutEnrollmentToken(ctx, token("h1", "alice@acme.com", now.Add(time.Hour)), audit(model.AuditTokenCreate, "alice@acme.com")); err != nil {
 		t.Fatalf("PutEnrollmentToken: %v", err)
 	}
 
-	err := s.PutEnrollmentToken(ctx, token("h1", "bob@acme.com", now.Add(time.Hour)))
+	err := s.PutEnrollmentToken(ctx, token("h1", "bob@acme.com", now.Add(time.Hour)), audit(model.AuditTokenCreate, "bob@acme.com"))
 
 	if !errors.Is(err, model.ErrConflict) {
 		t.Errorf("PutEnrollmentToken() error = %v, want ErrConflict", err)
@@ -447,13 +448,13 @@ func machineDelete(t *testing.T, s store.Store) {
 	if err := s.PutMachine(ctx, machine("m1", "a", "c1", time.Now())); err != nil {
 		t.Fatal(err)
 	}
-	if err := s.DeleteMachine(ctx, "m1"); err != nil {
+	if err := s.DeleteMachine(ctx, "m1", audit(model.AuditMachineRevoke, "m1")); err != nil {
 		t.Fatalf("DeleteMachine: %v", err)
 	}
 	if _, err := s.MachineByCredential(ctx, "c1"); !errors.Is(err, model.ErrNotFound) {
 		t.Errorf("after delete: error = %v, want ErrNotFound", err)
 	}
-	if err := s.DeleteMachine(ctx, "m1"); !errors.Is(err, model.ErrNotFound) {
+	if err := s.DeleteMachine(ctx, "m1", audit(model.AuditMachineRevoke, "m1")); !errors.Is(err, model.ErrNotFound) {
 		t.Errorf("deleting twice: error = %v, want ErrNotFound", err)
 	}
 }
@@ -484,7 +485,7 @@ func snapshotOnEmpty(t *testing.T, s store.Store) {
 func snapshotPutThenCurrent(t *testing.T, s store.Store) {
 	at := time.Date(2026, 9, 22, 10, 0, 0, 0, time.UTC)
 	want := snapshot("okta", at, map[string][]string{"alice@acme.com": {"platform", "oncall"}})
-	if err := s.PutGroupSnapshot(context.Background(), want); err != nil {
+	if err := s.PutGroupSnapshot(context.Background(), want, audit(model.AuditGroupsApply, "")); err != nil {
 		t.Fatal(err)
 	}
 
@@ -505,7 +506,7 @@ func snapshotNewestWins(t *testing.T, s store.Store) {
 	first := snapshot("okta", at, map[string][]string{"alice@acme.com": {"platform"}})
 	second := snapshot("okta", at.Add(time.Hour), map[string][]string{"bob@acme.com": {"mobile"}})
 	for _, snap := range []model.GroupSnapshot{first, second} {
-		if err := s.PutGroupSnapshot(context.Background(), snap); err != nil {
+		if err := s.PutGroupSnapshot(context.Background(), snap, audit(model.AuditGroupsApply, "")); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -523,14 +524,14 @@ func snapshotNewestWins(t *testing.T, s store.Store) {
 }
 
 func snapshotUserKeyRequired(t *testing.T, s store.Store) {
-	err := s.PutGroupSnapshot(context.Background(), snapshot("okta", time.Now(), map[string][]string{"": {"platform"}}))
+	err := s.PutGroupSnapshot(context.Background(), snapshot("okta", time.Now(), map[string][]string{"": {"platform"}}), audit(model.AuditGroupsApply, ""))
 	if !errors.Is(err, model.ErrBadInput) {
 		t.Errorf("err = %v, want ErrBadInput", err)
 	}
 }
 
 func snapshotGroupNameRequired(t *testing.T, s store.Store) {
-	err := s.PutGroupSnapshot(context.Background(), snapshot("okta", time.Now(), map[string][]string{"alice@acme.com": {"platform", ""}}))
+	err := s.PutGroupSnapshot(context.Background(), snapshot("okta", time.Now(), map[string][]string{"alice@acme.com": {"platform", ""}}), audit(model.AuditGroupsApply, ""))
 	if !errors.Is(err, model.ErrBadInput) {
 		t.Errorf("err = %v, want ErrBadInput", err)
 	}

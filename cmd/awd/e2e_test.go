@@ -456,6 +456,23 @@ func TestServeShutsDownCleanlyOnSIGTERM(t *testing.T) {
 	}
 }
 
+// TestConsolePartialConfigRefusesToStart checks the "console env partly
+// set" failure mode: awd must refuse to start rather than run with a
+// half-configured console, and its stderr must name a missing variable.
+func TestConsolePartialConfigRefusesToStart(t *testing.T) {
+	cmd := exec.Command(built, "serve")
+	cmd.Env = append(os.Environ(), "AWD_ADDR=127.0.0.1:0", "AWD_LOG_LEVEL=error", "AWD_PUBLIC_URL=https://x")
+	out, err := cmd.CombinedOutput()
+
+	var exitErr *exec.ExitError
+	if !errors.As(err, &exitErr) || exitErr.ExitCode() == 0 {
+		t.Fatalf("serve exited %v, want a non-zero exit: %s", err, out)
+	}
+	if !strings.Contains(string(out), "AWD_CONSOLE_ISSUER") {
+		t.Errorf("stderr %q does not name AWD_CONSOLE_ISSUER", out)
+	}
+}
+
 func TestAnUnknownCommandFails(t *testing.T) {
 	out, code := runAwd(t, "frobnicate")
 

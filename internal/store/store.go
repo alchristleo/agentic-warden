@@ -15,19 +15,22 @@ import (
 // what SCIM has provisioned.
 type Store interface {
 	SCIMStore
+	ConsoleStore
 
-	// PutRuleSet stores a new revision. It returns model.ErrBadInput for a
-	// revision without a version and model.ErrConflict when that version is
-	// already stored, because a revision is immutable once written.
-	PutRuleSet(ctx context.Context, r model.Revision) error
+	// PutRuleSet stores a new revision and its audit event atomically. It
+	// returns model.ErrBadInput for a revision without a version or an
+	// audit event without an actor or action, and model.ErrConflict when
+	// that version is already stored, because a revision is immutable once
+	// written. Either failure stores neither.
+	PutRuleSet(ctx context.Context, r model.Revision, audit model.AuditEvent) error
 	// CurrentRuleSet returns the newest revision, or model.ErrNotFound when
 	// no policy has been applied yet.
 	CurrentRuleSet(ctx context.Context) (model.Revision, error)
 	// Revisions returns up to limit revisions, newest first.
 	Revisions(ctx context.Context, limit int) ([]model.Revision, error)
 
-	// PutEnrollmentToken stores a token for later consumption.
-	PutEnrollmentToken(ctx context.Context, t model.EnrollmentToken) error
+	// PutEnrollmentToken stores a token and its audit event atomically.
+	PutEnrollmentToken(ctx context.Context, t model.EnrollmentToken, audit model.AuditEvent) error
 	// ConsumeEnrollmentToken marks the token used and returns the user it
 	// enrolls. It returns model.ErrNotFound for an unknown hash and
 	// model.ErrConflict for a token already used or expired at now. The
@@ -51,15 +54,40 @@ type Store interface {
 	// credential hash cleared: a listing is for operators, and the hash is
 	// the lookup key, not information.
 	ListMachines(ctx context.Context) ([]model.Machine, error)
-	// DeleteMachine revokes a machine, or model.ErrNotFound.
-	DeleteMachine(ctx context.Context, id string) error
+	// DeleteMachine revokes a machine and records audit atomically, or
+	// model.ErrNotFound, in which case no event is written.
+	DeleteMachine(ctx context.Context, id string, audit model.AuditEvent) error
 
-	// PutGroupSnapshot stores a membership snapshot; the newest is current.
-	// It returns model.ErrBadInput for an empty user key or group name.
-	PutGroupSnapshot(ctx context.Context, s model.GroupSnapshot) error
+	// PutGroupSnapshot stores a snapshot and its audit event atomically.
+	PutGroupSnapshot(ctx context.Context, s model.GroupSnapshot, audit model.AuditEvent) error
 	// CurrentGroupSnapshot returns the newest snapshot, or model.ErrNotFound
 	// when none has ever been posted.
 	CurrentGroupSnapshot(ctx context.Context) (model.GroupSnapshot, error)
+}
+
+// ConsoleStore holds console sessions and the audit log.
+type ConsoleStore interface {
+	// CreateSession stores a session. model.ErrBadInput without a token
+	// hash or user; model.ErrConflict when the hash exists.
+	CreateSession(ctx context.Context, s model.ConsoleSession) error
+	// SessionByHash returns a session, or model.ErrNotFound.
+	SessionByHash(ctx context.Context, hash string) (model.ConsoleSession, error)
+	// TouchSession sets LastSeenAt, or model.ErrNotFound.
+	TouchSession(ctx context.Context, hash string, at time.Time) error
+	// DeleteSession removes a session. Deleting one that does not exist is
+	// not an error: logout is idempotent.
+	DeleteSession(ctx context.Context, hash string) error
+	// DeleteSessionsFor removes every session of a user.
+	DeleteSessionsFor(ctx context.Context, user string) error
+	// DeleteExpiredSessions removes sessions created before createdBefore
+	// or last seen before seenBefore, and returns how many it removed.
+	DeleteExpiredSessions(ctx context.Context, createdBefore, seenBefore time.Time) (int, error)
+	// RecordAudit stores an event that accompanies no other write (login,
+	// logout). model.ErrBadInput when Validate fails.
+	RecordAudit(ctx context.Context, e model.AuditEvent) error
+	// AuditEvents returns up to limit events, newest first. before, when
+	// positive, returns only events with a smaller ID.
+	AuditEvents(ctx context.Context, limit int, before int64) ([]model.AuditEvent, error)
 }
 
 // SCIMStore holds what the identity provider provisioned over SCIM.

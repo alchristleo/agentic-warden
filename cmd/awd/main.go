@@ -33,6 +33,10 @@ import (
 	"github.com/acme/agent-wrapper/internal/agent/codex/requirements"
 	"github.com/acme/agent-wrapper/internal/agent/gemini/managed"
 	"github.com/acme/agent-wrapper/internal/config"
+	"github.com/acme/agent-wrapper/internal/console"
+	"github.com/acme/agent-wrapper/internal/console/authz"
+	"github.com/acme/agent-wrapper/internal/console/session"
+	"github.com/acme/agent-wrapper/internal/console/sso"
 	"github.com/acme/agent-wrapper/internal/handler"
 	"github.com/acme/agent-wrapper/internal/model"
 	"github.com/acme/agent-wrapper/internal/policy"
@@ -68,6 +72,12 @@ Environment:
   AWD_SCIM_TOKEN             bearer token the identity provider presents on /scim/v2; unset disables SCIM
   AWD_SIGNING_KEY            path to the signing key written by keygen; unset means bundles are not signed
   AWD_SIGNING_KEY_PREVIOUS   path to the key being rotated out, signed over during a rotation
+  AWD_PUBLIC_URL                   external https origin of awd; enables the console with AWD_CONSOLE_*
+  AWD_CONSOLE_ISSUER               OIDC issuer URL
+  AWD_CONSOLE_CLIENT_ID            OIDC client id
+  AWD_CONSOLE_CLIENT_SECRET_FILE   file holding the OIDC client secret
+  AWD_CONSOLE_ADMIN_GROUP          IdP group whose members are console admins
+  AWD_CONSOLE_USER_CLAIM           ID token claim naming the user (default email)
 `
 
 func main() {
@@ -123,6 +133,9 @@ func serve() error {
 		return err
 	}
 
+	sweepCtx, stopSweep := context.WithCancel(context.Background())
+	defer stopSweep()
+
 	h := handler.New(backing, log)
 	h.ManagedValidator = managedValidator
 	h.AdminToken = cfg.AdminToken
@@ -163,6 +176,36 @@ func serve() error {
 		log.Info("signing bundles", "keyId", s.KeyID())
 	} else {
 		log.Warn("bundles are not signed; set AWD_SIGNING_KEY to sign them")
+	}
+
+	if cfg.ConsoleEnabled() {
+		secret, err := os.ReadFile(cfg.Console.ClientSecretFile)
+		if err != nil {
+			return fmt.Errorf("awd: AWD_CONSOLE_CLIENT_SECRET_FILE: %w", err)
+		}
+		clientSecret := strings.TrimSpace(string(secret))
+		if clientSecret == "" {
+			return fmt.Errorf("awd: AWD_CONSOLE_CLIENT_SECRET_FILE %s is empty", cfg.Console.ClientSecretFile)
+		}
+		client := sso.New(sso.Config{
+			Issuer: cfg.Console.Issuer, ClientID: cfg.Console.ClientID, ClientSecret: clientSecret,
+			RedirectURL: cfg.PublicURL.String() + "/console/auth/callback", UserClaim: cfg.Console.UserClaim,
+		})
+		dctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		if err := client.Discover(dctx); err != nil {
+			log.Warn("console: identity provider discovery failed; retrying on the next sign-in", "err", err)
+		}
+		cancel()
+		sessions := session.NewManager(backing)
+		h.Console = &handler.Console{
+			PublicURL: cfg.PublicURL, SSO: client, Sessions: sessions,
+			Authz:  &authz.Checker{Store: backing, Group: cfg.Console.AdminGroup},
+			Assets: console.Assets(),
+		}
+		go sweepSessions(sweepCtx, sessions, log)
+		log.Info("admin console enabled", "url", cfg.PublicURL.String()+"/console/")
+	} else {
+		log.Info("admin console disabled; set AWD_PUBLIC_URL and AWD_CONSOLE_* to enable it")
 	}
 
 	srv := &http.Server{
@@ -207,6 +250,25 @@ func serve() error {
 		return fmt.Errorf("shutting down: %w", err)
 	}
 	return nil
+}
+
+// sweepSessions deletes expired console sessions hourly. Lookup already
+// refuses them; this only keeps the table from growing.
+func sweepSessions(ctx context.Context, m *session.Manager, log *slog.Logger) {
+	ticker := time.NewTicker(time.Hour)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			if n, err := m.Sweep(ctx); err != nil {
+				log.Error("sweeping console sessions", "err", err)
+			} else if n > 0 {
+				log.Debug("swept console sessions", "count", n)
+			}
+		}
+	}
 }
 
 // openStore picks the backing store. An unset database URL is a deliberate

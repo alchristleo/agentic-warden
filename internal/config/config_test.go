@@ -2,6 +2,7 @@ package config_test
 
 import (
 	"log/slog"
+	"strings"
 	"testing"
 	"time"
 
@@ -95,6 +96,80 @@ func TestFromEnvRejectsAMalformedDuration(t *testing.T) {
 	}
 	if !contains(err.Error(), "AWD_READ_TIMEOUT") {
 		t.Errorf("error %q does not name the offending variable", err)
+	}
+}
+
+func setConsoleEnv(t *testing.T) {
+	t.Setenv("AWD_PUBLIC_URL", "https://awd.example.com")
+	t.Setenv("AWD_CONSOLE_ISSUER", "https://idp.example.com")
+	t.Setenv("AWD_CONSOLE_CLIENT_ID", "awd")
+	t.Setenv("AWD_CONSOLE_CLIENT_SECRET_FILE", "/etc/awd/secret")
+	t.Setenv("AWD_CONSOLE_ADMIN_GROUP", "console-admins")
+}
+
+func TestConsoleAllUnsetIsOff(t *testing.T) {
+	cfg, err := config.FromEnv()
+	if err != nil || cfg.ConsoleEnabled() {
+		t.Fatalf("cfg=%+v err=%v", cfg, err)
+	}
+}
+
+func TestConsoleAllSet(t *testing.T) {
+	setConsoleEnv(t)
+	cfg, err := config.FromEnv()
+	if err != nil || !cfg.ConsoleEnabled() || cfg.Console.UserClaim != "email" {
+		t.Fatalf("cfg=%+v err=%v", cfg, err)
+	}
+}
+
+func TestConsolePartlySetNamesTheMissing(t *testing.T) {
+	setConsoleEnv(t)
+	t.Setenv("AWD_CONSOLE_CLIENT_ID", "")
+	t.Setenv("AWD_CONSOLE_ADMIN_GROUP", "")
+	_, err := config.FromEnv()
+	if err == nil || !strings.Contains(err.Error(), "AWD_CONSOLE_CLIENT_ID") || !strings.Contains(err.Error(), "AWD_CONSOLE_ADMIN_GROUP") {
+		t.Fatalf("err = %v", err)
+	}
+}
+
+// Review Focus 3. Cases whose want value looks like a URL (has a "://")
+// assert the exact normalized form; an empty want only checks there is no
+// trailing slash; anything else is a fragment the error must contain.
+func TestConsolePublicURLShape(t *testing.T) {
+	cases := map[string]string{
+		"https://awd.example.com/":      "",
+		"http://localhost:8080":         "",
+		"http://127.0.0.1:9401":         "",
+		"http://awd.example.com":        "https",
+		"https://awd.example.com/admin": "path",
+		"https://awd.example.com?x=1":   "query",
+		"https://awd.example.com#f":     "fragment",
+		"awd.example.com":               "https",
+		"https://AWD.Example.com":       "https://awd.example.com",
+		"https://awd.example.com:443":   "https://awd.example.com",
+		"http://localhost:80":           "http://localhost",
+		"https://awd.example.com:8443":  "https://awd.example.com:8443",
+	}
+	for value, want := range cases {
+		t.Run(value, func(t *testing.T) {
+			setConsoleEnv(t)
+			t.Setenv("AWD_PUBLIC_URL", value)
+			cfg, err := config.FromEnv()
+			switch {
+			case strings.Contains(want, "://"):
+				if err != nil || cfg.PublicURL.String() != want {
+					t.Fatalf("cfg=%v err=%v, want %q", cfg.PublicURL, err, want)
+				}
+			case want == "":
+				if err != nil || strings.HasSuffix(cfg.PublicURL.String(), "/") {
+					t.Fatalf("cfg=%v err=%v", cfg.PublicURL, err)
+				}
+			default:
+				if err == nil || !strings.Contains(err.Error(), want) {
+					t.Fatalf("err = %v, want mention of %q", err, want)
+				}
+			}
+		})
 	}
 }
 

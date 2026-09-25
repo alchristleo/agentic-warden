@@ -20,7 +20,14 @@ const adminToken = "test-admin-token"
 
 func newServer(t *testing.T) *httptest.Server {
 	t.Helper()
-	h := handler.New(store.NewMemory(), nil)
+	return newServerWithStore(t, store.NewMemory())
+}
+
+// newServerWithStore is newServer against a caller-supplied store, so a
+// test can wrap the store to inject a failure.
+func newServerWithStore(t *testing.T, s store.Store) *httptest.Server {
+	t.Helper()
+	h := handler.New(s, nil)
 	h.AdminToken = adminToken
 	h.Now = func() time.Time { return time.Date(2026, 9, 20, 12, 0, 0, 0, time.UTC) }
 	srv := httptest.NewServer(h.Routes())
