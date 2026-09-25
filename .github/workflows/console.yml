@@ -1,0 +1,46 @@
+name: console
+
+on:
+  push:
+    branches: [main]
+    paths: ["console/**", "internal/**", "cmd/awd/**", "go.mod", "go.sum", ".github/workflows/console.yml"]
+  pull_request:
+    paths: ["console/**", "internal/**", "cmd/awd/**", "go.mod", "go.sum", ".github/workflows/console.yml"]
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.22"
+      - uses: pnpm/action-setup@v4
+        with:
+          package_json_file: console/package.json
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+          cache-dependency-path: console/pnpm-lock.yaml
+      - run: go test ./...
+      - working-directory: console
+        run: pnpm install --frozen-lockfile
+      - working-directory: console
+        run: pnpm typecheck
+      - working-directory: console
+        run: pnpm test
+      - working-directory: console
+        run: pnpm build
+      - name: Committed console build is current
+        run: git diff --exit-code internal/console/dist
+      - working-directory: console
+        run: pnpm exec playwright install --with-deps chromium
+      - working-directory: console
+        run: pnpm test:e2e
+        env:
+          CI: "true"
