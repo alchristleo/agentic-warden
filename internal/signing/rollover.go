@@ -1,6 +1,7 @@
 package signing
 
 import (
+	"context"
 	"crypto/ed25519"
 	"encoding/base64"
 	"errors"
@@ -23,11 +24,16 @@ type Rollover struct {
 }
 
 // SignRollover builds the header value announcing next, signed by previous.
-// A header value holds no newlines, so the statement travels base64 encoded
-// with its signature beside it.
-func SignRollover(previous ed25519.PrivateKey, next ed25519.PublicKey) string {
+// previous may be remote (KMS), so this can fail. A header value holds no
+// newlines, so the statement travels base64 encoded with its signature
+// beside it.
+func SignRollover(ctx context.Context, previous Signer, next ed25519.PublicKey) (string, error) {
 	statement := rolloverStatement(next)
-	return base64.StdEncoding.EncodeToString([]byte(statement)) + " " + Sign(previous, []byte(statement))
+	raw, err := previous.Sign(ctx, []byte(statement))
+	if err != nil {
+		return "", err
+	}
+	return base64.StdEncoding.EncodeToString([]byte(statement)) + " " + base64.StdEncoding.EncodeToString(raw), nil
 }
 
 // VerifyRollover checks a rollover header against the key this machine has

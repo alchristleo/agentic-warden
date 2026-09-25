@@ -228,12 +228,12 @@ func inspectSignature(stateDir string) agent.Finding {
 	bundlePath := filepath.Join(stateDir, stateBundleFile)
 	sigPath := filepath.Join(stateDir, stateSignatureFile)
 
-	_, keyID, trustMissing, err := signing.VerifyFiles(trustPath, bundlePath, sigPath)
+	_, format, keyID, trustMissing, err := signing.VerifyFiles(trustPath, bundlePath, sigPath)
 	switch {
 	case trustMissing:
 		return agent.Finding{Level: agent.OK, Message: "bundle signature: unsigned deployment"}
 	case err == nil:
-		return agent.Finding{Level: agent.OK, Message: "bundle signature: verified (key " + keyID + ")"}
+		return agent.Finding{Level: agent.OK, Message: "bundle signature: verified (" + format + ", key " + keyID + ")"}
 	case keyID == "":
 		// The trust file itself did not check out, so there is no key ID to
 		// report the bundle as mismatching; err already names the file and

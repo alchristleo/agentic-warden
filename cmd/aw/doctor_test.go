@@ -208,7 +208,7 @@ func TestTheClaudeAdapterLooksForTheFilenamesAwSyncWrites(t *testing.T) {
 
 	var verified bool
 	for _, f := range findings {
-		if f.Level == agent.OK && strings.Contains(f.Message, "bundle signature: verified (key ") {
+		if f.Level == agent.OK && strings.Contains(f.Message, "bundle signature: verified (v1, key ") {
 			verified = true
 		}
 	}

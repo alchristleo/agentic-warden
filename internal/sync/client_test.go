@@ -12,8 +12,10 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/acme/agent-wrapper/internal/handler"
 	"github.com/acme/agent-wrapper/internal/model"
 	"github.com/acme/agent-wrapper/internal/signing"
+	"github.com/acme/agent-wrapper/internal/store"
 	"github.com/acme/agent-wrapper/internal/sync"
 )
 
@@ -163,7 +165,8 @@ func signingServer(t *testing.T, signer ed25519.PrivateKey, body []byte, announc
 		w.Header().Set("X-AW-Signature", signing.Sign(signer, body))
 		w.Header().Set("X-AW-Key-Id", signing.KeyID(signer.Public().(ed25519.PublicKey)))
 		if announcer != nil {
-			w.Header().Set("X-AW-Key-Rollover", signing.SignRollover(announcer, signer.Public().(ed25519.PublicKey)))
+			header, _ := signing.SignRollover(r.Context(), signing.NewSeedSigner(announcer), signer.Public().(ed25519.PublicKey))
+			w.Header().Set("X-AW-Key-Rollover", header)
 		}
 		_, _ = w.Write(body)
 	}))
@@ -307,7 +310,11 @@ func TestFetchReadsARolloverOnA304(t *testing.T) {
 	old, _ := signing.Generate()
 	next, _ := signing.Generate()
 	nextPub := next.Public().(ed25519.PublicKey)
-	srv := notModifiedServer(t, signing.SignRollover(old, nextPub))
+	header, err := signing.SignRollover(context.Background(), signing.NewSeedSigner(old), nextPub)
+	if err != nil {
+		t.Fatal(err)
+	}
+	srv := notModifiedServer(t, header)
 
 	got, err := (&sync.Client{Server: srv.URL}).Fetch(context.Background(), "cred", `"e1"`, old.Public().(ed25519.PublicKey))
 
@@ -328,9 +335,258 @@ func TestFetchRejectsAForgedRolloverOnA304(t *testing.T) {
 	next, _ := signing.Generate()
 	// Announced by a key this machine never pinned. There is no bundle on a
 	// 304 whose own check would catch it later, so it has to be caught here.
-	srv := notModifiedServer(t, signing.SignRollover(stranger, next.Public().(ed25519.PublicKey)))
+	header, err := signing.SignRollover(context.Background(), signing.NewSeedSigner(stranger), next.Public().(ed25519.PublicKey))
+	if err != nil {
+		t.Fatal(err)
+	}
+	srv := notModifiedServer(t, header)
 
 	if _, err := (&sync.Client{Server: srv.URL}).Fetch(context.Background(), "cred", `"e1"`, old.Public().(ed25519.PublicKey)); err == nil {
 		t.Fatal("Fetch followed a 304's rollover that the pinned key did not sign")
+	}
+}
+
+func TestFetchAdvertisesBothFormats(t *testing.T) {
+	var got string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		got = r.Header.Get("X-AW-Signature-Formats")
+		w.WriteHeader(http.StatusNotModified)
+	}))
+	defer srv.Close()
+	_, _ = (&sync.Client{Server: srv.URL}).Fetch(context.Background(), "cred", "etag", nil)
+	if got != "v1, v2" {
+		t.Fatalf("header %q", got)
+	}
+}
+
+// mintAndEnroll mints an enrollment token as an administrator and enrolls a
+// machine for user against srv, using the same sync.Client production code
+// a real machine would, so these tests exercise the real request/response
+// shape rather than a hand-built stand-in.
+func mintAndEnroll(t *testing.T, srv *httptest.Server, adminToken, user string) sync.Enrollment {
+	t.Helper()
+	req, err := http.NewRequest(http.MethodPost, srv.URL+"/v1/enrollment-tokens", strings.NewReader(fmt.Sprintf(`{"user":%q}`, user)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	req.Header.Set("Authorization", "Bearer "+adminToken)
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusCreated {
+		t.Fatalf("minting a token: status = %d", resp.StatusCode)
+	}
+	var tok struct {
+		Token string `json:"token"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&tok); err != nil {
+		t.Fatal(err)
+	}
+	e, err := (&sync.Client{Server: srv.URL}).Enroll(context.Background(), tok.Token, "laptop", "linux")
+	if err != nil {
+		t.Fatal(err)
+	}
+	return e
+}
+
+// realSignedServer starts a real handler.Handler backed by an in-memory
+// store, with signer wired on, and enrolls one machine against it. It
+// returns the server (so a test can still reach the *handler.Handler to
+// change Signer mid-test, e.g. to simulate a rotation) and the enrollment,
+// which carries the key this machine pinned.
+const testAdminToken = "test-admin-token"
+
+func realSignedServer(t *testing.T, signer *handler.Signer) (*handler.Handler, *httptest.Server, sync.Enrollment) {
+	t.Helper()
+	h := handler.New(store.NewMemory(), nil)
+	h.AdminToken = testAdminToken
+	h.Signer = signer
+	srv := httptest.NewServer(h.Routes())
+	t.Cleanup(srv.Close)
+	e := mintAndEnroll(t, srv, testAdminToken, "alice@acme.com")
+	return h, srv, e
+}
+
+// v2OnlySigner stands in for a KMS-backed signer the way the handler tests
+// do: it can speak only v2, so an old aw-sync — or one that negotiates
+// nothing — gets a 426 from the real handler rather than a response.
+type v2OnlySigner struct{ signing.Signer }
+
+func (v2OnlySigner) Formats() []string { return []string{signing.FormatV2} }
+
+func TestFetchVerifiesV2AgainstASeedServer(t *testing.T) {
+	key, err := signing.Generate()
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, srv, e := realSignedServer(t, &handler.Signer{Current: signing.NewSeedSigner(key)})
+	pinned, err := signing.ParsePublic(e.PublicKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	got, err := (&sync.Client{Server: srv.URL}).Fetch(context.Background(), e.Credential, "", pinned)
+	if err != nil {
+		t.Fatalf("Fetch: %v", err)
+	}
+	if got.Format != signing.FormatV2 {
+		t.Fatalf("Format = %q, want v2", got.Format)
+	}
+	if !signing.VerifyBundle(signing.FormatV2, pinned, got.Raw, got.Signature) {
+		t.Fatal("the signature does not verify as v2 over the served bytes")
+	}
+}
+
+func TestFetchV2KeyIDMismatchNamesBothIDs(t *testing.T) {
+	key, err := signing.Generate()
+	if err != nil {
+		t.Fatal(err)
+	}
+	pub := key.Public().(ed25519.PublicKey)
+	body := []byte(`{"version":"4","user":"a@b.c","rules":[]}`)
+	const servedKeyID = "0000000000000000"
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("X-AW-Signature-Format", signing.FormatV2)
+		w.Header().Set("X-AW-Key-Id", servedKeyID)
+		w.Header().Set("X-AW-Signature", signing.Sign(key, signing.BundleStatement(signing.KeyID(pub), body)))
+		_, _ = w.Write(body)
+	}))
+	defer srv.Close()
+
+	_, err = (&sync.Client{Server: srv.URL}).Fetch(context.Background(), "cred", "", pub)
+	if err == nil || !strings.Contains(err.Error(), servedKeyID) || !strings.Contains(err.Error(), signing.KeyID(pub)) {
+		t.Fatalf("err = %v, want it to name both %s and %s", err, servedKeyID, signing.KeyID(pub))
+	}
+}
+
+func TestFetchV2BadSignatureFails(t *testing.T) {
+	pinned, err := signing.Generate()
+	if err != nil {
+		t.Fatal(err)
+	}
+	other, err := signing.Generate()
+	if err != nil {
+		t.Fatal(err)
+	}
+	pub := pinned.Public().(ed25519.PublicKey)
+	body := []byte(`{"version":"4","user":"a@b.c","rules":[]}`)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("X-AW-Signature-Format", signing.FormatV2)
+		w.Header().Set("X-AW-Key-Id", signing.KeyID(pub))
+		w.Header().Set("X-AW-Signature", signing.Sign(other, signing.BundleStatement(signing.KeyID(pub), body)))
+		_, _ = w.Write(body)
+	}))
+	defer srv.Close()
+
+	_, err = (&sync.Client{Server: srv.URL}).Fetch(context.Background(), "cred", "", pub)
+	want := "not signed by key " + signing.KeyID(pub)
+	if err == nil || !strings.Contains(err.Error(), want) {
+		t.Fatalf("err = %v, want it to contain %q", err, want)
+	}
+}
+
+func TestFetchUnknownFormatIsNamed(t *testing.T) {
+	key, err := signing.Generate()
+	if err != nil {
+		t.Fatal(err)
+	}
+	pub := key.Public().(ed25519.PublicKey)
+	body := []byte(`{"version":"4","user":"a@b.c","rules":[]}`)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("X-AW-Signature-Format", "v7")
+		w.Header().Set("X-AW-Key-Id", signing.KeyID(pub))
+		w.Header().Set("X-AW-Signature", signing.Sign(key, body))
+		_, _ = w.Write(body)
+	}))
+	defer srv.Close()
+
+	_, err = (&sync.Client{Server: srv.URL}).Fetch(context.Background(), "cred", "", pub)
+	if err == nil || !strings.Contains(err.Error(), "v7") {
+		t.Fatalf("err = %v, want it to name v7", err)
+	}
+}
+
+func TestFetchNoFormatHeaderIsV1(t *testing.T) {
+	key, err := signing.Generate()
+	if err != nil {
+		t.Fatal(err)
+	}
+	pub := key.Public().(ed25519.PublicKey)
+	body := []byte(`{"version":"4","user":"a@b.c","rules":[]}`)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// An awd from before v2: no X-AW-Signature-Format header at all.
+		w.Header().Set("X-AW-Signature", signing.Sign(key, body))
+		w.Header().Set("X-AW-Key-Id", signing.KeyID(pub))
+		_, _ = w.Write(body)
+	}))
+	defer srv.Close()
+
+	got, err := (&sync.Client{Server: srv.URL}).Fetch(context.Background(), "cred", "", pub)
+	if err != nil {
+		t.Fatalf("Fetch: %v", err)
+	}
+	if got.Format != signing.FormatV1 {
+		t.Fatalf("Format = %q, want v1", got.Format)
+	}
+}
+
+// Review Focus 1.
+func TestFetchRepinsFromSeedOntoAV2OnlySigner(t *testing.T) {
+	seedKey, err := signing.Generate()
+	if err != nil {
+		t.Fatal(err)
+	}
+	seed := signing.NewSeedSigner(seedKey)
+	kmsKey, err := signing.Generate()
+	if err != nil {
+		t.Fatal(err)
+	}
+	kms := v2OnlySigner{signing.NewSeedSigner(kmsKey)}
+
+	// Enrolled while the server still signs with the seed, so this machine
+	// pins the seed's key exactly as a machine enrolled before the KMS
+	// rotation would have.
+	h, srv, e := realSignedServer(t, &handler.Signer{Current: seed})
+	pinned, err := signing.ParsePublic(e.PublicKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// The control plane rotates onto KMS; the seed now only signs the
+	// rollover.
+	h.Signer = &handler.Signer{Current: kms, Previous: seed}
+
+	got, err := (&sync.Client{Server: srv.URL}).Fetch(context.Background(), e.Credential, "", pinned)
+	if err != nil {
+		t.Fatalf("Fetch: %v", err)
+	}
+	kmsPub := kmsKey.Public().(ed25519.PublicKey)
+	if got.Rollover == nil || !got.Rollover.PublicKey.Equal(kmsPub) {
+		t.Fatalf("Rollover = %+v, want it to announce the KMS key", got.Rollover)
+	}
+	if got.Format != signing.FormatV2 {
+		t.Fatalf("Format = %q, want v2", got.Format)
+	}
+	if !signing.VerifyBundle(signing.FormatV2, kmsPub, got.Raw, got.Signature) {
+		t.Fatal("the signature does not verify with the new KMS-style key")
+	}
+}
+
+func TestFetchAgainstV2OnlyServerWithOldClientBehaviour(t *testing.T) {
+	// Fetch always advertises both formats, so it cannot itself produce the
+	// request an old aw-sync would send. This documents what that old
+	// client sees instead: a hand-crafted 426, as a KMS-only signer answers
+	// a client that never offered v2.
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Error(w, `{"error":"aw-sync too old for this control plane's signing; upgrade aw-sync to a build that supports signature format v2"}`, http.StatusUpgradeRequired)
+	}))
+	defer srv.Close()
+
+	_, err := (&sync.Client{Server: srv.URL}).Fetch(context.Background(), "cred", "", nil)
+	if err == nil || !strings.Contains(err.Error(), "upgrade aw-sync") {
+		t.Fatalf("err = %v, want it to mention upgrading aw-sync; the machine keeps its current bundle either way", err)
 	}
 }

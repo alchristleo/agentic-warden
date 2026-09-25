@@ -1,6 +1,7 @@
 package signing
 
 import (
+	"context"
 	"crypto/ed25519"
 	"encoding/base64"
 	"strings"
@@ -11,7 +12,10 @@ func TestRolloverRoundTrip(t *testing.T) {
 	old, _ := Generate()
 	next, _ := Generate()
 	nextPub := next.Public().(ed25519.PublicKey)
-	header := SignRollover(old, nextPub)
+	header, err := SignRollover(context.Background(), NewSeedSigner(old), nextPub)
+	if err != nil {
+		t.Fatalf("SignRollover: %v", err)
+	}
 	if strings.Count(header, " ") != 1 {
 		t.Fatalf("header %q should hold exactly one space", header)
 	}
@@ -28,10 +32,16 @@ func TestRolloverRejections(t *testing.T) {
 	old, _ := Generate()
 	next, _ := Generate()
 	stranger, _ := Generate()
-	header := SignRollover(old, next.Public().(ed25519.PublicKey))
+	header, err := SignRollover(context.Background(), NewSeedSigner(old), next.Public().(ed25519.PublicKey))
+	if err != nil {
+		t.Fatalf("SignRollover: %v", err)
+	}
 	fields := strings.Fields(header)
 
-	forged := SignRollover(stranger, next.Public().(ed25519.PublicKey))
+	forged, err := SignRollover(context.Background(), NewSeedSigner(stranger), next.Public().(ed25519.PublicKey))
+	if err != nil {
+		t.Fatalf("SignRollover: %v", err)
+	}
 	cases := map[string]string{
 		"signed by a stranger": forged,
 		"no space":             base64.StdEncoding.EncodeToString([]byte("x")),

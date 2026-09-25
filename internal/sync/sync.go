@@ -240,7 +240,7 @@ func Run(ctx context.Context, cfg Config) Result {
 			verified = fetched.Rollover.PublicKey
 		}
 		planned = append(planned,
-			plannedFile{path: filepath.Join(cfg.StateDir, SignatureFile), content: []byte(fmt.Sprintf("aw-ed25519 %s %s\n", signing.KeyID(verified), fetched.Signature)), mode: 0o644},
+			plannedFile{path: filepath.Join(cfg.StateDir, SignatureFile), content: []byte(signing.SignatureLine(fetched.Format, signing.KeyID(verified), fetched.Signature)), mode: 0o644},
 			plannedFile{path: filepath.Join(cfg.StateDir, TrustFile), content: []byte(signing.FormatPublic(verified) + "\n"), mode: 0o644},
 		)
 	}

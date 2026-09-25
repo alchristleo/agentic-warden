@@ -79,6 +79,10 @@ type Fetched struct {
 	// Rollover is the new key this fetch repinned to, or nil. The caller
 	// persists it: the verification already happened here.
 	Rollover *signing.Rollover
+	// Format is the signature format the server used ("v1" or "v2"), empty
+	// when the response was unsigned. It decides the signature file's
+	// first token.
+	Format string
 }
 
 // Enroll exchanges a single-use token for this machine's credential.
@@ -135,6 +139,9 @@ func (c *Client) Fetch(ctx context.Context, credential, etag string, pinned ed25
 	req.Header.Set("Accept", "application/json")
 	req.Header.Set("Authorization", "Bearer "+credential)
 	req.Header.Set("User-Agent", "aw-sync")
+	// Advertising v2 is what lets a control plane whose key lives in KMS
+	// sign for this machine; one that holds a seed picks v2 too.
+	req.Header.Set("X-AW-Signature-Formats", signing.FormatV1+", "+signing.FormatV2)
 	if etag != "" {
 		req.Header.Set("If-None-Match", etag)
 	}
@@ -182,6 +189,13 @@ func (c *Client) Fetch(ctx context.Context, credential, etag string, pinned ed25
 	if err != nil {
 		return Fetched{}, err
 	}
+	format := ""
+	if signature != "" {
+		format = resp.Header.Get("X-AW-Signature-Format")
+		if format == "" {
+			format = signing.FormatV1 // an awd from before v2
+		}
+	}
 	if pinned != nil {
 		verifier := pinned
 		if rollover != nil {
@@ -190,7 +204,15 @@ func (c *Client) Fetch(ctx context.Context, credential, etag string, pinned ed25
 		if signature == "" {
 			return Fetched{}, errors.New("sync: this machine pins a signing key but the control plane sent no signature")
 		}
-		if !signing.Verify(verifier, payload, signature) {
+		if format != signing.FormatV1 && format != signing.FormatV2 {
+			return Fetched{}, fmt.Errorf("sync: the control plane used an unknown signature format %q", format)
+		}
+		if format == signing.FormatV2 {
+			if served := resp.Header.Get("X-AW-Key-Id"); served != signing.KeyID(verifier) {
+				return Fetched{}, fmt.Errorf("sync: the bundle is signed by key %s but this machine trusts key %s", served, signing.KeyID(verifier))
+			}
+		}
+		if !signing.VerifyBundle(format, verifier, payload, signature) {
 			return Fetched{}, fmt.Errorf("sync: the bundle is not signed by key %s", signing.KeyID(verifier))
 		}
 	}
@@ -199,7 +221,7 @@ func (c *Client) Fetch(ctx context.Context, credential, etag string, pinned ed25
 	if err := json.Unmarshal(payload, &bundle); err != nil {
 		return Fetched{}, fmt.Errorf("sync: parsing the bundle: %w", err)
 	}
-	return Fetched{Bundle: &bundle, Raw: payload, Signature: signature, ETag: resp.Header.Get("ETag"), Rollover: rollover}, nil
+	return Fetched{Bundle: &bundle, Raw: payload, Signature: signature, ETag: resp.Header.Get("ETag"), Rollover: rollover, Format: format}, nil
 }
 
 // rolloverFrom reads the rollover a response announces, checked against the

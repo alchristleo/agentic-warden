@@ -19,6 +19,7 @@ import (
 
 	"github.com/acme/agent-wrapper/internal/agent"
 	"github.com/acme/agent-wrapper/internal/agent/claude"
+	"github.com/acme/agent-wrapper/internal/handler"
 	"github.com/acme/agent-wrapper/internal/model"
 	"github.com/acme/agent-wrapper/internal/policy"
 	"github.com/acme/agent-wrapper/internal/signing"
@@ -103,7 +104,8 @@ func newSignedFakeAwd(t *testing.T, credential string, body []byte, signer ed255
 		w.Header().Set("X-AW-Signature", signing.Sign(signer, body))
 		w.Header().Set("X-AW-Key-Id", signing.KeyID(signer.Public().(ed25519.PublicKey)))
 		if announcer != nil {
-			w.Header().Set("X-AW-Key-Rollover", signing.SignRollover(announcer, signer.Public().(ed25519.PublicKey)))
+			header, _ := signing.SignRollover(r.Context(), signing.NewSeedSigner(announcer), signer.Public().(ed25519.PublicKey))
+			w.Header().Set("X-AW-Key-Rollover", header)
 		}
 		w.Header().Set("ETag", `"e1"`)
 		w.Header().Set("Content-Type", "application/json")
@@ -713,6 +715,126 @@ func TestRunRepinsOnARollover(t *testing.T) {
 	}
 }
 
+func TestRunWritesAV2SignatureLine(t *testing.T) {
+	key, err := signing.Generate()
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, srv, e := realSignedServer(t, &handler.Signer{Current: signing.NewSeedSigner(key)})
+	pub := key.Public().(ed25519.PublicKey)
+
+	stateDir := filepath.Join(t.TempDir(), "state")
+	m := sync.Machine{Server: srv.URL, MachineID: e.MachineID, Credential: e.Credential, Agents: []string{"claude"}, PublicKey: e.PublicKey, KeyID: e.KeyID}
+	if err := sync.SaveMachine(stateDir, m); err != nil {
+		t.Fatal(err)
+	}
+	root := filepath.Join(t.TempDir(), "claude-root")
+	now := time.Date(2026, 9, 26, 12, 0, 0, 0, time.UTC)
+	cfg := sync.Config{
+		StateDir: stateDir,
+		GOOS:     "linux",
+		Roots:    map[string]string{"claude": root},
+		Registry: claudeRegistry(t),
+		Now:      func() time.Time { return now },
+	}
+
+	res := sync.Run(context.Background(), cfg)
+	if res.Err != nil {
+		t.Fatal(res.Err)
+	}
+
+	sig, err := os.ReadFile(filepath.Join(cfg.StateDir, sync.SignatureFile))
+	if err != nil {
+		t.Fatalf("reading the signature: %v", err)
+	}
+	wantPrefix := "aw-ed25519-v2 " + signing.KeyID(pub) + " "
+	if !strings.HasPrefix(string(sig), wantPrefix) {
+		t.Fatalf("signature file = %q, want it to start with %q", sig, wantPrefix)
+	}
+
+	_, format, _, trustMissing, err := signing.VerifyFiles(
+		filepath.Join(cfg.StateDir, sync.TrustFile),
+		filepath.Join(cfg.StateDir, sync.BundleFile),
+		filepath.Join(cfg.StateDir, sync.SignatureFile),
+	)
+	if err != nil || trustMissing {
+		t.Fatalf("VerifyFiles: format=%q trustMissing=%v err=%v", format, trustMissing, err)
+	}
+	if format != signing.FormatV2 {
+		t.Fatalf("format = %q, want v2", format)
+	}
+}
+
+// Review Focus 4.
+func TestUpgradedClientKeepsAV1SignatureOnA304(t *testing.T) {
+	key, err := signing.Generate()
+	if err != nil {
+		t.Fatal(err)
+	}
+	pub := key.Public().(ed25519.PublicKey)
+	body := []byte(`{"version":"6","user":"a@b.c","rules":[]}`)
+
+	const etag = `"e1"`
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("ETag", etag)
+		w.WriteHeader(http.StatusNotModified)
+	}))
+	t.Cleanup(srv.Close)
+
+	cfg, _ := enrolledSigned(t, srv, claudeRegistry(t), pub, "claude")
+
+	// Seed the state dir the way an old aw-sync, from before v2 existed,
+	// would have left it: a v1 .sig line, the trust key, the bundle it
+	// signs over, and an etag matching what the server answers, so this
+	// cycle is a 304 that touches none of them.
+	if err := os.WriteFile(filepath.Join(cfg.StateDir, sync.BundleFile), body, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(cfg.StateDir, sync.TrustFile), []byte(signing.FormatPublic(pub)+"\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	sigLine := signing.SignatureLine(signing.FormatV1, signing.KeyID(pub), signing.Sign(key, body))
+	if err := os.WriteFile(filepath.Join(cfg.StateDir, sync.SignatureFile), []byte(sigLine), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	state, err := sync.LoadState(cfg.StateDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	state.ETag = etag
+	if err := sync.SaveState(cfg.StateDir, state); err != nil {
+		t.Fatal(err)
+	}
+
+	res := sync.Run(context.Background(), cfg)
+	if res.Err != nil {
+		t.Fatal(res.Err)
+	}
+	if !res.Unchanged {
+		t.Fatalf("result = %+v, want Unchanged: the server answered 304", res)
+	}
+
+	after, err := os.ReadFile(filepath.Join(cfg.StateDir, sync.SignatureFile))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(after) != sigLine {
+		t.Fatalf(".sig file changed on a 304:\nbefore %q\nafter  %q", sigLine, after)
+	}
+
+	_, format, _, trustMissing, err := signing.VerifyFiles(
+		filepath.Join(cfg.StateDir, sync.TrustFile),
+		filepath.Join(cfg.StateDir, sync.BundleFile),
+		filepath.Join(cfg.StateDir, sync.SignatureFile),
+	)
+	if err != nil || trustMissing {
+		t.Fatalf("VerifyFiles: format=%q trustMissing=%v err=%v", format, trustMissing, err)
+	}
+	if format != signing.FormatV1 {
+		t.Fatalf("format = %q, want v1: an upgraded client must still read an old client's signature", format)
+	}
+}
+
 func TestUnsignedDeploymentWritesNeitherNewFile(t *testing.T) {
 	f := newFakeAwd(t, testBundle())
 	cfg, _ := enrolled(t, f, claudeRegistry(t), "claude") // machine.json pins no key
@@ -761,7 +883,8 @@ func TestRunRepinsOnARolloverCarriedByA304(t *testing.T) {
 		const etag = `"e1"`
 		w.Header().Set("ETag", etag)
 		if rotating.Load() {
-			w.Header().Set("X-AW-Key-Rollover", signing.SignRollover(old, nextPub))
+			header, _ := signing.SignRollover(r.Context(), signing.NewSeedSigner(old), nextPub)
+			w.Header().Set("X-AW-Key-Rollover", header)
 		}
 		if r.Header.Get("If-None-Match") == etag {
 			w.WriteHeader(http.StatusNotModified)

@@ -41,6 +41,7 @@ import (
 	"github.com/acme/agent-wrapper/internal/model"
 	"github.com/acme/agent-wrapper/internal/policy"
 	"github.com/acme/agent-wrapper/internal/signing"
+	"github.com/acme/agent-wrapper/internal/signing/awskms"
 	"github.com/acme/agent-wrapper/internal/store"
 	"sigs.k8s.io/yaml"
 )
@@ -70,8 +71,8 @@ Environment:
   AWD_URL                    control plane URL used by apply (default http://localhost:8080)
   AWD_ADMIN_TOKEN            bearer token for apply and machine administration; unset disables them
   AWD_SCIM_TOKEN             bearer token the identity provider presents on /scim/v2; unset disables SCIM
-  AWD_SIGNING_KEY            path to the signing key written by keygen; unset means bundles are not signed
-  AWD_SIGNING_KEY_PREVIOUS   path to the key being rotated out, signed over during a rotation
+  AWD_SIGNING_KEY            path to a signing key written by keygen, or awskms:<key ARN>; unset means bundles are not signed
+  AWD_SIGNING_KEY_PREVIOUS   path to a signing key written by keygen, or awskms:<key ARN>, being rotated out, signed over during a rotation
   AWD_PUBLIC_URL                   external https origin of awd; enables the console with AWD_CONSOLE_*
   AWD_CONSOLE_ISSUER               OIDC issuer URL
   AWD_CONSOLE_CLIENT_ID            OIDC client id
@@ -156,24 +157,27 @@ func serve() error {
 
 	// Signing is opt-in: a deployment with no key keeps serving exactly as
 	// it did, and every client keeps accepting what it serves.
-	if path := os.Getenv("AWD_SIGNING_KEY"); path != "" {
-		key, err := signing.LoadSeed(path)
+	if value := os.Getenv("AWD_SIGNING_KEY"); value != "" {
+		current, err := loadSigner(context.Background(), value)
 		if err != nil {
-			return err
+			return fmt.Errorf("awd: AWD_SIGNING_KEY: %w", err)
 		}
-		s := &handler.Signer{Key: key}
+		s := &handler.Signer{Current: current}
 		if previous := os.Getenv("AWD_SIGNING_KEY_PREVIOUS"); previous != "" {
 			// A rotation that cannot vouch for its new key leaves every
-			// machine pinned to a key nothing signs with any more. Refusing
-			// to start says so while it is still one server's problem.
-			old, err := signing.LoadSeed(previous)
+			// machine pinned to a key nothing signs with any more.
+			old, err := loadSigner(context.Background(), previous)
 			if err != nil {
 				return fmt.Errorf("awd: AWD_SIGNING_KEY_PREVIOUS: %w", err)
 			}
 			s.Previous = old
 		}
 		h.Signer = s
-		log.Info("signing bundles", "keyId", s.KeyID())
+		kind := "seed"
+		if strings.HasPrefix(value, "awskms:") {
+			kind = "awskms"
+		}
+		log.Info("signing bundles", "signer", kind, "keyId", s.KeyID(), "formats", strings.Join(current.Formats(), ","))
 	} else {
 		log.Warn("bundles are not signed; set AWD_SIGNING_KEY to sign them")
 	}
@@ -289,6 +293,21 @@ func openStore(cfg config.Config, log *slog.Logger) (store.Store, error) {
 	}
 	log.Info("connected to Postgres")
 	return pg, nil
+}
+
+// loadSigner reads AWD_SIGNING_KEY's value: a seed file written by keygen,
+// or awskms:<key ARN> for a key held in AWS KMS.
+func loadSigner(ctx context.Context, value string) (signing.Signer, error) {
+	if arnValue, ok := strings.CutPrefix(value, "awskms:"); ok {
+		ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
+		defer cancel()
+		return awskms.Load(ctx, arnValue)
+	}
+	key, err := signing.LoadSeed(value)
+	if err != nil {
+		return nil, err
+	}
+	return signing.NewSeedSigner(key), nil
 }
 
 // keygen writes a new signing key and prints the public half. It never
