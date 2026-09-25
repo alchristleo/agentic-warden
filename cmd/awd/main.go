@@ -156,24 +156,23 @@ func serve() error {
 
 	// Signing is opt-in: a deployment with no key keeps serving exactly as
 	// it did, and every client keeps accepting what it serves.
-	if path := os.Getenv("AWD_SIGNING_KEY"); path != "" {
-		key, err := signing.LoadSeed(path)
+	if value := os.Getenv("AWD_SIGNING_KEY"); value != "" {
+		current, err := loadSigner(context.Background(), value)
 		if err != nil {
-			return err
+			return fmt.Errorf("awd: AWD_SIGNING_KEY: %w", err)
 		}
-		s := &handler.Signer{Key: key}
+		s := &handler.Signer{Current: current}
 		if previous := os.Getenv("AWD_SIGNING_KEY_PREVIOUS"); previous != "" {
 			// A rotation that cannot vouch for its new key leaves every
-			// machine pinned to a key nothing signs with any more. Refusing
-			// to start says so while it is still one server's problem.
-			old, err := signing.LoadSeed(previous)
+			// machine pinned to a key nothing signs with any more.
+			old, err := loadSigner(context.Background(), previous)
 			if err != nil {
 				return fmt.Errorf("awd: AWD_SIGNING_KEY_PREVIOUS: %w", err)
 			}
 			s.Previous = old
 		}
 		h.Signer = s
-		log.Info("signing bundles", "keyId", s.KeyID())
+		log.Info("signing bundles", "keyId", s.KeyID(), "formats", strings.Join(current.Formats(), ","))
 	} else {
 		log.Warn("bundles are not signed; set AWD_SIGNING_KEY to sign them")
 	}
@@ -289,6 +288,16 @@ func openStore(cfg config.Config, log *slog.Logger) (store.Store, error) {
 	}
 	log.Info("connected to Postgres")
 	return pg, nil
+}
+
+// loadSigner reads AWD_SIGNING_KEY's value: a path to a seed file written
+// by keygen.
+func loadSigner(_ context.Context, value string) (signing.Signer, error) {
+	key, err := signing.LoadSeed(value)
+	if err != nil {
+		return nil, err
+	}
+	return signing.NewSeedSigner(key), nil
 }
 
 // keygen writes a new signing key and prints the public half. It never

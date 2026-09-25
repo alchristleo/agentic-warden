@@ -1,6 +1,8 @@
 package handler
 
 import (
+	"context"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -52,21 +54,30 @@ func (h *Handler) getBundle(w http.ResponseWriter, r *http.Request, machine mode
 		h.log.WarnContext(r.Context(), "recording a bundle fetch", "machine", machine.ID, "err", err)
 	}
 
-	// The rollover statement is self-contained and signed by the outgoing
-	// key, so it stands on its own and rides on a 304 as well as on a 200.
-	// It has to: on a fleet whose policy is stable every cycle is a 304, and
-	// a rotation announced only with changed bundle bytes would never finish
-	// there. The operator would then drop the previous key and strand every
-	// machine still pinned to it.
-	// TODO(task 3): this shim keeps the header identical while the signing
-	// package grows a real KMS-capable Signer for h.Signer itself; it wraps
-	// the raw previous key so SignRollover's new Signer-based interface
-	// compiles without changing what gets written.
-	if h.Signer != nil && h.Signer.Previous != nil {
-		header, err := signing.SignRollover(r.Context(), signing.NewSeedSigner(h.Signer.Previous), h.Signer.Public())
-		if err == nil {
-			w.Header().Set("X-AW-Key-Rollover", header)
+	format := ""
+	if h.Signer != nil {
+		chosen, ok := signing.Choose(signing.ParseFormats(r.Header.Get("X-AW-Signature-Formats")), h.Signer.Current.Formats())
+		if !ok {
+			// Only a v2-only signer (KMS) gets here: it cannot sign the
+			// body itself, so an old aw-sync must upgrade. It keeps the
+			// bundle it has meanwhile.
+			writeError(w, http.StatusUpgradeRequired, "aw-sync too old for this control plane's signing; upgrade aw-sync to a build that supports signature format v2")
+			return
 		}
+		format = chosen
+	}
+
+	// The rollover statement is self-contained and signed by the outgoing
+	// key, so it rides on a 304 as well as on a 200 — on a stable fleet
+	// every cycle is a 304, and a rotation announced only with changed
+	// bytes would never finish there.
+	if h.Signer != nil && h.Signer.Previous != nil {
+		header, err := signing.SignRollover(r.Context(), cachingSigner{h.sigs, h.Signer.Previous}, h.Signer.Public())
+		if err != nil {
+			h.signingUnavailable(w, r, err)
+			return
+		}
+		w.Header().Set("X-AW-Key-Rollover", header)
 	}
 	etag := etagOf(body)
 	w.Header().Set("ETag", etag)
@@ -77,7 +88,17 @@ func (h *Handler) getBundle(w http.ResponseWriter, r *http.Request, machine mode
 		return
 	}
 	if h.Signer != nil {
-		w.Header().Set("X-AW-Signature", signing.Sign(h.Signer.Key, body))
+		msg := body
+		if format == signing.FormatV2 {
+			msg = signing.BundleStatement(h.Signer.KeyID(), body)
+		}
+		sig, err := h.sigs.sign(r.Context(), h.Signer.Current, msg)
+		if err != nil {
+			h.signingUnavailable(w, r, err)
+			return
+		}
+		w.Header().Set("X-AW-Signature", base64.StdEncoding.EncodeToString(sig))
+		w.Header().Set("X-AW-Signature-Format", format)
 		w.Header().Set("X-AW-Key-Id", h.Signer.KeyID())
 	}
 	w.Header().Set("Content-Type", "application/json")
@@ -85,4 +106,23 @@ func (h *Handler) getBundle(w http.ResponseWriter, r *http.Request, machine mode
 	if _, err := w.Write(body); err != nil {
 		h.log.ErrorContext(r.Context(), "writing the bundle response", "err", err)
 	}
+}
+
+// cachingSigner routes a Signer through the handler's cache, so the
+// constant rollover statement is signed once, not once per request.
+type cachingSigner struct {
+	cache *sigCache
+	signing.Signer
+}
+
+func (c cachingSigner) Sign(ctx context.Context, msg []byte) ([]byte, error) {
+	return c.cache.sign(ctx, c.Signer, msg)
+}
+
+// signingUnavailable answers 503 rather than ever serving an unsigned or
+// unannounced response. err carries the backend's error code (for KMS,
+// the AWS error name); it is logged, never sent.
+func (h *Handler) signingUnavailable(w http.ResponseWriter, r *http.Request, err error) {
+	h.log.ErrorContext(r.Context(), "signing a bundle response", "err", err)
+	writeError(w, http.StatusServiceUnavailable, "signing unavailable")
 }

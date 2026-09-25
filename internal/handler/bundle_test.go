@@ -1,11 +1,15 @@
 package handler_test
 
 import (
+	"context"
 	"crypto/ed25519"
 	"encoding/json"
+	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -239,7 +243,7 @@ func newSignedServer(t *testing.T, signer *handler.Signer) *httptest.Server {
 
 func TestBundleCarriesASignature(t *testing.T) {
 	key, _ := signing.Generate()
-	srv := newSignedServer(t, &handler.Signer{Key: key})
+	srv := newSignedServer(t, &handler.Signer{Current: signing.NewSeedSigner(key)})
 	_, alice := enroll(t, srv, mintToken(t, srv, "alice@acme.com"))
 
 	resp := fetchBundle(t, srv, alice, nil)
@@ -278,7 +282,7 @@ func TestUnsignedDeploymentSendsNoSignatureHeaders(t *testing.T) {
 
 func TestNotModifiedCarriesNoSignature(t *testing.T) {
 	key, _ := signing.Generate()
-	srv := newSignedServer(t, &handler.Signer{Key: key})
+	srv := newSignedServer(t, &handler.Signer{Current: signing.NewSeedSigner(key)})
 	_, alice := enroll(t, srv, mintToken(t, srv, "alice@acme.com"))
 	first := fetchBundle(t, srv, alice, nil)
 
@@ -295,7 +299,7 @@ func TestNotModifiedCarriesNoSignature(t *testing.T) {
 func TestRolloverHeaderIsSignedByThePreviousKey(t *testing.T) {
 	previous, _ := signing.Generate()
 	current, _ := signing.Generate()
-	srv := newSignedServer(t, &handler.Signer{Key: current, Previous: previous})
+	srv := newSignedServer(t, &handler.Signer{Current: signing.NewSeedSigner(current), Previous: signing.NewSeedSigner(previous)})
 	_, alice := enroll(t, srv, mintToken(t, srv, "alice@acme.com"))
 
 	resp := fetchBundle(t, srv, alice, nil)
@@ -317,7 +321,7 @@ func TestNotModifiedStillCarriesTheRollover(t *testing.T) {
 	// nothing about the body, so a 304 can carry it honestly.
 	previous, _ := signing.Generate()
 	current, _ := signing.Generate()
-	srv := newSignedServer(t, &handler.Signer{Key: current, Previous: previous})
+	srv := newSignedServer(t, &handler.Signer{Current: signing.NewSeedSigner(current), Previous: signing.NewSeedSigner(previous)})
 	_, alice := enroll(t, srv, mintToken(t, srv, "alice@acme.com"))
 	first := fetchBundle(t, srv, alice, nil)
 
@@ -349,5 +353,158 @@ func TestBundleWithAnEmptySnapshotIsTheAuthoredBundle(t *testing.T) {
 	synced := decodeBundle(t, fetchBundle(t, srv, alice, nil))
 	if !equal(synced.Groups, authored.Groups) || len(synced.Rules) != len(authored.Rules) {
 		t.Errorf("bundle changed under an empty snapshot: %+v vs %+v", synced, authored)
+	}
+}
+
+// newSignedServerWithMachine is newSignedServer plus an enrolled machine: it
+// mints an enrollment token as admin and enrolls it, returning the
+// credential. A nil signer is an unsigned server.
+func newSignedServerWithMachine(t *testing.T, signer *handler.Signer) (*httptest.Server, string) {
+	t.Helper()
+	srv := newSignedServer(t, signer)
+	_, credential := enroll(t, srv, mintToken(t, srv, "alice@acme.com"))
+	return srv, credential
+}
+
+// postLargePolicy posts a revision whose baseline rule's claude managed
+// settings hold one env value of n bytes, so the compiled bundle is at
+// least n bytes. newServer sets no ManagedValidator, so any key is accepted.
+func postLargePolicy(t *testing.T, srv *httptest.Server, n int) {
+	t.Helper()
+	pad := strings.Repeat("x", n)
+	body := fmt.Sprintf(`{"version":"big","rules":[{"name":"baseline","agents":{"claude":{"managed":{"env":{"PAD":%q}}}}}]}`, pad)
+	if resp := post(t, srv, "/v1/policy/revisions", body); resp.StatusCode != http.StatusCreated {
+		t.Fatalf("postLargePolicy: status = %d", resp.StatusCode)
+	}
+}
+
+// v2OnlySigner stands in for KMS: a seed that only speaks v2, fails on
+// demand, and refuses messages over 4096 bytes like the real one.
+type v2OnlySigner struct {
+	signing.Signer
+	fail bool
+}
+
+func (v *v2OnlySigner) Formats() []string { return []string{signing.FormatV2} }
+func (v *v2OnlySigner) Sign(ctx context.Context, msg []byte) ([]byte, error) {
+	if len(msg) > 4096 {
+		return nil, fmt.Errorf("message of %d bytes exceeds 4096", len(msg))
+	}
+	if v.fail {
+		return nil, errors.New("KMSInternalException: boom")
+	}
+	return v.Signer.Sign(ctx, msg)
+}
+
+func bundleReq(t *testing.T, srv *httptest.Server, credential, formats, etag string) *http.Response {
+	t.Helper()
+	h := http.Header{"Authorization": {"Bearer " + credential}}
+	if formats != "" {
+		h.Set("X-AW-Signature-Formats", formats)
+	}
+	if etag != "" {
+		h.Set("If-None-Match", etag)
+	}
+	return get(t, srv, "/v1/bundle", h)
+}
+
+func TestNegotiationTable(t *testing.T) {
+	key, _ := signing.Generate()
+	seed := signing.NewSeedSigner(key)
+	kms := &v2OnlySigner{Signer: seed}
+	cases := []struct {
+		name       string
+		signer     signing.Signer
+		formats    string
+		wantStatus int
+		wantFormat string
+	}{
+		{"seed, new client", seed, "v1, v2", 200, "v2"},
+		{"seed, old client", seed, "", 200, "v1"},
+		{"seed, v1 only", seed, "v1", 200, "v1"},
+		{"seed, unknown only", seed, "v9", 200, "v1"},
+		{"kms, new client", kms, "v1, v2", 200, "v2"},
+		{"kms, old client", kms, "", 426, ""},
+		{"kms, unknown only", kms, "v9", 426, ""},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			srv, credential := newSignedServerWithMachine(t, &handler.Signer{Current: tc.signer})
+			resp := bundleReq(t, srv, credential, tc.formats, "")
+			if resp.StatusCode != tc.wantStatus {
+				t.Fatalf("status %d, want %d", resp.StatusCode, tc.wantStatus)
+			}
+			if tc.wantStatus == 426 {
+				body, _ := io.ReadAll(resp.Body)
+				if !strings.Contains(string(body), "upgrade aw-sync to a build that supports signature format v2") {
+					t.Fatalf("426 body %s", body)
+				}
+				return
+			}
+			got := resp.Header.Get("X-AW-Signature-Format")
+			if got != tc.wantFormat {
+				t.Fatalf("format %q, want %q", got, tc.wantFormat)
+			}
+			body, _ := io.ReadAll(resp.Body)
+			if !signing.VerifyBundle(got, tc.signer.Public(), body, resp.Header.Get("X-AW-Signature")) {
+				t.Fatal("signature does not verify")
+			}
+		})
+	}
+}
+
+func TestUnsignedServerSendsNoSignatureHeaders(t *testing.T) {
+	srv, credential := newSignedServerWithMachine(t, nil)
+	resp := bundleReq(t, srv, credential, "v1, v2", "")
+	for _, h := range []string{"X-AW-Signature", "X-AW-Signature-Format", "X-AW-Key-Id"} {
+		if resp.Header.Get(h) != "" {
+			t.Fatalf("%s set on an unsigned server", h)
+		}
+	}
+}
+
+// Review Focus 3.
+func TestKMSStyleSignerSignsALargeBundle(t *testing.T) {
+	key, _ := signing.Generate()
+	kms := &v2OnlySigner{Signer: signing.NewSeedSigner(key)}
+	srv, credential := newSignedServerWithMachine(t, &handler.Signer{Current: kms})
+	postLargePolicy(t, srv, 100<<10) // 100 KiB of managed settings
+	resp := bundleReq(t, srv, credential, "v1, v2", "")
+	body, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode != 200 || len(body) < 100<<10 || !signing.VerifyBundle("v2", kms.Public(), body, resp.Header.Get("X-AW-Signature")) {
+		t.Fatalf("status %d, len %d", resp.StatusCode, len(body))
+	}
+}
+
+func TestSignerFailureIs503NeverUnsigned(t *testing.T) {
+	key, _ := signing.Generate()
+	kms := &v2OnlySigner{Signer: signing.NewSeedSigner(key), fail: true}
+	srv, credential := newSignedServerWithMachine(t, &handler.Signer{Current: kms})
+	resp := bundleReq(t, srv, credential, "v1, v2", "")
+	body, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode != 503 || !strings.Contains(string(body), "signing unavailable") || strings.Contains(string(body), `"version"`) {
+		t.Fatalf("status %d body %s", resp.StatusCode, body)
+	}
+}
+
+func TestRolloverOn304UsesCacheAndFailsClosedWhenUncached(t *testing.T) {
+	cur, _ := signing.Generate()
+	prevKey, _ := signing.Generate()
+	prev := &v2OnlySigner{Signer: signing.NewSeedSigner(prevKey)}
+	srv, credential := newSignedServerWithMachine(t, &handler.Signer{Current: signing.NewSeedSigner(cur), Previous: prev})
+	first := bundleReq(t, srv, credential, "v1, v2", "")
+	etag := first.Header.Get("ETag")
+	if first.Header.Get("X-AW-Key-Rollover") == "" {
+		t.Fatal("no rollover on the 200")
+	}
+	prev.fail = true
+	cached := bundleReq(t, srv, credential, "v1, v2", etag)
+	if cached.StatusCode != 304 || cached.Header.Get("X-AW-Key-Rollover") == "" {
+		t.Fatalf("cached 304 = %d rollover %q", cached.StatusCode, cached.Header.Get("X-AW-Key-Rollover"))
+	}
+	// A fresh server has an empty cache: the same failure is a 503.
+	srv2, credential2 := newSignedServerWithMachine(t, &handler.Signer{Current: signing.NewSeedSigner(cur), Previous: prev})
+	if resp := bundleReq(t, srv2, credential2, "v1, v2", etag); resp.StatusCode != 503 {
+		t.Fatalf("uncached rollover failure = %d, want 503", resp.StatusCode)
 	}
 }

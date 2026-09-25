@@ -92,7 +92,7 @@ func TestEnrollmentReturnsThePublicKeyWhenSigned(t *testing.T) {
 	h := handler.New(store.NewMemory(), nil)
 	h.AdminToken = adminToken
 	key, _ := signing.Generate()
-	h.Signer = &handler.Signer{Key: key}
+	h.Signer = &handler.Signer{Current: signing.NewSeedSigner(key)}
 	srv := httptest.NewServer(h.Routes())
 	t.Cleanup(srv.Close)
 	token := mintToken(t, srv, "alice@acme.com")

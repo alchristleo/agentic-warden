@@ -53,19 +53,21 @@ type Handler struct {
 	// Console wires the web console on. Nil (the default) leaves every
 	// /console path a 404 and requireAdmin token-only.
 	Console *Console
+	// sigs caches signatures by key and message digest, so a remote signer
+	// (KMS) is asked once per distinct policy rather than once per request.
+	sigs *sigCache
 }
 
 // Signer holds the control plane's signing key, and during a rotation the
-// key it is replacing. Previous signs nothing but the rollover statement:
-// its only remaining job is to vouch for its successor to machines that
-// still pin it.
+// key it is replacing. Previous signs nothing but the rollover statement.
+// Either may be a local seed or a remote key (KMS).
 type Signer struct {
-	Key      ed25519.PrivateKey
-	Previous ed25519.PrivateKey
+	Current  signing.Signer
+	Previous signing.Signer
 }
 
 // Public is the key machines pin.
-func (s *Signer) Public() ed25519.PublicKey { return s.Key.Public().(ed25519.PublicKey) }
+func (s *Signer) Public() ed25519.PublicKey { return s.Current.Public() }
 
 // KeyID names that key in headers and listings.
 func (s *Signer) KeyID() string { return signing.KeyID(s.Public()) }
@@ -75,7 +77,7 @@ func New(s store.Store, log *slog.Logger) *Handler {
 	if log == nil {
 		log = slog.Default()
 	}
-	return &Handler{store: s, log: log, Now: time.Now}
+	return &Handler{store: s, log: log, Now: time.Now, sigs: newSigCache(1024)}
 }
 
 // Routes returns the router with middleware applied.

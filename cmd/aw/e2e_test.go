@@ -493,7 +493,7 @@ func TestDoctorReportsAVerifiedBundleSignature(t *testing.T) {
 			continue
 		}
 		for _, f := range a.Findings {
-			if f.Level == "ok" && strings.Contains(f.Message, "bundle signature: verified (key ") {
+			if f.Level == "ok" && strings.Contains(f.Message, "bundle signature: verified (v1, key ") {
 				sawVerified = true
 			}
 			if f.Level == "warn" && strings.Contains(f.Message, "AW_SYNC_STATE_DIR") {
