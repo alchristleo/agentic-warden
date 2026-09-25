@@ -329,7 +329,7 @@ func TestInspectReportsAVerifiedBundleSignature(t *testing.T) {
 
 	findings := in.adapter.Inspect(nil)
 
-	if !findingsWith(findings, agent.OK, "bundle signature: verified (key ") {
+	if !findingsWith(findings, agent.OK, "bundle signature: verified (v1, key ") {
 		t.Errorf("findings %+v should report a verified signature", findings)
 	}
 }
@@ -460,7 +460,7 @@ func TestInspectWarnsWhenTheTrustFileIsNotOwnedByRoot(t *testing.T) {
 
 	findings := in.adapter.Inspect(nil)
 
-	if !findingsWith(findings, agent.OK, "bundle signature: verified (key ") {
+	if !findingsWith(findings, agent.OK, "bundle signature: verified (v1, key ") {
 		t.Fatalf("findings %+v should still verify; the point of the test is that verification alone is not enough", findings)
 	}
 	if !findingsWith(findings, agent.Warn, trustPath) || !findingsWith(findings, agent.Warn, "not root") {

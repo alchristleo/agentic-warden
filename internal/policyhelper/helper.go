@@ -223,7 +223,7 @@ func VerifyBundle(stateDir, fallback string) (path string, verified []byte, note
 	trustPath := filepath.Join(stateDir, sync.TrustFile)
 	bundlePath := filepath.Join(stateDir, sync.BundleFile)
 	sigPath := filepath.Join(stateDir, sync.SignatureFile)
-	body, _, trustMissing, err := signing.VerifyFiles(trustPath, bundlePath, sigPath)
+	body, _, _, trustMissing, err := signing.VerifyFiles(trustPath, bundlePath, sigPath)
 	if trustMissing {
 		// No trust file at all is the unsigned case. Anything else reading
 		// it — permission denied, a directory in its place — is a broken

@@ -75,10 +75,6 @@ func ParsePublic(s string) (ed25519.PublicKey, error) {
 	return ed25519.PublicKey(raw), nil
 }
 
-// signatureLine is the algorithm tag every signature file begins with:
-// "aw-ed25519 <keyId> <signature>", three fields, one line.
-const signatureLine = "aw-ed25519"
-
 // VerifyFiles checks the bundle at bundlePath against the signature at
 // sigPath, using the public key at trustPath, and is the one place that
 // reads those three files and parses the signature line. It exists because
@@ -105,33 +101,49 @@ const signatureLine = "aw-ed25519"
 // then what was proved is not what is applied; there is no way to close
 // that window from the caller's side, because the proof is over bytes, not
 // over a path.
-func VerifyFiles(trustPath, bundlePath, sigPath string) (verified []byte, keyID string, trustMissing bool, err error) {
+//
+// format names which signature scheme the .sig line used — FormatV1 (the
+// signature is over body directly) or FormatV2 (the signature is over
+// BundleStatement(keyID, body)) — so a caller like doctor can report which
+// one verified.
+func VerifyFiles(trustPath, bundlePath, sigPath string) (verified []byte, format, keyID string, trustMissing bool, err error) {
 	trust, err := os.ReadFile(trustPath)
 	if errors.Is(err, os.ErrNotExist) {
-		return nil, "", true, nil
+		return nil, "", "", true, nil
 	}
 	if err != nil {
-		return nil, "", false, fmt.Errorf("the trusted key %s is unreadable: %w", trustPath, err)
+		return nil, "", "", false, fmt.Errorf("the trusted key %s is unreadable: %w", trustPath, err)
 	}
 	key, err := ParsePublic(string(trust))
 	if err != nil {
-		return nil, "", false, fmt.Errorf("the trusted key %s is unreadable: %w", trustPath, err)
+		return nil, "", "", false, fmt.Errorf("the trusted key %s is unreadable: %w", trustPath, err)
 	}
 	keyID = KeyID(key)
 
 	body, err := os.ReadFile(bundlePath)
 	if err != nil {
-		return nil, keyID, false, fmt.Errorf("the signed bundle is unreadable: %w", err)
+		return nil, "", keyID, false, fmt.Errorf("the signed bundle is unreadable: %w", err)
 	}
 	line, err := os.ReadFile(sigPath)
 	if err != nil {
-		return nil, keyID, false, fmt.Errorf("no signature beside %s", bundlePath)
+		return nil, "", keyID, false, fmt.Errorf("no signature beside %s", bundlePath)
 	}
 	fields := strings.Fields(string(line))
-	if len(fields) != 3 || fields[0] != signatureLine || !Verify(key, body, fields[2]) {
-		return nil, keyID, false, fmt.Errorf("%s is not signed by key %s", bundlePath, keyID)
+	if len(fields) != 3 {
+		return nil, "", keyID, false, fmt.Errorf("%s is not signed by key %s", bundlePath, keyID)
 	}
-	return body, keyID, false, nil
+	switch fields[0] {
+	case lineV1:
+		format = FormatV1
+	case lineV2:
+		format = FormatV2
+	default:
+		return nil, "", keyID, false, fmt.Errorf("%s uses an unknown signature scheme %q", sigPath, fields[0])
+	}
+	if !VerifyBundle(format, key, body, fields[2]) {
+		return nil, "", keyID, false, fmt.Errorf("%s is not signed by key %s", bundlePath, keyID)
+	}
+	return body, format, keyID, false, nil
 }
 
 // LoadSeed reads a private key from a file that only its owner may read.

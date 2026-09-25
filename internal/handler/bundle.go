@@ -58,8 +58,15 @@ func (h *Handler) getBundle(w http.ResponseWriter, r *http.Request, machine mode
 	// a rotation announced only with changed bundle bytes would never finish
 	// there. The operator would then drop the previous key and strand every
 	// machine still pinned to it.
+	// TODO(task 3): this shim keeps the header identical while the signing
+	// package grows a real KMS-capable Signer for h.Signer itself; it wraps
+	// the raw previous key so SignRollover's new Signer-based interface
+	// compiles without changing what gets written.
 	if h.Signer != nil && h.Signer.Previous != nil {
-		w.Header().Set("X-AW-Key-Rollover", signing.SignRollover(h.Signer.Previous, h.Signer.Public()))
+		header, err := signing.SignRollover(r.Context(), signing.NewSeedSigner(h.Signer.Previous), h.Signer.Public())
+		if err == nil {
+			w.Header().Set("X-AW-Key-Rollover", header)
+		}
 	}
 	etag := etagOf(body)
 	w.Header().Set("ETag", etag)
