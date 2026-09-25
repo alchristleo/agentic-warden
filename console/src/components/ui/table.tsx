@@ -5,6 +5,9 @@ function Table({ className, ...props }: React.ComponentProps<"table">) {
   return (
     <div
       data-slot="table-container"
+      // Focusable so a keyboard user can scroll this container when its
+      // table overflows horizontally (axe: scrollable-region-focusable).
+      tabIndex={0}
       className="relative w-full overflow-x-auto"
     >
       <table
