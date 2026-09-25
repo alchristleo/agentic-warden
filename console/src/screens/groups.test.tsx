@@ -29,8 +29,9 @@ test("SCIM counts render as a summary line", async () => {
     ...snapshot,
     scim: { users: 3, activeUsers: 2, groups: 1 },
   })));
-  renderWithProviders(undefined, { route: "/console/groups" });
+  const { container } = renderWithProviders(undefined, { route: "/console/groups" });
   expect(await screen.findByText(/SCIM: 3 users \(2 active\), 1 group/)).toBeInTheDocument();
+  await expectNoAxeViolations(container);
 });
 
 test("a 404 from /v1/groups shows a hint about SCIM and awd groups apply", async () => {
@@ -80,10 +81,11 @@ test("scimNearMatch shows a warning naming the near match", async () => {
       scimNearMatch: "eve@example.com",
     })),
   );
-  renderWithProviders(undefined, { route: "/console/groups" });
+  const { container } = renderWithProviders(undefined, { route: "/console/groups" });
   await userEvent.type(await screen.findByLabelText(/user/i), "Eve@example.com");
   await userEvent.click(screen.getByRole("button", { name: /resolve/i }));
   const warning = await screen.findByRole("status");
   expect(warning).toHaveTextContent(/eve@example.com/i);
   expect(warning).toHaveTextContent(/differs only in case/i);
+  await expectNoAxeViolations(container);
 });
