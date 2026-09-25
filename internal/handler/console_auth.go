@@ -5,6 +5,7 @@ import (
 	"errors"
 	"html/template"
 	"net/http"
+	"strings"
 
 	"github.com/acme/agent-wrapper/internal/console/authz"
 	"github.com/acme/agent-wrapper/internal/console/sso"
@@ -33,6 +34,22 @@ func (h *Handler) consoleLogin(w http.ResponseWriter, r *http.Request) {
 	http.SetCookie(w, &http.Cookie{Name: loginCookie, Value: attempt.Encode(), Path: "/console/auth",
 		MaxAge: 600, HttpOnly: true, Secure: h.Console.secure(), SameSite: http.SameSiteLaxMode})
 	http.Redirect(w, r, authURL, http.StatusFound)
+}
+
+// sanitizeIdPError keeps the IdP's `error` query parameter safe for the
+// audit log: bytes outside RFC 6749's NQCHAR range (%x20-21 / %x23-5B /
+// %x5D-7E — visible ASCII minus backslash and double-quote) are dropped,
+// and the result is capped at 64 bytes, so a hostile or misconfigured IdP
+// cannot stuff control characters or an unbounded string into an audit row.
+func sanitizeIdPError(raw string) string {
+	var b strings.Builder
+	for i := 0; i < len(raw) && b.Len() < 64; i++ {
+		c := raw[i]
+		if (c >= 0x20 && c <= 0x21) || (c >= 0x23 && c <= 0x5B) || (c >= 0x5D && c <= 0x7E) {
+			b.WriteByte(c)
+		}
+	}
+	return b.String()
 }
 
 // denied records a refused login. The audit write's own failure is logged,
@@ -65,7 +82,7 @@ func (h *Handler) consoleCallback(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if idpErr := q.Get("error"); idpErr != "" {
-		h.denied(r, "anonymous", "idp: "+idpErr)
+		h.denied(r, "anonymous", "idp: "+sanitizeIdPError(idpErr))
 		h.loginError(w, http.StatusUnauthorized, "The identity provider refused the sign-in.")
 		return
 	}

@@ -343,6 +343,37 @@ func TestConsoleCodeExchangeFailureIs502(t *testing.T) {
 	}
 }
 
+// Final review finding 4: the IdP's `error` query parameter is attacker
+// controlled and must not land unbounded or with control/quote characters
+// in the audit log.
+func TestConsoleCallbackIdPErrorIsSanitizedInAudit(t *testing.T) {
+	e := newConsole(t, admins)
+	login := e.do(t, "GET", "/console/auth/login", nil)
+	loc, err := url.Parse(login.Header.Get("Location"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	state := loc.Query().Get("state")
+
+	raw := "access_denied\"\\" + strings.Repeat("x", 100) + "\x00\x07"
+	cb := e.do(t, "GET", "/console/auth/callback?state="+url.QueryEscape(state)+"&error="+url.QueryEscape(raw), nil)
+	if cb.StatusCode != http.StatusUnauthorized {
+		t.Fatalf("status %d", cb.StatusCode)
+	}
+	ev := e.auditActions(t)
+	reason, _ := ev[0].Detail["reason"].(string)
+	if !strings.HasPrefix(reason, "idp: access_denied") {
+		t.Fatalf("reason = %q, want the access_denied prefix kept", reason)
+	}
+	body := strings.TrimPrefix(reason, "idp: ")
+	if len(body) > 64 {
+		t.Fatalf("reason not truncated to 64 bytes: %d bytes (%q)", len(body), body)
+	}
+	if strings.ContainsAny(body, "\"\\\x00\x07") {
+		t.Fatalf("reason kept a disallowed byte: %q", body)
+	}
+}
+
 func TestConsoleInvalidTokenIs401AndAudited(t *testing.T) {
 	for _, tamper := range []oidctest.Tamper{oidctest.WrongNonce, oidctest.WrongAudience, oidctest.Expired, oidctest.BadSignature} {
 		e := newConsole(t, admins)
@@ -498,6 +529,69 @@ func TestConsoleWriteNeedsOrigin(t *testing.T) {
 		if ev.Action == model.AuditTokenCreate {
 			t.Fatal("token created despite bad origin")
 		}
+	}
+}
+
+// Final review finding 2: sameOrigin must run before consoleUser, so a
+// refused non-GET request has no side effect — even for a user who has
+// since been removed from the admin group. Before the fix, consoleUser ran
+// first and would touch last_seen_at or delete the removed admin's
+// sessions before the Origin check ever got a chance to refuse the request.
+func TestConsoleForeignOriginHasNoSideEffectOnARemovedAdmin(t *testing.T) {
+	e := newConsole(t, admins)
+	e.login(t, "alice@example.com")
+
+	u, err := url.Parse(e.srv.URL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var token string
+	for _, c := range e.browser.Jar.Cookies(u) {
+		if c.Name == "aw_session" {
+			token = c.Value
+		}
+	}
+	if token == "" {
+		t.Fatal("no session cookie after login")
+	}
+	hash := session.Hash(token)
+
+	// alice is removed from the admin group; her session row is untouched
+	// by that alone.
+	if err := e.store.PutGroupSnapshot(context.Background(), model.GroupSnapshot{Source: "t", SyncedAt: *e.now,
+		Members: map[string][]string{"bob@example.com": {"console-admins"}}},
+		model.AuditEvent{Actor: "token:x", Action: model.AuditGroupsApply}); err != nil {
+		t.Fatal(err)
+	}
+
+	before, err := e.store.SessionByHash(context.Background(), hash)
+	if err != nil {
+		t.Fatal(err)
+	}
+	*e.now = e.now.Add(2 * time.Minute) // past the once-a-minute touch throttle
+
+	resp := e.do(t, "POST", "/v1/enrollment-tokens", http.Header{"Origin": {"https://evil.example"}})
+	if resp.StatusCode != http.StatusForbidden {
+		t.Fatalf("status %d", resp.StatusCode)
+	}
+
+	after, err := e.store.SessionByHash(context.Background(), hash)
+	if err != nil {
+		t.Fatalf("session deleted despite refused origin: %v", err)
+	}
+	if !after.LastSeenAt.Equal(before.LastSeenAt) {
+		t.Fatalf("last_seen_at touched despite refused origin: %v -> %v", before.LastSeenAt, after.LastSeenAt)
+	}
+}
+
+// Final review finding 5: the CLI's own confusion (a bearer-less request to
+// a console-enabled awd) should name both ways in.
+func TestConsoleNoCookieMessageNamesBothPaths(t *testing.T) {
+	e := newConsole(t, admins)
+	resp := e.do(t, "GET", "/v1/machines", nil)
+	body, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode != http.StatusUnauthorized || !strings.Contains(string(body), "sign in to the console or present the admin token") {
+		t.Fatalf("status %d body %s", resp.StatusCode, body)
 	}
 }
 

@@ -91,7 +91,7 @@ func (h *Handler) consoleStatic() http.Handler {
 func (h *Handler) consoleUser(w http.ResponseWriter, r *http.Request) (model.ConsoleSession, bool) {
 	c, err := r.Cookie(sessionCookie)
 	if err != nil || c.Value == "" {
-		writeError(w, http.StatusUnauthorized, "sign in")
+		writeError(w, http.StatusUnauthorized, "sign in to the console or present the admin token")
 		return model.ConsoleSession{}, false
 	}
 	s, err := h.Console.Sessions.Lookup(r.Context(), c.Value)
@@ -138,11 +138,17 @@ func (h *Handler) sameOrigin(w http.ResponseWriter, r *http.Request) bool {
 	return true
 }
 
-// consoleAdmin is requireAdmin's console path.
+// consoleAdmin is requireAdmin's console path. The origin check runs before
+// the session lookup: a refused non-GET request must have no side effect,
+// and consoleUser's failure paths touch the store (last_seen_at, deleting a
+// removed admin's sessions, sweeping an expired row).
 func (h *Handler) consoleAdmin(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		if !h.sameOrigin(w, r) {
+			return
+		}
 		s, ok := h.consoleUser(w, r)
-		if !ok || !h.sameOrigin(w, r) {
+		if !ok {
 			return
 		}
 		next(w, withActor(r, s.User))
