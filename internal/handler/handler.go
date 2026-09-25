@@ -50,6 +50,9 @@ type Handler struct {
 	// deployment: no headers, and every client behaves as it did before
 	// signing existed.
 	Signer *Signer
+	// Console wires the web console on. Nil (the default) leaves every
+	// /console path a 404 and requireAdmin token-only.
+	Console *Console
 }
 
 // Signer holds the control plane's signing key, and during a rotation the
@@ -76,6 +79,10 @@ func New(s store.Store, log *slog.Logger) *Handler {
 }
 
 // Routes returns the router with middleware applied.
+//
+// Call it only after Console is set: requireAdmin binds the console's
+// admin path when routes are built, so a Console assigned afterward would
+// leave existing admin routes token-only.
 func (h *Handler) Routes() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /healthz", h.healthz)
@@ -93,6 +100,7 @@ func (h *Handler) Routes() http.Handler {
 	mux.HandleFunc("GET /v1/groups/resolve", h.requireAdmin(h.getGroupsResolve))
 	mux.HandleFunc("GET /v1/audit", h.requireAdmin(h.getAudit))
 	h.scimRoutes(mux)
+	h.consoleRoutes(mux)
 	return Logging(h.log)(Recovery(h.log)(mux))
 }
 

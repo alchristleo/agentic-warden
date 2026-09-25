@@ -20,11 +20,11 @@ func bearer(r *http.Request) string {
 	return strings.TrimSpace(header[7:])
 }
 
-// requireAdmin admits a request only with the configured admin token. With
+// tokenAdmin admits a request only with the configured admin token. With
 // no token configured the route answers 503 rather than opening: an
 // operator who forgot to set AWD_ADMIN_TOKEN must find out from the error,
 // not from an audit.
-func (h *Handler) requireAdmin(next http.HandlerFunc) http.HandlerFunc {
+func (h *Handler) tokenAdmin(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if h.AdminToken == "" {
 			writeError(w, http.StatusServiceUnavailable, "admin token not configured")
@@ -36,6 +36,23 @@ func (h *Handler) requireAdmin(next http.HandlerFunc) http.HandlerFunc {
 			return
 		}
 		next(w, withActor(r, "token:"+r.Header.Get("X-Applied-By")))
+	}
+}
+
+// requireAdmin admits the admin token or, when the console is on, a
+// console session. A request carrying Authorization is judged by the token
+// alone, so a wrong token is never rescued by a cookie.
+func (h *Handler) requireAdmin(next http.HandlerFunc) http.HandlerFunc {
+	token, console := h.tokenAdmin(next), http.HandlerFunc(nil)
+	if h.Console != nil {
+		console = h.consoleAdmin(next)
+	}
+	return func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("Authorization") != "" || console == nil {
+			token(w, r)
+			return
+		}
+		console(w, r)
 	}
 }
 
