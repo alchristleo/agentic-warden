@@ -1,5 +1,5 @@
-import { http, HttpResponse } from "msw";
-import { screen, within } from "@testing-library/react";
+import { delay, http, HttpResponse } from "msw";
+import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { test, expect } from "vitest";
 import { server } from "@/test/server";
@@ -110,4 +110,30 @@ test("the editor says comments are not kept", async () => {
   renderWithProviders(undefined, { route: "/console/policy" });
   await userEvent.click(await screen.findByRole("button", { name: /new revision/i }));
   expect(await screen.findByText(/comments are not kept/i)).toBeInTheDocument();
+});
+
+// Final review finding 1(b): a failed revisions query shows an alert, not
+// the "No revisions yet." empty state.
+test("a 403 shows an alert, not the empty-revisions message", async () => {
+  server.use(http.get("/v1/policy/revisions", () => HttpResponse.json({ error: "not a console admin" }, { status: 403 })));
+  renderWithProviders(undefined, { route: "/console/policy" });
+  expect(await screen.findByRole("alert")).toHaveTextContent(/not a console admin/i);
+  expect(screen.queryByText(/no revisions yet/i)).not.toBeInTheDocument();
+});
+
+// Final review finding 8: clicking "New revision" before the revisions
+// query resolves must not seed the draft from the empty template forever —
+// once the real current revision arrives, the still-untouched draft picks
+// it up.
+test("clicking New revision before revisions load re-seeds the draft once they arrive", async () => {
+  server.use(http.get("/v1/policy/revisions", async () => {
+    await delay(30);
+    return HttpResponse.json(revisions);
+  }));
+  renderWithProviders(undefined, { route: "/console/policy" });
+  await userEvent.click(await screen.findByRole("button", { name: /new revision/i }));
+  const editor = await screen.findByRole("textbox", { name: /policy yaml/i });
+  // Revisions haven't arrived yet: the draft starts from the empty template.
+  expect((editor as HTMLTextAreaElement).value).not.toContain("v2");
+  await waitFor(() => expect((editor as HTMLTextAreaElement).value).toContain("version: v2"));
 });

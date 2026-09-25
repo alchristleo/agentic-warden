@@ -68,3 +68,13 @@ test("an empty list shows no audit events", async () => {
   expect(await screen.findByText(/no audit events/i)).toBeInTheDocument();
   await expectNoAxeViolations(container);
 });
+
+// Final review finding 1(b): a 500 must show an alert with the server's
+// message, not the "no audit events" empty state.
+test("a 500 shows an alert, not the empty-audit message", async () => {
+  server.use(http.get("/v1/audit", () => HttpResponse.json({ error: "audit store unavailable" }, { status: 500 })));
+  const { container } = renderWithProviders(undefined, { route: "/console/audit" });
+  expect(await screen.findByRole("alert")).toHaveTextContent(/audit store unavailable/i);
+  expect(screen.queryByText(/no audit events/i)).not.toBeInTheDocument();
+  await expectNoAxeViolations(container);
+});

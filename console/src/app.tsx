@@ -9,14 +9,19 @@ import { SignIn } from "@/screens/sign-in";
 export function makeQueryClient() {
   const client: QueryClient = new QueryClient({
     defaultOptions: { queries: { retry: false, refetchOnWindowFocus: true } },
-    // Any 401 means the session is gone: re-ask /me, which flips the gate.
-    // The ["me"] query's own 401 is excluded: Gate already reacts to
-    // me.error directly, and invalidating it here too would have that
-    // query's error handler invalidate itself again on every refetch, an
-    // unbounded loop whenever the session is (still) signed out.
+    // A 401 means the session is gone; a 403 means the signed-in user is no
+    // longer a console admin (or never was); a 503 means group data is
+    // unavailable, which Gate also renders specially. All three re-ask
+    // /me, which flips the gate to the right screen instead of a screen
+    // quietly rendering its empty state over a request that actually
+    // failed. The ["me"] query's own errors are excluded: Gate already
+    // reacts to me.error directly, and invalidating it here too would have
+    // that query's error handler invalidate itself again on every refetch,
+    // an unbounded loop whenever the session is (still) signed out.
     queryCache: new QueryCache({
       onError: (err, query) => {
-        if (err instanceof ApiError && err.status === 401 && query.queryKey[0] !== "me") {
+        if (query.queryKey[0] === "me") return;
+        if (err instanceof ApiError && (err.status === 401 || err.status === 403 || err.status === 503)) {
           client.invalidateQueries({ queryKey: ["me"] });
         }
       },

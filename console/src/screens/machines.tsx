@@ -103,9 +103,9 @@ function RevokeButton({ machine, onResolved }: { machine: Machine; onResolved: (
 
 export function Machines() {
   const { me } = useRouteContext({ from: "__root__" });
-  const { data } = useQuery({ queryKey: ["machines"], queryFn: () => api.get<Machine[]>("/v1/machines") });
+  const query = useQuery({ queryKey: ["machines"], queryFn: () => api.get<Machine[]>("/v1/machines") });
   const [status, setStatus] = useState<string | null>(null);
-  const machines = data ?? [];
+  const machines = query.data ?? [];
 
   return (
     <div className="flex flex-col gap-4">
@@ -113,9 +113,13 @@ export function Machines() {
       <div role="status" className="text-sm text-muted-foreground">
         {status}
       </div>
-      {machines.length === 0 ? (
+      {query.isError ? (
+        <p role="alert" className="text-sm text-destructive">
+          {query.error instanceof Error ? query.error.message : "Could not load machines."}
+        </p>
+      ) : query.isSuccess && machines.length === 0 ? (
         <p className="text-sm text-muted-foreground">No machines enrolled yet.</p>
-      ) : (
+      ) : query.isSuccess ? (
         <Table>
           <TableHeader>
             <TableRow>
@@ -158,7 +162,7 @@ export function Machines() {
             ))}
           </TableBody>
         </Table>
-      )}
+      ) : null}
     </div>
   );
 }

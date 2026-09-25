@@ -1,4 +1,4 @@
-import { Suspense, lazy, useMemo, useState } from "react";
+import { Suspense, lazy, useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, ApiError } from "@/api";
 import type { Revision } from "@/types";
@@ -101,7 +101,15 @@ function CompareRevisions({ revisions }: { revisions: Revision[] }) {
   );
 }
 
-function NewRevision({ current, onDone }: { current?: Revision; onDone: (message: string) => void }) {
+function NewRevision({
+  current,
+  currentLoaded,
+  onDone,
+}: {
+  current?: Revision;
+  currentLoaded: boolean;
+  onDone: (message: string) => void;
+}) {
   const queryClient = useQueryClient();
   const currentYaml = useMemo(() => toYaml(current?.ruleSet ?? { version: "", rules: [] }), [current]);
   const [draft, setDraft] = useState(() => currentYaml);
@@ -109,6 +117,20 @@ function NewRevision({ current, onDone }: { current?: Revision; onDone: (message
   const [errorLine, setErrorLine] = useState<number | undefined>(undefined);
   const [reviewValue, setReviewValue] = useState<unknown>(null);
   const [dialogOpen, setDialogOpen] = useState(false);
+  const touched = useRef(false);
+
+  // "New revision" can be clicked before the revisions query resolves, which
+  // seeds the draft from the empty template above. Re-seed it from the real
+  // current revision once it arrives — but only while the operator hasn't
+  // typed anything, so their work is never clobbered.
+  useEffect(() => {
+    if (currentLoaded && !touched.current) setDraft(currentYaml);
+  }, [currentLoaded, currentYaml]);
+
+  function editDraft(value: string) {
+    touched.current = true;
+    setDraft(value);
+  }
 
   const mutation = useMutation({
     mutationFn: (value: unknown) => api.post("/v1/policy/revisions", value),
@@ -150,7 +172,7 @@ function NewRevision({ current, onDone }: { current?: Revision; onDone: (message
         </p>
       )}
       <Suspense fallback={<p className="text-sm text-muted-foreground">Loading editor…</p>}>
-        <YamlEditor value={draft} onChange={setDraft} ariaLabel="Policy YAML" errorLine={errorLine} />
+        <YamlEditor value={draft} onChange={editDraft} ariaLabel="Policy YAML" errorLine={errorLine} />
       </Suspense>
       <div>
         <Button type="button" onClick={review}>
@@ -180,8 +202,8 @@ function NewRevision({ current, onDone }: { current?: Revision; onDone: (message
 }
 
 export function Policy() {
-  const { data } = useQuery({ queryKey: ["revisions"], queryFn: () => api.get<Revision[]>("/v1/policy/revisions") });
-  const revisions = useMemo(() => data ?? [], [data]);
+  const query = useQuery({ queryKey: ["revisions"], queryFn: () => api.get<Revision[]>("/v1/policy/revisions") });
+  const revisions = useMemo(() => query.data ?? [], [query.data]);
   const [expanded, setExpanded] = useState<number | null>(null);
   const [status, setStatus] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
@@ -197,9 +219,13 @@ export function Policy() {
       <div role="status" className="text-sm text-muted-foreground">
         {status}
       </div>
-      {revisions.length === 0 ? (
+      {query.isError ? (
+        <p role="alert" className="text-sm text-destructive">
+          {query.error instanceof Error ? query.error.message : "Could not load revisions."}
+        </p>
+      ) : query.isSuccess && revisions.length === 0 ? (
         <p className="text-sm text-muted-foreground">No revisions yet.</p>
-      ) : (
+      ) : query.isSuccess ? (
         <Table>
           <TableHeader>
             <TableRow>
@@ -219,11 +245,12 @@ export function Policy() {
             ))}
           </TableBody>
         </Table>
-      )}
+      ) : null}
       {revisions.length > 1 && <CompareRevisions revisions={revisions} />}
       {creating && (
         <NewRevision
           current={revisions[0]}
+          currentLoaded={query.isSuccess}
           onDone={(message) => {
             setStatus(message);
             setCreating(false);

@@ -1,4 +1,4 @@
-import { http, HttpResponse } from "msw";
+import { delay, http, HttpResponse } from "msw";
 import { screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { test, expect } from "vitest";
@@ -54,6 +54,27 @@ test("treats a 404 on revoke as already revoked", async () => {
   await userEvent.type(within(dialog).getByLabelText(/type bob-laptop/i), "bob-laptop");
   await userEvent.click(within(dialog).getByRole("button", { name: /revoke machine/i }));
   expect(await screen.findByText(/already revoked/i)).toBeInTheDocument();
+});
+
+// Final review finding 1(b): a 403 (or any other failed fetch) must not be
+// hidden behind the "no machines" empty state.
+test("a 403 shows an alert, not the empty-machines message", async () => {
+  server.use(http.get("/v1/machines", () => HttpResponse.json({ error: "not a console admin" }, { status: 403 })));
+  renderWithProviders(undefined, { route: "/console/machines" });
+  expect(await screen.findByRole("alert")).toHaveTextContent(/not a console admin/i);
+  expect(screen.queryByText(/no machines enrolled yet/i)).not.toBeInTheDocument();
+});
+
+// Final review finding 1(c): the empty state must not flash while the
+// query is still pending.
+test("the empty state does not flash while machines are loading", async () => {
+  server.use(http.get("/v1/machines", async () => {
+    await delay(30);
+    return HttpResponse.json([]);
+  }));
+  renderWithProviders(undefined, { route: "/console/machines" });
+  expect(screen.queryByText(/no machines enrolled yet/i)).not.toBeInTheDocument();
+  expect(await screen.findByText(/no machines enrolled yet/i)).toBeInTheDocument();
 });
 
 test("a machine without a name is confirmed by its id", async () => {

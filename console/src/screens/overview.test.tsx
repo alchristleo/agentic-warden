@@ -55,3 +55,16 @@ test("with no revisions it shows No policy yet", async () => {
   renderWithProviders(undefined, { route: "/console/" });
   expect(await screen.findByText(/no policy yet/i)).toBeInTheDocument();
 });
+
+// Final review finding 1(b): a card whose query failed shows an alert with
+// the server's message instead of that card's own empty-state copy.
+test("a failed card query shows an alert instead of its empty state", async () => {
+  server.use(
+    http.get("/v1/policy/revisions", () => HttpResponse.json([])),
+    http.get("/v1/machines", () => HttpResponse.json({ error: "machines unavailable" }, { status: 500 })),
+    http.get("/v1/groups", () => HttpResponse.json({ error: "not found" }, { status: 404 })),
+    http.get("/v1/audit", () => HttpResponse.json([])),
+  );
+  renderWithProviders(undefined, { route: "/console/" });
+  expect(await screen.findByRole("alert")).toHaveTextContent(/machines unavailable/i);
+});

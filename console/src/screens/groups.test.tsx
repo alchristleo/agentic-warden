@@ -43,6 +43,15 @@ test("a 404 from /v1/groups shows a hint about SCIM and awd groups apply", async
   await expectNoAxeViolations(container);
 });
 
+// Final review finding 1(b): a real error (not a 404 "no snapshot yet")
+// must show an alert, not the "sync SCIM" hint meant for the 404 case.
+test("a 500 shows an alert, not the no-group-data hint", async () => {
+  server.use(http.get("/v1/groups", () => HttpResponse.json({ error: "groups store unavailable" }, { status: 500 })));
+  renderWithProviders(undefined, { route: "/console/groups" });
+  expect(await screen.findByRole("alert")).toHaveTextContent(/groups store unavailable/i);
+  expect(screen.queryByText(/no group data yet/i)).not.toBeInTheDocument();
+});
+
 test("the resolve form fetches and renders each group source", async () => {
   let requestedUrl = "";
   server.use(

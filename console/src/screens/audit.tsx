@@ -64,9 +64,13 @@ export function Audit() {
           </select>
         </div>
       </div>
-      {filtered.length === 0 ? (
+      {query.isError ? (
+        <p role="alert" className="text-sm text-destructive">
+          {query.error instanceof Error ? query.error.message : "Could not load audit events."}
+        </p>
+      ) : query.isSuccess && filtered.length === 0 ? (
         <p className="text-sm text-muted-foreground">No audit events</p>
-      ) : (
+      ) : query.isSuccess ? (
         <Table>
           <TableHeader>
             <TableRow>
@@ -93,7 +97,7 @@ export function Audit() {
             ))}
           </TableBody>
         </Table>
-      )}
+      ) : null}
       {query.hasNextPage && (
         <Button variant="outline" onClick={() => query.fetchNextPage()} disabled={query.isFetchingNextPage}>
           Older

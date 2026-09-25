@@ -77,12 +77,16 @@ function ResolveForm() {
 }
 
 export function Groups() {
-  const { data: groups, isPending } = useQuery({ queryKey: ["groups"], queryFn: fetchGroups });
+  const { data: groups, isPending, isError, error } = useQuery({ queryKey: ["groups"], queryFn: fetchGroups });
 
   return (
     <div className="flex flex-col gap-6">
       <h1 className="text-xl font-semibold">Groups</h1>
-      {isPending ? null : !groups ? (
+      {isPending ? null : isError ? (
+        <p role="alert" className="text-sm text-destructive">
+          {error instanceof Error ? error.message : "Could not load groups."}
+        </p>
+      ) : !groups ? (
         <p className="text-sm text-muted-foreground">
           No group data yet. Sync SCIM or run <code>awd groups apply</code> to load one.
         </p>

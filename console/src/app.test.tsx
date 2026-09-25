@@ -45,6 +45,39 @@ test("a 401 from any request returns to sign-in", async () => {
   expect(await screen.findByRole("link", { name: /sign in/i })).toBeInTheDocument();
 });
 
+// Final review finding 1(a): a 403 elsewhere (the signed-in user was
+// removed from the admin group mid-session) must re-ask /me too, not just
+// a 401.
+test("a 403 from any request other than me returns to the not-admin screen", async () => {
+  let removed = false;
+  server.use(
+    http.get("/console/api/me", () => removed
+      ? HttpResponse.json({ error: "not a console admin" }, { status: 403 })
+      : HttpResponse.json({ user: "alice@example.com", expiresAt: "" })),
+    http.get("/v1/machines", () => { removed = true; return HttpResponse.json({ error: "not a console admin" }, { status: 403 }); }),
+  );
+  renderWithProviders(undefined, { route: "/console/machines" });
+  // The Machines screen itself also renders an alert with this same server
+  // message (finding 1b) before Gate swaps the whole tree away, so match on
+  // the Gate's own heading rather than the (transient) message text.
+  expect(await screen.findByRole("heading", { name: /no access/i })).toBeInTheDocument();
+});
+
+// Final review finding 1(a): a 503 elsewhere (group data disappeared
+// mid-session) must re-ask /me too, so Gate shows its own 503 message
+// instead of the screen quietly rendering an empty state.
+test("a 503 from any request other than me shows the console-unavailable screen", async () => {
+  let down = false;
+  server.use(
+    http.get("/console/api/me", () => down
+      ? HttpResponse.json({ error: "console needs group data (SCIM or awd groups apply)" }, { status: 503 })
+      : HttpResponse.json({ user: "alice@example.com", expiresAt: "" })),
+    http.get("/v1/machines", () => { down = true; return HttpResponse.json({ error: "console needs group data (SCIM or awd groups apply)" }, { status: 503 }); }),
+  );
+  renderWithProviders(undefined, { route: "/console/machines" });
+  expect(await screen.findByRole("heading", { name: /console unavailable/i })).toBeInTheDocument();
+});
+
 test("logout posts and returns to sign-in", async () => {
   // Signed in at first; POST /console/auth/logout succeeds (204) and flips
   // /console/api/me to 401 from then on, as the real backend would once the
