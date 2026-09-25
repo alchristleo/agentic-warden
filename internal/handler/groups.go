@@ -97,7 +97,7 @@ func (h *Handler) putGroups(w http.ResponseWriter, r *http.Request) {
 	}
 	snapshot := model.GroupSnapshot{
 		Source:    req.Source,
-		AppliedBy: r.Header.Get("X-Applied-By"),
+		AppliedBy: actorOf(r.Context()),
 		SyncedAt:  h.Now(),
 		Members:   req.Members,
 	}
@@ -105,11 +105,18 @@ func (h *Handler) putGroups(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusUnprocessableEntity, err.Error())
 		return
 	}
-	if err := h.store.PutGroupSnapshot(r.Context(), snapshot); err != nil {
+	sum := summarise(snapshot)
+	event := model.AuditEvent{
+		At:     h.Now(),
+		Actor:  actorOf(r.Context()),
+		Action: model.AuditGroupsApply,
+		Detail: map[string]any{"source": sum.Source, "users": sum.Users, "groups": sum.Groups},
+	}
+	if err := h.store.PutGroupSnapshot(r.Context(), snapshot, event); err != nil {
 		h.fail(w, r, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, summarise(snapshot))
+	writeJSON(w, http.StatusOK, sum)
 }
 
 // groupsView is GET /v1/groups: the snapshot's detail when there is one,

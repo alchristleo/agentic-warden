@@ -176,9 +176,10 @@ func (h *Handler) postRevision(w http.ResponseWriter, r *http.Request) {
 		Version:   ruleSet.Version,
 		RuleSet:   ruleSet,
 		CreatedAt: h.Now(),
-		CreatedBy: r.Header.Get("X-Applied-By"),
+		CreatedBy: actorOf(r.Context()),
 	}
-	if err := h.store.PutRuleSet(r.Context(), revision); err != nil {
+	event := model.AuditEvent{At: h.Now(), Actor: actorOf(r.Context()), Action: model.AuditRevisionCreate, Target: revision.Version}
+	if err := h.store.PutRuleSet(r.Context(), revision, event); err != nil {
 		h.fail(w, r, err)
 		return
 	}

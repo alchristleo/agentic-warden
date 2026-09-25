@@ -71,8 +71,8 @@ func (p *Postgres) migrate(ctx context.Context) error {
 	return nil
 }
 
-// PutRuleSet stores a revision.
-func (p *Postgres) PutRuleSet(ctx context.Context, r model.Revision) error {
+// PutRuleSet stores a revision and its audit event.
+func (p *Postgres) PutRuleSet(ctx context.Context, r model.Revision, audit model.AuditEvent) error {
 	if r.Version == "" {
 		return fmt.Errorf("store: revision has no version: %w", model.ErrBadInput)
 	}
@@ -88,15 +88,17 @@ func (p *Postgres) PutRuleSet(ctx context.Context, r model.Revision) error {
 	const query = `
 		INSERT INTO policy_revisions (version, rule_set, created_at, created_by)
 		VALUES ($1, $2, $3, $4)`
-	_, err = p.pool.Exec(ctx, query, r.Version, encoded, createdAt, r.CreatedBy)
-	if err != nil {
-		var pgErr *pgconn.PgError
-		if errors.As(err, &pgErr) && pgErr.Code == uniqueViolation {
-			return fmt.Errorf("store: revision %q already exists: %w", r.Version, model.ErrConflict)
+	return pgx.BeginFunc(ctx, p.pool, func(tx pgx.Tx) error {
+		_, err := tx.Exec(ctx, query, r.Version, encoded, createdAt, r.CreatedBy)
+		if err != nil {
+			var pgErr *pgconn.PgError
+			if errors.As(err, &pgErr) && pgErr.Code == uniqueViolation {
+				return fmt.Errorf("store: revision %q already exists: %w", r.Version, model.ErrConflict)
+			}
+			return fmt.Errorf("store: storing revision %q: %w", r.Version, err)
 		}
-		return fmt.Errorf("store: storing revision %q: %w", r.Version, err)
-	}
-	return nil
+		return insertAudit(ctx, tx, audit)
+	})
 }
 
 // CurrentRuleSet returns the newest revision.
@@ -159,22 +161,24 @@ func collectRevisions(rows pgx.Rows) ([]model.Revision, error) {
 	return out, nil
 }
 
-// PutEnrollmentToken stores a token.
-func (p *Postgres) PutEnrollmentToken(ctx context.Context, t model.EnrollmentToken) error {
+// PutEnrollmentToken stores a token and its audit event.
+func (p *Postgres) PutEnrollmentToken(ctx context.Context, t model.EnrollmentToken, audit model.AuditEvent) error {
 	if t.Hash == "" || t.User == "" {
 		return fmt.Errorf("store: enrollment token needs a hash and a user: %w", model.ErrBadInput)
 	}
 	const query = `
 		INSERT INTO enrollment_tokens (hash, "user", expires_at)
 		VALUES ($1, $2, $3)`
-	if _, err := p.pool.Exec(ctx, query, t.Hash, t.User, t.ExpiresAt); err != nil {
-		var pgErr *pgconn.PgError
-		if errors.As(err, &pgErr) && pgErr.Code == uniqueViolation {
-			return fmt.Errorf("store: enrollment token already exists: %w", model.ErrConflict)
+	return pgx.BeginFunc(ctx, p.pool, func(tx pgx.Tx) error {
+		if _, err := tx.Exec(ctx, query, t.Hash, t.User, t.ExpiresAt); err != nil {
+			var pgErr *pgconn.PgError
+			if errors.As(err, &pgErr) && pgErr.Code == uniqueViolation {
+				return fmt.Errorf("store: enrollment token already exists: %w", model.ErrConflict)
+			}
+			return fmt.Errorf("store: storing enrollment token: %w", err)
 		}
-		return fmt.Errorf("store: storing enrollment token: %w", err)
-	}
-	return nil
+		return insertAudit(ctx, tx, audit)
+	})
 }
 
 // ConsumeEnrollmentToken marks a token used. The UPDATE's WHERE clause is the
@@ -269,16 +273,18 @@ func (p *Postgres) ListMachines(ctx context.Context) ([]model.Machine, error) {
 	return machines, nil
 }
 
-// DeleteMachine revokes a machine.
-func (p *Postgres) DeleteMachine(ctx context.Context, id string) error {
-	tag, err := p.pool.Exec(ctx, `DELETE FROM machines WHERE id = $1`, id)
-	if err != nil {
-		return fmt.Errorf("store: deleting machine %q: %w", id, err)
-	}
-	if tag.RowsAffected() == 0 {
-		return fmt.Errorf("store: machine %q not found: %w", id, model.ErrNotFound)
-	}
-	return nil
+// DeleteMachine revokes a machine and records its audit event.
+func (p *Postgres) DeleteMachine(ctx context.Context, id string, audit model.AuditEvent) error {
+	return pgx.BeginFunc(ctx, p.pool, func(tx pgx.Tx) error {
+		tag, err := tx.Exec(ctx, `DELETE FROM machines WHERE id = $1`, id)
+		if err != nil {
+			return fmt.Errorf("store: deleting machine %q: %w", id, err)
+		}
+		if tag.RowsAffected() == 0 {
+			return fmt.Errorf("store: machine %q not found: %w", id, model.ErrNotFound)
+		}
+		return insertAudit(ctx, tx, audit)
+	})
 }
 
 func collectMachines(rows pgx.Rows) ([]model.Machine, error) {
@@ -303,8 +309,9 @@ func collectMachines(rows pgx.Rows) ([]model.Machine, error) {
 	return out, nil
 }
 
-// PutGroupSnapshot stores a snapshot; the newest is current.
-func (p *Postgres) PutGroupSnapshot(ctx context.Context, s model.GroupSnapshot) error {
+// PutGroupSnapshot stores a snapshot and its audit event; the newest
+// snapshot is current.
+func (p *Postgres) PutGroupSnapshot(ctx context.Context, s model.GroupSnapshot, audit model.AuditEvent) error {
 	if err := s.Validate(); err != nil {
 		return fmt.Errorf("store: %w", err)
 	}
@@ -319,10 +326,12 @@ func (p *Postgres) PutGroupSnapshot(ctx context.Context, s model.GroupSnapshot) 
 	const query = `
 		INSERT INTO group_snapshots (source, applied_by, synced_at, members)
 		VALUES ($1, $2, $3, $4)`
-	if _, err := p.pool.Exec(ctx, query, s.Source, s.AppliedBy, syncedAt, encoded); err != nil {
-		return fmt.Errorf("store: storing group snapshot: %w", err)
-	}
-	return nil
+	return pgx.BeginFunc(ctx, p.pool, func(tx pgx.Tx) error {
+		if _, err := tx.Exec(ctx, query, s.Source, s.AppliedBy, syncedAt, encoded); err != nil {
+			return fmt.Errorf("store: storing group snapshot: %w", err)
+		}
+		return insertAudit(ctx, tx, audit)
+	})
 }
 
 // CurrentGroupSnapshot returns the newest snapshot.
@@ -353,7 +362,7 @@ func (p *Postgres) CurrentGroupSnapshot(ctx context.Context) (model.GroupSnapsho
 // conformance suite, which needs a fresh store per case; never call it
 // against a database that holds a real policy history.
 func (p *Postgres) Truncate(ctx context.Context) error {
-	if _, err := p.pool.Exec(ctx, `TRUNCATE policy_revisions, enrollment_tokens, machines, group_snapshots, scim_members, scim_users, scim_groups RESTART IDENTITY`); err != nil {
+	if _, err := p.pool.Exec(ctx, `TRUNCATE policy_revisions, enrollment_tokens, machines, group_snapshots, scim_members, scim_users, scim_groups, console_sessions, audit_events RESTART IDENTITY`); err != nil {
 		return fmt.Errorf("store: truncating: %w", err)
 	}
 	return nil

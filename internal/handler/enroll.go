@@ -54,7 +54,8 @@ func (h *Handler) postEnrollmentToken(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	expires := h.Now().Add(ttl)
-	if err := h.store.PutEnrollmentToken(r.Context(), model.EnrollmentToken{Hash: hash, User: req.User, ExpiresAt: expires}); err != nil {
+	event := model.AuditEvent{At: h.Now(), Actor: actorOf(r.Context()), Action: model.AuditTokenCreate, Target: req.User, Detail: map[string]any{"expiresAt": expires}}
+	if err := h.store.PutEnrollmentToken(r.Context(), model.EnrollmentToken{Hash: hash, User: req.User, ExpiresAt: expires}, event); err != nil {
 		h.fail(w, r, err)
 		return
 	}
@@ -121,11 +122,23 @@ func (h *Handler) getMachines(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) deleteMachine(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
-	if err := h.store.DeleteMachine(r.Context(), id); err != nil {
+	machines, err := h.store.ListMachines(r.Context())
+	if err != nil {
 		h.fail(w, r, err)
 		return
 	}
-	h.log.InfoContext(r.Context(), "machine revoked", "machine", id)
+	detail := map[string]any{}
+	for _, m := range machines {
+		if m.ID == id {
+			detail = map[string]any{"user": m.User, "name": m.Name, "os": m.OS}
+		}
+	}
+	event := model.AuditEvent{At: h.Now(), Actor: actorOf(r.Context()), Action: model.AuditMachineRevoke, Target: id, Detail: detail}
+	if err := h.store.DeleteMachine(r.Context(), id, event); err != nil {
+		h.fail(w, r, err)
+		return
+	}
+	h.log.InfoContext(r.Context(), "machine revoked", "machine", id, "actor", event.Actor)
 	w.WriteHeader(http.StatusNoContent)
 }
 

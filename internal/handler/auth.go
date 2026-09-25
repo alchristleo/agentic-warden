@@ -35,7 +35,7 @@ func (h *Handler) requireAdmin(next http.HandlerFunc) http.HandlerFunc {
 			writeError(w, http.StatusUnauthorized, "unauthorized")
 			return
 		}
-		next(w, r)
+		next(w, withActor(r, "token:"+r.Header.Get("X-Applied-By")))
 	}
 }
 

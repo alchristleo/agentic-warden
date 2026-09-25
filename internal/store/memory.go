@@ -26,6 +26,10 @@ type Memory struct {
 	scimUsers   map[string]model.SCIMUser  // by id
 	scimGroups  map[string]model.SCIMGroup // by id, Members unused
 	scimMembers map[string]map[string]bool // group id -> user ids
+
+	sessions  map[string]model.ConsoleSession // by token hash
+	audit     []model.AuditEvent
+	nextAudit int64
 }
 
 // NewMemory returns an empty in-memory store.
@@ -39,16 +43,21 @@ func NewMemory() *Memory {
 		scimUsers:   make(map[string]model.SCIMUser),
 		scimGroups:  make(map[string]model.SCIMGroup),
 		scimMembers: make(map[string]map[string]bool),
+
+		sessions: make(map[string]model.ConsoleSession),
 	}
 }
 
-// PutRuleSet stores a revision.
-func (m *Memory) PutRuleSet(_ context.Context, r model.Revision) error {
+// PutRuleSet stores a revision and its audit event.
+func (m *Memory) PutRuleSet(_ context.Context, r model.Revision, audit model.AuditEvent) error {
 	if r.Version == "" {
 		return fmt.Errorf("store: revision has no version: %w", model.ErrBadInput)
 	}
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	if err := audit.Validate(); err != nil {
+		return fmt.Errorf("store: %w", err)
+	}
 	if m.versions[r.Version] {
 		return fmt.Errorf("store: revision %q already exists: %w", r.Version, model.ErrConflict)
 	}
@@ -56,6 +65,7 @@ func (m *Memory) PutRuleSet(_ context.Context, r model.Revision) error {
 	r.Seq = m.nextSeq
 	m.versions[r.Version] = true
 	m.revisions = append(m.revisions, r)
+	m.appendAudit(audit)
 	return nil
 }
 
@@ -90,8 +100,8 @@ func (m *Memory) Revisions(_ context.Context, limit int) ([]model.Revision, erro
 	return ordered, nil
 }
 
-// PutEnrollmentToken stores a token.
-func (m *Memory) PutEnrollmentToken(_ context.Context, t model.EnrollmentToken) error {
+// PutEnrollmentToken stores a token and its audit event.
+func (m *Memory) PutEnrollmentToken(_ context.Context, t model.EnrollmentToken, audit model.AuditEvent) error {
 	if t.Hash == "" || t.User == "" {
 		return fmt.Errorf("store: enrollment token needs a hash and a user: %w", model.ErrBadInput)
 	}
@@ -100,7 +110,11 @@ func (m *Memory) PutEnrollmentToken(_ context.Context, t model.EnrollmentToken) 
 	if _, exists := m.tokens[t.Hash]; exists {
 		return fmt.Errorf("store: enrollment token already exists: %w", model.ErrConflict)
 	}
+	if err := audit.Validate(); err != nil {
+		return fmt.Errorf("store: %w", err)
+	}
 	m.tokens[t.Hash] = t
+	m.appendAudit(audit)
 	return nil
 }
 
@@ -182,13 +196,16 @@ func (m *Memory) ListMachines(_ context.Context) ([]model.Machine, error) {
 	return out, nil
 }
 
-// DeleteMachine revokes a machine.
-func (m *Memory) DeleteMachine(_ context.Context, id string) error {
+// DeleteMachine revokes a machine and records its audit event.
+func (m *Memory) DeleteMachine(_ context.Context, id string, audit model.AuditEvent) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	mc, ok := m.machines[id]
 	if !ok {
 		return fmt.Errorf("store: machine %q not found: %w", id, model.ErrNotFound)
+	}
+	if err := audit.Validate(); err != nil {
+		return fmt.Errorf("store: %w", err)
 	}
 	delete(m.machines, id)
 	delete(m.byHash, mc.CredentialHash)
@@ -198,11 +215,13 @@ func (m *Memory) DeleteMachine(_ context.Context, id string) error {
 			break
 		}
 	}
+	m.appendAudit(audit)
 	return nil
 }
 
-// PutGroupSnapshot appends a snapshot; the newest is current.
-func (m *Memory) PutGroupSnapshot(_ context.Context, s model.GroupSnapshot) error {
+// PutGroupSnapshot appends a snapshot and its audit event; the newest
+// snapshot is current.
+func (m *Memory) PutGroupSnapshot(_ context.Context, s model.GroupSnapshot, audit model.AuditEvent) error {
 	if err := s.Validate(); err != nil {
 		return fmt.Errorf("store: %w", err)
 	}
@@ -211,9 +230,13 @@ func (m *Memory) PutGroupSnapshot(_ context.Context, s model.GroupSnapshot) erro
 	}
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	if err := audit.Validate(); err != nil {
+		return fmt.Errorf("store: %w", err)
+	}
 	m.nextSeq++
 	s.Seq = m.nextSeq
 	m.snapshots = append(m.snapshots, s)
+	m.appendAudit(audit)
 	return nil
 }
 
