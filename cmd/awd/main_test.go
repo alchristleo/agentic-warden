@@ -1,9 +1,11 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 )
 
@@ -20,5 +22,11 @@ func TestGroupsDoesNotTreatAnArbitrary500AsNoSnapshot(t *testing.T) {
 
 	if err := groups([]string{"--url", srv.URL}); err == nil {
 		t.Fatal("groups() returned nil for a 500 response, want an error")
+	}
+}
+
+func TestLoadSignerRejectsAMalformedKMSValue(t *testing.T) {
+	if _, err := loadSigner(context.Background(), "awskms:not-an-arn"); err == nil || !strings.Contains(err.Error(), "not-an-arn") {
+		t.Fatalf("err = %v", err)
 	}
 }

@@ -147,6 +147,42 @@ impersonated `aw-sync`. The fetch path is the one place this is strong
 rather than advisory, because there the anchor is the 0600 `machine.json`,
 not a file sitting next to what it verifies.
 
+#### Keys in AWS KMS
+
+A KMS key never leaves KMS, and CloudTrail logs every signature it makes —
+but KMS will only sign a message up to 4 KiB, far short of a bundle, so a
+KMS-backed key signs in format v2: a short statement naming the key and the
+bundle's SHA-256, rather than the bundle itself. Point `AWD_SIGNING_KEY` at
+the key's ARN instead of a seed file:
+
+    AWD_SIGNING_KEY=awskms:arn:aws:kms:<region>:<account>:key/<id>
+
+The key must be created with `--key-spec ECC_NIST_EDWARDS25519 --key-usage
+SIGN_VERIFY`; `awd` refuses to start against any other spec or usage.
+Credentials come from the default AWS chain (on ECS, the task role); the
+region comes from the ARN. Grant the running task only `kms:Sign` and
+`kms:GetPublicKey`, scoped to that one key:
+
+    {
+      "Version": "2012-10-17",
+      "Statement": [{
+        "Effect": "Allow",
+        "Action": ["kms:Sign", "kms:GetPublicKey"],
+        "Resource": "arn:aws:kms:<region>:<account>:key/<id>"
+      }]
+    }
+
+Existing self-hosted seed keys need no change: once `aw-sync` is upgraded,
+every machine that talks to a seed-signed control plane moves to v2 on its
+own, with no per-machine format to track or migrate. A control plane signing
+with a KMS key answers `426` to an `aw-sync` too old to speak v2, rather
+than falling back to an unsigned or v1 response.
+
+Manual check: create the key (`aws kms create-key --key-spec
+ECC_NIST_EDWARDS25519 --key-usage SIGN_VERIFY`), start `awd` with
+`AWD_SIGNING_KEY` set to its ARN, enroll a machine, and confirm `aw doctor`
+reports `bundle signature: verified (v2, key …)`.
+
 ## Layout
 
     cmd/aw/           wrapper CLI: run an agent with the bundle compiled for its repository, doctor, agents
