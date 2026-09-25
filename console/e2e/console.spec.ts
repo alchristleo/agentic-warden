@@ -57,12 +57,14 @@ test("sign out ends the session", async ({ page }) => {
   await expect(page.getByRole("link", { name: "Sign in" })).toBeVisible();
 });
 
-test("every screen passes axe in dark mode", async ({ page }) => {
-  await page.emulateMedia({ colorScheme: "dark" });
-  await signIn(page, "admin@example.com");
-  for (const name of ["Overview", "Policy", "Machines", "Enrollment", "Groups", "Audit"]) {
-    await page.getByRole("link", { name }).click();
-    await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
-    expect((await new AxeBuilder({ page }).analyze()).violations, name).toEqual([]);
-  }
-});
+for (const scheme of ["light", "dark"] as const) {
+  test(`every screen passes axe in ${scheme} mode`, async ({ page }) => {
+    await page.emulateMedia({ colorScheme: scheme });
+    await signIn(page, "admin@example.com");
+    for (const name of ["Overview", "Policy", "Machines", "Enrollment", "Groups", "Audit"]) {
+      await page.getByRole("link", { name }).click();
+      await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
+      expect((await new AxeBuilder({ page }).analyze()).violations, name).toEqual([]);
+    }
+  });
+}
