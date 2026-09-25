@@ -66,8 +66,9 @@ The request carries a new header:
     X-AW-Signature-Formats: v1, v2
 
 - A comma-separated list, with optional whitespace. Format names are
-  matched ignoring case.
-- An absent header means `v1`. That is every `aw-sync` before this change.
+  matched ignoring case, and unknown names are ignored.
+- An absent header, or one that names no known format, means `v1`. That is
+  every `aw-sync` before this change.
 
 On a 200, the response carries a new header, `X-AW-Signature-Format: v1|v2`,
 alongside the existing `X-AW-Signature` and `X-AW-Key-Id`.
@@ -77,11 +78,11 @@ keeps working against an old `awd`.
 
 How `awd` chooses:
 
-| Signer | Client offers v2 | Client offers only v1 (or no header) | Client offers only unknown formats |
-|---|---|---|---|
-| none (unsigned deployment) | no signature headers, as today | no signature headers, as today | no signature headers, as today |
-| seed file | v2 | v1 (signature over the body, as today) | 400 naming the formats awd speaks |
-| AWS KMS | v2 | 426 `aw-sync too old for this control plane's signing; upgrade aw-sync to a build that supports signature format v2` | 400 naming the formats awd speaks |
+| Signer | Client offers v2 | Client does not offer v2 (no header, v1 only, or only unknown names) |
+|---|---|---|
+| none (unsigned deployment) | no signature headers, as today | no signature headers, as today |
+| seed file | v2 | v1 (signature over the body, as today) |
+| AWS KMS | v2 | 426 `aw-sync too old for this control plane's signing; upgrade aw-sync to a build that supports signature format v2` |
 
 A 304 carries no bundle signature, as today. `X-AW-Key-Rollover` still
 rides both the 200 and the 304.
@@ -122,14 +123,14 @@ signature stays exactly as today.
 `aw doctor` prints `bundle signature: verified (v2, key 3f9a1c22b0d41e77)`.
 v1 prints `v1` in the same place.
 
-### Observability
+### Nothing new for operators
 
-Migration `0007_machine_signature_format.sql` adds
-`machines.last_signature_format text NOT NULL DEFAULT ''`. `TouchMachine`
-records the format served on each 200: `v1`, `v2`, or empty when unsigned.
+A self-hosted operator has nothing new to configure or watch. A seed signer
+serves each machine the best format it understands, so there is no
+fleet-wide switch and no "is everyone on v2 yet" question.
 
-`awd machines` shows the format beside the key ID. That column tells a
-self-hosted operator whether the whole fleet is on v2.
+Cut for simplicity: a per-machine format column in `awd machines`, and the
+migration it needed. No operator decision depended on it.
 
 ## Signer
 
@@ -214,7 +215,6 @@ each row gets a test.
 | KMS fails on a 304 whose rollover signature is not cached | 503 as above; cached, it is served |
 | KMS returns a signature that is not 64 bytes | treated as a `Sign` failure (503) |
 | KMS signer, client offers no v2 | 426 with the upgrade message; the machine keeps its current bundle |
-| Client offers only unknown formats | 400 naming the formats `awd` speaks |
 | v2 response, `X-AW-Key-Id` ≠ pinned key ID | cycle fails naming both IDs; nothing written |
 | v2 signature does not verify | cycle fails as a bad v1 signature does today |
 | Unknown `X-AW-Signature-Format` in a response | cycle fails naming the value |
@@ -243,12 +243,9 @@ each row gets a test.
   - The cache: a second identical body makes no second `Sign` call.
   - 503 on signer failure.
   - The 304 rollover paths.
-  - `last_signature_format` recorded.
 - **Sync.** Client verification for v1 and v2 against a real `awd`
   handler, one test per failure row in this spec, and repin on rollover
   followed by v2 verification with the new key.
-- **Store conformance.** `TouchMachine` stores the format, on memory and on
-  Postgres.
 - **Manual smoke test** (documented in the README, not run in CI):
   - create an Ed25519 KMS key,
   - run `awd` with `AWD_SIGNING_KEY=awskms:<arn>`,
@@ -260,8 +257,8 @@ each row gets a test.
 
 - README: signing section covers v2, the formats header, `awskms:` keys
   with the IAM policy a cell needs (`kms:Sign` and `kms:GetPublicKey` on
-  its own key only), and the self-hosted rollout path (upgrade `aw-sync`,
-  then watch `awd machines` for v2).
+  its own key only). Self-hosted needs no action: upgrading `aw-sync` moves
+  a machine to v2 by itself.
 - The trust statement for design partners, including the "our key can run
   hooks" risk and the co-signing upgrade path, is written in spec B, where
   the hosting it describes is designed.
