@@ -313,6 +313,33 @@ func TestRolloverHeaderIsSignedByThePreviousKey(t *testing.T) {
 	}
 }
 
+func TestRolloverBetweenTwoKMSStyleKeys(t *testing.T) {
+	// A hosted cell rotates from one KMS key to another: both only speak
+	// v2, and the outgoing one still signs the short rollover statement.
+	previous, _ := signing.Generate()
+	current, _ := signing.Generate()
+	srv := newSignedServer(t, &handler.Signer{
+		Current:  &v2OnlySigner{Signer: signing.NewSeedSigner(current)},
+		Previous: &v2OnlySigner{Signer: signing.NewSeedSigner(previous)},
+	})
+	_, alice := enroll(t, srv, mintToken(t, srv, "alice@acme.com"))
+
+	resp := bundleReq(t, srv, alice, "v1, v2", "")
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status %d, want 200", resp.StatusCode)
+	}
+	got, err := signing.VerifyRollover(previous.Public().(ed25519.PublicKey), resp.Header.Get("X-AW-Key-Rollover"))
+	if err != nil {
+		t.Fatalf("VerifyRollover: %v", err)
+	}
+	if !got.PublicKey.Equal(current.Public().(ed25519.PublicKey)) {
+		t.Fatal("the rollover announces the wrong key")
+	}
+	if f := resp.Header.Get("X-AW-Signature-Format"); f != "v2" {
+		t.Fatalf("format %q, want v2", f)
+	}
+}
+
 func TestNotModifiedStillCarriesTheRollover(t *testing.T) {
 	// A fleet whose policy is stable answers 304 to every cycle. If the
 	// rollover rode only on a changed bundle, no machine there would ever

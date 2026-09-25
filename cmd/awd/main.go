@@ -173,7 +173,11 @@ func serve() error {
 			s.Previous = old
 		}
 		h.Signer = s
-		log.Info("signing bundles", "keyId", s.KeyID(), "formats", strings.Join(current.Formats(), ","))
+		kind := "seed"
+		if strings.HasPrefix(value, "awskms:") {
+			kind = "awskms"
+		}
+		log.Info("signing bundles", "signer", kind, "keyId", s.KeyID(), "formats", strings.Join(current.Formats(), ","))
 	} else {
 		log.Warn("bundles are not signed; set AWD_SIGNING_KEY to sign them")
 	}
