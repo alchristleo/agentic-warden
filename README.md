@@ -16,11 +16,14 @@ files, MDM delivery, server-managed settings from the claude.ai console,
 Claude apps gateway adds SSO, per-IdP-group managed settings and spend limits
 for organizations that bring their own API key or cloud provider.
 
-What remains uncovered: **per-repository targeting**, per-group policy for
-organizations on claude.ai seats (the console cannot target a group, and the
-gateway needs an upstream credential), and any agent that is not Claude Code.
-This project fills those gaps, on an agent-agnostic interface so other agents
-can follow.
+What remains uncovered: **per-repository targeting**; per-group policy for
+Claude Code on claude.ai seats (the console applies one policy to the whole
+organization, and the gateway needs an upstream API or cloud credential); and
+one policy across agents, since Gemini CLI has no per-group delivery. Codex on
+ChatGPT plans already gets per-group requirements from OpenAI's Agent Security,
+so for Codex this project adds per-repository rules, Codex on API keys and
+self-hosting. This project fills those gaps, on an agent-agnostic interface so
+other agents can follow.
 
 ## How policy reaches the agent
 
