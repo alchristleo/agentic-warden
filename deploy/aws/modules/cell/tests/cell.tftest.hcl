@@ -65,7 +65,7 @@ run "database_is_private_encrypted_protected" {
 }
 
 run "database_accepts_only_the_task" {
-  command = plan
+  command = apply
 
   assert {
     condition     = length(aws_security_group.db.ingress) == 1 && one(aws_security_group.db.ingress).from_port == 5432 && one(aws_security_group.db.ingress).to_port == 5432
@@ -74,6 +74,10 @@ run "database_accepts_only_the_task" {
   assert {
     condition     = try(length(one(aws_security_group.db.ingress).cidr_blocks), 0) == 0 && length(one(aws_security_group.db.ingress).security_groups) == 1
     error_message = "DB SG ingress must come from a security group only"
+  }
+  assert {
+    condition     = one(aws_security_group.db.ingress).security_groups == toset([aws_security_group.task.id]) && aws_security_group.task.id != var.alb_security_group_id
+    error_message = "DB SG ingress must come only from the task SG"
   }
 }
 
