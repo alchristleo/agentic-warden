@@ -76,6 +76,7 @@ Environment:
   AWD_PUBLIC_URL                   external https origin of awd; enables the console with AWD_CONSOLE_*
   AWD_CONSOLE_ISSUER               OIDC issuer URL
   AWD_CONSOLE_CLIENT_ID            OIDC client id
+  AWD_CONSOLE_CLIENT_SECRET        the OIDC client secret (or use _FILE, not both)
   AWD_CONSOLE_CLIENT_SECRET_FILE   file holding the OIDC client secret
   AWD_CONSOLE_ADMIN_GROUP          IdP group whose members are console admins
   AWD_CONSOLE_USER_CLAIM           ID token claim naming the user (default email)
@@ -183,13 +184,18 @@ func serve() error {
 	}
 
 	if cfg.ConsoleEnabled() {
-		secret, err := os.ReadFile(cfg.Console.ClientSecretFile)
-		if err != nil {
-			return fmt.Errorf("awd: AWD_CONSOLE_CLIENT_SECRET_FILE: %w", err)
-		}
-		clientSecret := strings.TrimSpace(string(secret))
-		if clientSecret == "" {
-			return fmt.Errorf("awd: AWD_CONSOLE_CLIENT_SECRET_FILE %s is empty", cfg.Console.ClientSecretFile)
+		clientSecret := strings.TrimSpace(cfg.Console.ClientSecret)
+		if cfg.Console.ClientSecretFile != "" {
+			secret, err := os.ReadFile(cfg.Console.ClientSecretFile)
+			if err != nil {
+				return fmt.Errorf("awd: AWD_CONSOLE_CLIENT_SECRET_FILE: %w", err)
+			}
+			clientSecret = strings.TrimSpace(string(secret))
+			if clientSecret == "" {
+				return fmt.Errorf("awd: AWD_CONSOLE_CLIENT_SECRET_FILE %s is empty", cfg.Console.ClientSecretFile)
+			}
+		} else if clientSecret == "" {
+			return errors.New("awd: AWD_CONSOLE_CLIENT_SECRET is empty")
 		}
 		client := sso.New(sso.Config{
 			Issuer: cfg.Console.Issuer, ClientID: cfg.Console.ClientID, ClientSecret: clientSecret,

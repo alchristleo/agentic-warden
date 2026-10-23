@@ -6,6 +6,7 @@
 package config
 
 import (
+	"errors"
 	"fmt"
 	"log/slog"
 	"net/url"
@@ -49,6 +50,9 @@ type ConsoleConfig struct {
 	Issuer string
 	// ClientID is awd's client id at the identity provider.
 	ClientID string
+	// ClientSecret is the OIDC client secret given directly. At most one of
+	// ClientSecret and ClientSecretFile is set.
+	ClientSecret string
 	// ClientSecretFile is the path to a file holding the OIDC client secret.
 	ClientSecretFile string
 	// AdminGroup is the identity-provider group whose members administer
@@ -98,7 +102,6 @@ func FromEnv() (Config, error) {
 	}{
 		{"AWD_CONSOLE_ISSUER", &cfg.Console.Issuer},
 		{"AWD_CONSOLE_CLIENT_ID", &cfg.Console.ClientID},
-		{"AWD_CONSOLE_CLIENT_SECRET_FILE", &cfg.Console.ClientSecretFile},
 		{"AWD_CONSOLE_ADMIN_GROUP", &cfg.Console.AdminGroup},
 	}
 	publicURL := os.Getenv("AWD_PUBLIC_URL")
@@ -115,6 +118,18 @@ func FromEnv() (Config, error) {
 		} else {
 			missing = append(missing, c.key)
 		}
+	}
+	cfg.Console.ClientSecret = os.Getenv("AWD_CONSOLE_CLIENT_SECRET")
+	cfg.Console.ClientSecretFile = os.Getenv("AWD_CONSOLE_CLIENT_SECRET_FILE")
+	switch {
+	case cfg.Console.ClientSecret != "" && cfg.Console.ClientSecretFile != "":
+		return Config{}, errors.New("config: AWD_CONSOLE_CLIENT_SECRET and AWD_CONSOLE_CLIENT_SECRET_FILE are both set; use one")
+	case cfg.Console.ClientSecret != "":
+		set = append(set, "AWD_CONSOLE_CLIENT_SECRET")
+	case cfg.Console.ClientSecretFile != "":
+		set = append(set, "AWD_CONSOLE_CLIENT_SECRET_FILE")
+	default:
+		missing = append(missing, "AWD_CONSOLE_CLIENT_SECRET or AWD_CONSOLE_CLIENT_SECRET_FILE")
 	}
 	cfg.Console.UserClaim = env("AWD_CONSOLE_USER_CLAIM", "email")
 	if len(set) > 0 && len(missing) > 0 {
