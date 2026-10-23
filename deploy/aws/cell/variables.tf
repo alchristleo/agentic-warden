@@ -30,13 +30,23 @@ variable "image_digest" {
 
 variable "console" {
   type = object({
-    issuer        = string
-    client_id     = string
-    client_secret = string
-    admin_group   = string
-    user_claim    = string
+    issuer      = string
+    client_id   = string
+    admin_group = string
+    user_claim  = optional(string, "email")
   })
   default     = null
-  sensitive   = true
   description = "OIDC settings for the admin console; null leaves the console disabled."
+}
+
+variable "console_client_secret" {
+  type        = string
+  default     = null
+  sensitive   = true
+  description = "OIDC client secret for the admin console; required when console is set. Pass it with TF_VAR_console_client_secret."
+
+  validation {
+    condition     = var.console == null || var.console_client_secret != null
+    error_message = "console_client_secret is required when console is set."
+  }
 }

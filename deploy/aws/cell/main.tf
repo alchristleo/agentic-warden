@@ -20,10 +20,10 @@ locals {
   # AWD_PUBLIC_URL is a console setting in awd; set without the console it crash-loops.
   console_env = var.console == null ? [] : [
     { name = "AWD_PUBLIC_URL", value = "https://${local.host}" },
-    { name = "AWD_CONSOLE_ISSUER", value = nonsensitive(var.console.issuer) },
-    { name = "AWD_CONSOLE_CLIENT_ID", value = nonsensitive(var.console.client_id) },
-    { name = "AWD_CONSOLE_ADMIN_GROUP", value = nonsensitive(var.console.admin_group) },
-    { name = "AWD_CONSOLE_USER_CLAIM", value = nonsensitive(var.console.user_claim) },
+    { name = "AWD_CONSOLE_ISSUER", value = var.console.issuer },
+    { name = "AWD_CONSOLE_CLIENT_ID", value = var.console.client_id },
+    { name = "AWD_CONSOLE_ADMIN_GROUP", value = var.console.admin_group },
+    { name = "AWD_CONSOLE_USER_CLAIM", value = var.console.user_claim },
   ]
 
   secret_arns = merge(
@@ -108,7 +108,7 @@ resource "aws_secretsmanager_secret_version" "console_client_secret" {
   count = var.console == null ? 0 : 1
 
   secret_id     = aws_secretsmanager_secret.console_client_secret[0].id
-  secret_string = var.console.client_secret
+  secret_string = var.console_client_secret
 }
 
 # Network access

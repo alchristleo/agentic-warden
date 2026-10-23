@@ -231,10 +231,10 @@ run "console_adds_environment_and_one_secret" {
     console = {
       issuer        = "https://idp.example.com"
       client_id     = "awd-example"
-      client_secret = "not-a-real-secret"
       admin_group   = "aw-admins"
       user_claim    = "email"
     }
+    console_client_secret = "not-a-real-secret"
   }
 
   assert {
@@ -296,4 +296,36 @@ run "bad_tenant_is_rejected" {
   }
 
   expect_failures = [var.tenant]
+}
+
+run "console_without_secret_is_rejected" {
+  command = plan
+
+  variables {
+    console = {
+      issuer      = "https://idp.example.com"
+      client_id   = "awd-example"
+      admin_group = "aw-admins"
+    }
+  }
+
+  expect_failures = [var.console_client_secret]
+}
+
+run "console_user_claim_defaults_to_email" {
+  command = plan
+
+  variables {
+    console = {
+      issuer      = "https://idp.example.com"
+      client_id   = "awd-example"
+      admin_group = "aw-admins"
+    }
+    console_client_secret = "not-a-real-secret"
+  }
+
+  assert {
+    condition     = { for e in jsondecode(aws_ecs_task_definition.this.container_definitions)[0].environment : e.name => e.value }["AWD_CONSOLE_USER_CLAIM"] == "email"
+    error_message = "user_claim must default to email"
+  }
 }
