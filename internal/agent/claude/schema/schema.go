@@ -44,9 +44,13 @@ var (
 // every Validate call rather than a panic at init.
 func load() (*jsonschema.Schema, error) {
 	compileOnce.Do(func() {
-		var doc any
+		var doc map[string]any
 		if err := json.Unmarshal(Source, &doc); err != nil {
 			compileErr = fmt.Errorf("schema: parsing the vendored schema: %w", err)
+			return
+		}
+		if err := apply(doc, Overlay); err != nil {
+			compileErr = err
 			return
 		}
 		compiler := jsonschema.NewCompiler()
