@@ -62,7 +62,7 @@ The database keeps automated backups for 7 days. When you leave, or ask us to de
 - The signing key enters AWS's 7-day deletion window and cannot be recovered after it.
 - Secrets, logs and the cell's infrastructure are deleted. The infrastructure state file and its
   versions, which hold the old secrets, are deleted too.
-- We do this within 5 business days of your written request, and tell you when it is done.
+- We do this within 30 days of your written request, and tell you when it is done.
 
 ## Subprocessors
 
