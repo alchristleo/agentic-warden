@@ -340,10 +340,10 @@ run "console_adds_environment_and_one_secret" {
 
   variables {
     console = {
-      issuer        = "https://idp.example.com"
-      client_id     = "awd-example"
-      admin_group   = "aw-admins"
-      user_claim    = "email"
+      issuer      = "https://idp.example.com"
+      client_id   = "awd-example"
+      admin_group = "aw-admins"
+      user_claim  = "email"
     }
     console_client_secret = "not-a-real-secret"
   }
