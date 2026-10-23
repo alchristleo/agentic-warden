@@ -1,0 +1,106 @@
+//go:build drift
+
+package drift
+
+import (
+	"reflect"
+	"strings"
+	"testing"
+)
+
+func TestDiffNames(t *testing.T) {
+	added, removed := diffNames([]string{"a", "b", "c"}, []string{"a", "c", "d"})
+	if !reflect.DeepEqual(added, []string{"b"}) || !reflect.DeepEqual(removed, []string{"d"}) {
+		t.Fatalf("diffNames = %v, %v; want [b], [d]", added, removed)
+	}
+	msg := message("Codex requirements.toml", "internal/agent/codex/requirements/keys.go", nil, []string{"d"})
+	for _, want := range []string{"d", "removed", "internal/agent/codex/requirements/keys.go"} {
+		if !strings.Contains(msg, want) {
+			t.Errorf("message %q lacks %q", msg, want)
+		}
+	}
+	if message("x", "f.go", nil, nil) != "" {
+		t.Error("message with no difference should be empty")
+	}
+}
+
+func TestParseCodexKeys(t *testing.T) {
+	page := "## `other`\n\n key: \"nope\",\n\n## `requirements.toml`\n\nprose\n\n" +
+		"    {\n      key: \"allowed_sandbox_modes\",\n    },\n" +
+		"    {\n      key: \"remote_sandbox_config[].hostname_patterns\",\n    },\n" +
+		"    {\n      key: \"remote_sandbox_config\",\n    },\n" +
+		"    {\n      key: \"features.web_search\",\n    },\n"
+	got, err := parseCodexKeys(page)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []string{"allowed_sandbox_modes", "features", "remote_sandbox_config"}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("got %v, want %v", got, want)
+	}
+	if _, err := parseCodexKeys("# nothing here"); err == nil {
+		t.Fatal("want an error for a page without the section")
+	}
+}
+
+func TestParseGeminiSettingsKeys(t *testing.T) {
+	src := "const X = {\n  nope: {\n  },\n};\n\nconst SETTINGS_SCHEMA = {\n" +
+		"  mcpServers: {\n    type: 'object',\n    items: {\n  },\n  },\n" +
+		"  policyPaths: pathArraySetting(\n    'x',\n  ),\n" +
+		"  ui: {\n    label: 'UI',\n  },\n} as const satisfies SettingsSchema;\n\n  after: {\n"
+	got, err := parseGeminiSettingsKeys(src)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []string{"mcpServers", "policyPaths", "ui"}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("got %v, want %v", got, want)
+	}
+	if _, err := parseGeminiSettingsKeys("nothing"); err == nil {
+		t.Fatal("want an error")
+	}
+}
+
+func TestParseGeminiDecisions(t *testing.T) {
+	src := "export enum PolicyDecision {\n  ALLOW = 'allow',\n  DENY = 'deny',\n  ASK_USER = 'ask_user',\n}\nenum Other {\n  X = 'x',\n}\n"
+	got, err := parseGeminiDecisions(src)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := []string{"allow", "ask_user", "deny"}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("got %v, want %v", got, want)
+	}
+	if _, err := parseGeminiDecisions("nothing"); err == nil {
+		t.Fatal("want an error")
+	}
+}
+
+func TestParseClaudeSettingsKeys(t *testing.T) {
+	page := "| Key | Desc |\n| [`model`](#model) | x |\n| [`sandbox.enabled`](#a) | x |\n" +
+		"| [`sandbox.network.allowedDomains`](#b) | x |\n| [`env.FOO`](#c) | x |\n| [`worktree.location`](#d) | x |\n"
+	got, err := parseClaudeSettingsKeys(page)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []string{"sandbox.enabled", "sandbox.network.allowedDomains", "worktree.location"}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("got %v, want %v", got, want)
+	}
+	if _, err := parseClaudeSettingsKeys("nothing"); err == nil {
+		t.Fatal("want an error")
+	}
+}
+
+func TestParseClaudeHookEvents(t *testing.T) {
+	page := "## Configuration\n\n### Hook locations\n\n## Hook events\n\nintro\n\n### SessionStart\n\n#### Matcher\n\n### PreToolUse\n\n## Next\n\n### Elsewhere\n"
+	got, err := parseClaudeHookEvents(page)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := []string{"hooks.PreToolUse", "hooks.SessionStart"}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("got %v, want %v", got, want)
+	}
+	if _, err := parseClaudeHookEvents("nothing"); err == nil {
+		t.Fatal("want an error")
+	}
+}
