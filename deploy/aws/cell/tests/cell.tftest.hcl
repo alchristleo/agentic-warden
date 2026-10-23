@@ -39,6 +39,13 @@ override_data {
   }
 }
 
+override_data {
+  target = data.aws_caller_identity.current
+  values = {
+    account_id = "123456789012"
+  }
+}
+
 variables {
   tenant       = "example"
   region       = "eu-west-1"
@@ -106,6 +113,27 @@ run "signing_key_spec_and_name" {
   assert {
     condition     = aws_kms_alias.signing["k1"].name == "alias/aw-example-k1" && length(aws_kms_alias.signing) == 1
     error_message = "KMS alias must be alias/aw-<tenant>-<label>"
+  }
+}
+
+run "key_policy_confines_signing_to_the_task_role" {
+  command = plan
+
+  assert {
+    condition     = length(jsondecode(aws_kms_key.signing["k1"].policy).Statement) == 2
+    error_message = "key policy must have exactly the admin allow and the sign deny"
+  }
+  assert {
+    condition     = one([for st in jsondecode(aws_kms_key.signing["k1"].policy).Statement : st if st.Effect == "Allow"]).Principal.AWS == "arn:aws:iam::123456789012:root" && one([for st in jsondecode(aws_kms_key.signing["k1"].policy).Statement : st if st.Effect == "Allow"]).Action == "kms:*"
+    error_message = "key policy must let the account root administer the key"
+  }
+  assert {
+    condition     = one([for st in jsondecode(aws_kms_key.signing["k1"].policy).Statement : st if st.Effect == "Deny"]).Action == "kms:Sign" && one([for st in jsondecode(aws_kms_key.signing["k1"].policy).Statement : st if st.Effect == "Deny"]).Principal == "*"
+    error_message = "key policy must deny kms:Sign to everyone ..."
+  }
+  assert {
+    condition     = one([for st in jsondecode(aws_kms_key.signing["k1"].policy).Statement : st if st.Effect == "Deny"]).Condition.StringNotEquals["aws:PrincipalArn"] == "arn:aws:iam::123456789012:role/example"
+    error_message = "... except the cell's task role"
   }
 }
 

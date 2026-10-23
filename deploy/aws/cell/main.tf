@@ -9,6 +9,7 @@ data "terraform_remote_state" "platform" {
 }
 
 data "aws_region" "current" {}
+data "aws_caller_identity" "current" {}
 
 locals {
   p = data.terraform_remote_state.platform.outputs
@@ -52,6 +53,29 @@ resource "aws_kms_key" "signing" {
   customer_master_key_spec = "ECC_NIST_EDWARDS25519"
   key_usage                = "SIGN_VERIFY"
   deletion_window_in_days  = 7
+
+  # The root statement keeps the key administrable by IAM; the deny leaves signing to the task
+  # role alone. The role never references the keys, so there is no dependency cycle.
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Sid       = "AccountAdministration"
+        Effect    = "Allow"
+        Principal = { AWS = "arn:aws:iam::${data.aws_caller_identity.current.account_id}:root" }
+        Action    = "kms:*"
+        Resource  = "*"
+      },
+      {
+        Sid       = "OnlyTheTaskRoleSigns"
+        Effect    = "Deny"
+        Principal = "*"
+        Action    = "kms:Sign"
+        Resource  = "*"
+        Condition = { StringNotEquals = { "aws:PrincipalArn" = aws_iam_role.task.arn } }
+      },
+    ]
+  })
 }
 
 resource "aws_kms_alias" "signing" {
