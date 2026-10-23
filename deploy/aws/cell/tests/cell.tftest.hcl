@@ -96,16 +96,16 @@ run "signing_key_spec_and_name" {
   command = plan
 
   assert {
-    condition     = aws_kms_key.signing.customer_master_key_spec == "ECC_NIST_EDWARDS25519" && aws_kms_key.signing.key_usage == "SIGN_VERIFY"
+    condition     = alltrue([for k in aws_kms_key.signing : k.customer_master_key_spec == "ECC_NIST_EDWARDS25519" && k.key_usage == "SIGN_VERIFY"])
     error_message = "KMS key must be Ed25519 SIGN_VERIFY"
   }
   assert {
-    condition     = aws_kms_key.signing.deletion_window_in_days == 7
+    condition     = alltrue([for k in aws_kms_key.signing : k.deletion_window_in_days == 7])
     error_message = "KMS deletion window must be 7 days"
   }
   assert {
-    condition     = aws_kms_alias.signing.name == "alias/aw-example"
-    error_message = "KMS alias must be alias/aw-<tenant>"
+    condition     = aws_kms_alias.signing["k1"].name == "alias/aw-example-k1" && length(aws_kms_alias.signing) == 1
+    error_message = "KMS alias must be alias/aw-<tenant>-<label>"
   }
 }
 
@@ -121,7 +121,7 @@ run "task_role_signs_only_with_own_key" {
     error_message = "task role may only call kms:Sign and kms:GetPublicKey"
   }
   assert {
-    condition     = jsondecode(aws_iam_role_policy.task.policy).Statement[0].Resource == aws_kms_key.signing.arn
+    condition     = toset(jsondecode(aws_iam_role_policy.task.policy).Statement[0].Resource) == toset([aws_kms_key.signing["k1"].arn]) && length(aws_kms_key.signing) == 1
     error_message = "task role must be limited to this cell's key ARN"
   }
   assert {
@@ -150,6 +150,89 @@ run "execution_role_pulls_only_from_the_platform_repository" {
     condition     = one([for st in jsondecode(aws_iam_role_policy.execution_runtime.policy).Statement : st if contains(st.Action, "ecr:BatchGetImage")]).Resource == "arn:aws:ecr:eu-west-1:123456789012:repository/aw/awd"
     error_message = "execution role must pull from exactly the platform ECR repository ARN"
   }
+}
+
+run "rotation_with_two_keys" {
+  command = plan
+
+  variables {
+    signing_keys = ["k1", "k2"]
+  }
+
+  override_resource {
+    target = aws_kms_key.signing["k1"]
+    values = {
+      arn = "arn:aws:kms:eu-west-1:123456789012:key/11111111-1111-1111-1111-111111111111"
+    }
+  }
+  override_resource {
+    target = aws_kms_key.signing["k2"]
+    values = {
+      arn = "arn:aws:kms:eu-west-1:123456789012:key/22222222-2222-2222-2222-222222222222"
+    }
+  }
+
+  assert {
+    condition     = { for e in jsondecode(aws_ecs_task_definition.this.container_definitions)[0].environment : e.name => e.value }["AWD_SIGNING_KEY"] == "awskms:arn:aws:kms:eu-west-1:123456789012:key/22222222-2222-2222-2222-222222222222"
+    error_message = "current signing key must be the last label"
+  }
+  assert {
+    condition     = { for e in jsondecode(aws_ecs_task_definition.this.container_definitions)[0].environment : e.name => e.value }["AWD_SIGNING_KEY_PREVIOUS"] == "awskms:arn:aws:kms:eu-west-1:123456789012:key/11111111-1111-1111-1111-111111111111"
+    error_message = "previous signing key must be the first label"
+  }
+  assert {
+    condition     = toset(jsondecode(aws_iam_role_policy.task.policy).Statement[0].Resource) == toset(["arn:aws:kms:eu-west-1:123456789012:key/11111111-1111-1111-1111-111111111111", "arn:aws:kms:eu-west-1:123456789012:key/22222222-2222-2222-2222-222222222222"])
+    error_message = "task role must sign with exactly both cell keys"
+  }
+}
+
+run "one_key_has_no_previous" {
+  command = plan
+
+  assert {
+    condition     = !contains([for e in jsondecode(aws_ecs_task_definition.this.container_definitions)[0].environment : e.name], "AWD_SIGNING_KEY_PREVIOUS")
+    error_message = "a single key must not set AWD_SIGNING_KEY_PREVIOUS"
+  }
+}
+
+run "three_keys_rejected" {
+  command = plan
+
+  variables {
+    signing_keys = ["k1", "k2", "k3"]
+  }
+
+  expect_failures = [var.signing_keys]
+}
+
+run "duplicate_keys_rejected" {
+  command = plan
+
+  variables {
+    signing_keys = ["k1", "k1"]
+  }
+
+  expect_failures = [var.signing_keys]
+}
+
+run "bad_key_label_rejected" {
+  command = plan
+
+  variables {
+    signing_keys = ["K_1"]
+  }
+
+  expect_failures = [var.signing_keys]
+}
+
+run "empty_keys_rejected" {
+  command = plan
+
+  variables {
+    signing_keys = []
+  }
+
+  expect_failures = [var.signing_keys]
 }
 
 run "task_accepts_only_the_alb" {
@@ -190,7 +273,7 @@ run "environment_values" {
   command = plan
 
   assert {
-    condition     = { for e in jsondecode(aws_ecs_task_definition.this.container_definitions)[0].environment : e.name => e.value } == { AWD_ADDR = ":8080", AWD_SIGNING_KEY = "awskms:${aws_kms_key.signing.arn}", AWD_LOG_LEVEL = "info" }
+    condition     = { for e in jsondecode(aws_ecs_task_definition.this.container_definitions)[0].environment : e.name => e.value } == { AWD_ADDR = ":8080", AWD_SIGNING_KEY = "awskms:${aws_kms_key.signing["k1"].arn}", AWD_LOG_LEVEL = "info" }
     error_message = "environment must be exactly addr, signing key and log level without a console"
   }
   assert {

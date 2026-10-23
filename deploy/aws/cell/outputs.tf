@@ -2,8 +2,8 @@ output "url" {
   value = "https://${local.host}"
 }
 
-output "kms_key_arn" {
-  value = aws_kms_key.signing.arn
+output "kms_key_arns" {
+  value = { for label, k in aws_kms_key.signing : label => k.arn }
 }
 
 output "secret_arns" {

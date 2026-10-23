@@ -17,6 +17,13 @@ locals {
   host = "${var.tenant}.${local.p.domain}"
   port = 8080
 
+  # Signing keys are listed oldest first: the last signs, the first is kept as previous during rotation.
+  current_key  = var.signing_keys[length(var.signing_keys) - 1]
+  previous_key = length(var.signing_keys) == 2 ? var.signing_keys[0] : null
+  previous_key_env = local.previous_key == null ? [] : [
+    { name = "AWD_SIGNING_KEY_PREVIOUS", value = "awskms:${aws_kms_key.signing[local.previous_key].arn}" },
+  ]
+
   # AWD_PUBLIC_URL is a console setting in awd; set without the console it crash-loops.
   console_env = var.console == null ? [] : [
     { name = "AWD_PUBLIC_URL", value = "https://${local.host}" },
@@ -39,15 +46,19 @@ locals {
 # Signing key
 
 resource "aws_kms_key" "signing" {
-  description              = "awd bundle signing key for ${var.tenant}"
+  for_each = toset(var.signing_keys)
+
+  description              = "awd bundle signing key ${each.key} for ${var.tenant}"
   customer_master_key_spec = "ECC_NIST_EDWARDS25519"
   key_usage                = "SIGN_VERIFY"
   deletion_window_in_days  = 7
 }
 
 resource "aws_kms_alias" "signing" {
-  name          = "alias/${local.name}"
-  target_key_id = aws_kms_key.signing.key_id
+  for_each = aws_kms_key.signing
+
+  name          = "alias/${local.name}-${each.key}"
+  target_key_id = each.value.key_id
 }
 
 # Secrets
@@ -207,7 +218,7 @@ resource "aws_iam_role_policy" "task" {
     Statement = [{
       Effect   = "Allow"
       Action   = ["kms:Sign", "kms:GetPublicKey"]
-      Resource = aws_kms_key.signing.arn
+      Resource = [for k in aws_kms_key.signing : k.arn]
     }]
   })
 }
@@ -281,9 +292,9 @@ resource "aws_ecs_task_definition" "this" {
 
     environment = concat([
       { name = "AWD_ADDR", value = ":${local.port}" },
-      { name = "AWD_SIGNING_KEY", value = "awskms:${aws_kms_key.signing.arn}" },
+      { name = "AWD_SIGNING_KEY", value = "awskms:${aws_kms_key.signing[local.current_key].arn}" },
       { name = "AWD_LOG_LEVEL", value = "info" },
-    ], local.console_env)
+    ], local.previous_key_env, local.console_env)
 
     secrets = [for name, arn in local.secret_arns : { name = name, valueFrom = arn }]
 

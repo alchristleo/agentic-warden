@@ -50,3 +50,14 @@ variable "console_client_secret" {
     error_message = "console_client_secret is required when console is set."
   }
 }
+
+variable "signing_keys" {
+  type        = list(string)
+  default     = ["k1"]
+  description = "Labels of the cell's KMS signing keys, oldest first. The last is current; with two, the first is the previous key kept for rotation."
+
+  validation {
+    condition     = length(var.signing_keys) >= 1 && length(var.signing_keys) <= 2 && length(distinct(var.signing_keys)) == length(var.signing_keys) && alltrue([for k in var.signing_keys : can(regex("^[a-z0-9-]{1,16}$", k))])
+    error_message = "signing_keys needs 1 or 2 distinct labels, each matching ^[a-z0-9-]{1,16}$."
+  }
+}
