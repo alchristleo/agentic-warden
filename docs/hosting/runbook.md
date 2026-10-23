@@ -306,7 +306,7 @@ machines have moved, and give the partner the CloudTrail `Sign` events for the o
 
 RDS keeps automated backups for 7 days with point-in-time restore. Restore into a new instance and
 swap it in under the same identifier. The endpoint is expected to stay the same; if it does not,
-the plan in step 5 updates the database URL secret and the service picks it up on redeploy.
+the plan below updates the database URL secret and the service picks it up on redeploy.
 
 ```sh
 # 1. Read the network settings of the current instance.
@@ -348,7 +348,7 @@ tofu -chdir=deploy/aws/cell plan -var-file=<ops>/<tenant>.tfvars
 ```
 
 The plan should show only deletion protection and backup retention being restored, and, if you
-scaled the service down in step 2, `desired_count` going from 0 to 1 on `aws_ecs_service.this`. If the endpoint
+scaled the service down to 0 above, `desired_count` going from 0 to 1 on `aws_ecs_service.this`. If the endpoint
 changed, the database URL secret version is updated too. If the plan shows anything else, stop and
 read it. Then:
 
