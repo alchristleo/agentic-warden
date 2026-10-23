@@ -105,9 +105,9 @@ tofu -chdir=deploy/aws/cell plan  -var-file=<ops>/<tenant>.tfvars
 tofu -chdir=deploy/aws/cell apply -var-file=<ops>/<tenant>.tfvars
 ```
 
-Every cell command in this runbook starts with that same `init -reconfigure`. It points the working
-directory at this tenant's state, so run it every time before a plan, apply, import or destroy,
-especially when you switch tenant. On a first apply, `tofu -chdir=deploy/aws/cell state list` must
+Run that same `init -reconfigure` before every cell command in this runbook (plan, apply, import,
+destroy, state, output). It points the working directory at this tenant's state, so it matters most
+when you switch tenant. On a first apply, `tofu -chdir=deploy/aws/cell state list` must
 print nothing; if it lists resources, you are on another tenant's state.
 
 If the cell has a console (step 7), also have `TF_VAR_console_client_secret` set for every plan,
@@ -143,7 +143,7 @@ Run after the first apply of a cell, and the first time on any new account.
    AW_SYNC_STATE_DIR=./state ./aw --policy <(curl -s https://<tenant>.<domain>/v1/policy) doctor
    ```
    The output must include `bundle signature: verified (v2, key ...)`.
-6. Signing is logged. `<key-arn>` is the cell's key from `tofu -chdir=deploy/aws/cell output kms_key_arns`. This shows `Sign` events from the cell's task role (CloudTrail can lag a few minutes):
+6. Signing is logged. `<key-arn>` is the cell's current key: the ARN of the last label in `signing_keys` (`k1` unless you have rotated) from `tofu -chdir=deploy/aws/cell output kms_key_arns`. This shows `Sign` events from the cell's task role (CloudTrail can lag a few minutes):
    ```sh
    aws cloudtrail lookup-events --region <region> \
      --lookup-attributes AttributeKey=ResourceName,AttributeValue=<key-arn> --max-results 5
@@ -305,8 +305,8 @@ machines have moved, and give the partner the CloudTrail `Sign` events for the o
 **Not yet rehearsed against AWS.** Run it once on a throwaway cell before a partner needs it.
 
 RDS keeps automated backups for 7 days with point-in-time restore. Restore into a new instance and
-swap it in under the same identifier, so the database endpoint and the database URL secret stay
-the same.
+swap it in under the same identifier. The endpoint is expected to stay the same; if it does not,
+the plan in step 5 updates the database URL secret and the service picks it up on redeploy.
 
 ```sh
 # 1. Read the network settings of the current instance.
@@ -348,8 +348,9 @@ tofu -chdir=deploy/aws/cell plan -var-file=<ops>/<tenant>.tfvars
 ```
 
 The plan should show only deletion protection and backup retention being restored, and, if you
-scaled the service down in step 2, `desired_count` going from 0 to 1 on `aws_ecs_service.this`. The
-database URL secret must not change. If the plan shows anything else, stop and read it. Then:
+scaled the service down in step 2, `desired_count` going from 0 to 1 on `aws_ecs_service.this`. If the endpoint
+changed, the database URL secret version is updated too. If the plan shows anything else, stop and
+read it. Then:
 
 ```sh
 tofu -chdir=deploy/aws/cell apply -var-file=<ops>/<tenant>.tfvars
