@@ -390,6 +390,10 @@ Production deploys (`VERCEL_ENV=production`) need `NEXT_PUBLIC_SITE_URL`,
 `RESEND_API_KEY`, `DEMO_INBOX` and `DEMO_FROM`; the build fails without
 them. See `web/.env.example`.
 
+## Hosted cells
+
+We run `awd` for design partners on AWS. How we operate it is in [docs/hosting/runbook.md](docs/hosting/runbook.md), and what a partner is trusting us with is in [docs/hosting/trust.md](docs/hosting/trust.md).
+
 ## Maintenance
 
 A weekly drift job checks the Codex requirements keys, the Gemini settings keys and decisions, and the Claude nested settings keys against upstream. Run it with `go test -tags drift ./internal/drift/`; keys we skip on purpose are in `claudeUnsupported`.
