@@ -17,7 +17,9 @@ locals {
   host = "${var.tenant}.${local.p.domain}"
   port = 8080
 
+  # AWD_PUBLIC_URL is a console setting in awd; set without the console it crash-loops.
   console_env = var.console == null ? [] : [
+    { name = "AWD_PUBLIC_URL", value = "https://${local.host}" },
     { name = "AWD_CONSOLE_ISSUER", value = nonsensitive(var.console.issuer) },
     { name = "AWD_CONSOLE_CLIENT_ID", value = nonsensitive(var.console.client_id) },
     { name = "AWD_CONSOLE_ADMIN_GROUP", value = nonsensitive(var.console.admin_group) },
@@ -279,7 +281,6 @@ resource "aws_ecs_task_definition" "this" {
 
     environment = concat([
       { name = "AWD_ADDR", value = ":${local.port}" },
-      { name = "AWD_PUBLIC_URL", value = "https://${local.host}" },
       { name = "AWD_SIGNING_KEY", value = "awskms:${aws_kms_key.signing.arn}" },
       { name = "AWD_LOG_LEVEL", value = "info" },
     ], local.console_env)

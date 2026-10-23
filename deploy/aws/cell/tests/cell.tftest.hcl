@@ -190,8 +190,8 @@ run "environment_values" {
   command = plan
 
   assert {
-    condition     = { for e in jsondecode(aws_ecs_task_definition.this.container_definitions)[0].environment : e.name => e.value } == { AWD_ADDR = ":8080", AWD_PUBLIC_URL = "https://example.example.com", AWD_SIGNING_KEY = "awskms:${aws_kms_key.signing.arn}", AWD_LOG_LEVEL = "info" }
-    error_message = "environment must be exactly addr, public url, signing key and log level without a console"
+    condition     = { for e in jsondecode(aws_ecs_task_definition.this.container_definitions)[0].environment : e.name => e.value } == { AWD_ADDR = ":8080", AWD_SIGNING_KEY = "awskms:${aws_kms_key.signing.arn}", AWD_LOG_LEVEL = "info" }
+    error_message = "environment must be exactly addr, signing key and log level without a console"
   }
   assert {
     condition     = aws_ecs_service.this.desired_count == 1
@@ -248,6 +248,10 @@ run "console_adds_environment_and_one_secret" {
   assert {
     condition     = !contains([for e in jsondecode(aws_ecs_task_definition.this.container_definitions)[0].environment : e.name], "AWD_CONSOLE_CLIENT_SECRET")
     error_message = "console client secret must not be environment"
+  }
+  assert {
+    condition     = { for e in jsondecode(aws_ecs_task_definition.this.container_definitions)[0].environment : e.name => e.value }["AWD_PUBLIC_URL"] == "https://example.example.com"
+    error_message = "console needs AWD_PUBLIC_URL"
   }
   assert {
     condition     = length(jsondecode(aws_iam_role_policy.execution_secrets.policy).Statement[0].Resource) == 4
