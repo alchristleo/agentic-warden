@@ -38,10 +38,11 @@ jobs:
           package_json_file: console/package.json
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 24
           cache: pnpm
           cache-dependency-path: console/pnpm-lock.yaml
       - run: go test ./...
+      - run: docker build -f deploy/Dockerfile .
       - working-directory: console
         run: pnpm install --frozen-lockfile
       - working-directory: console
