@@ -72,6 +72,40 @@ func TestApplyFollowsLocalRef(t *testing.T) {
 	}
 }
 
+func TestOverlayEntriesValidate(t *testing.T) {
+	hook := []any{map[string]any{"matcher": "*", "hooks": []any{map[string]any{"type": "command", "command": "true"}}}}
+	creds := func(k string, v any) map[string]any {
+		return map[string]any{"sandbox": map[string]any{"credentials": map[string]any{k: v}}}
+	}
+	pair := func(extra string) []any {
+		return []any{map[string]any{"accessKeyIdVar": "A", "secretAccessKeyVar": "B", extra: "C"}}
+	}
+	cases := []struct {
+		name     string
+		settings map[string]any
+		wantErr  bool
+	}{
+		{"hook event ok", map[string]any{"hooks": map[string]any{"PreModelSwitch": hook}}, false},
+		{"hook event wrong type", map[string]any{"hooks": map[string]any{"PostModelSwitch": "x"}}, true},
+		{"blockReads ok", map[string]any{"permissions": map[string]any{"blockReadsOutsideWorkingDirectories": true}}, false},
+		{"blockReads wrong type", map[string]any{"permissions": map[string]any{"blockReadsOutsideWorkingDirectories": "yes"}}, true},
+		{"location ok", map[string]any{"worktree": map[string]any{"location": "~/worktrees"}}, false},
+		{"location wrong type", map[string]any{"worktree": map[string]any{"location": true}}, true},
+		{"sigv4 ok", creds("sigv4", map[string]any{"streaming": "passthrough"}), false},
+		{"sigv4 bad enum", creds("sigv4", map[string]any{"streaming": "allow"}), true},
+		{"sigv4 typo", creds("sigv4", map[string]any{"sigv4A": "deny"}), true},
+		{"awsPairs ok", creds("awsPairs", pair("sessionTokenVar")), false},
+		{"awsPairs missing required", creds("awsPairs", []any{map[string]any{"accessKeyIdVar": "A"}}), true},
+		{"awsPairs typo", creds("awsPairs", pair("sessionTokenVr")), true},
+	}
+	for _, c := range cases {
+		err := Validate(c.settings)
+		if (err != nil) != c.wantErr {
+			t.Errorf("%s: Validate() = %v, wantErr %v", c.name, err, c.wantErr)
+		}
+	}
+}
+
 func TestOverlayEntriesAllApply(t *testing.T) {
 	if _, err := load(); err != nil {
 		t.Fatalf("load() = %v, want nil", err)
