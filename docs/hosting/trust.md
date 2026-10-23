@@ -6,8 +6,10 @@ runs today, including what is not yet as good as we want it.
 ## What we run for you
 
 One isolated `awd` control plane at `https://<tenant>.<domain>`, in our AWS account. It has its own
-database, secrets, signing key and IAM role. Other partners' cells share only the network, the load
-balancer, the image repository and the container cluster.
+database, secrets, signing key and IAM role. Other partners' cells share these parts: the network,
+the load balancer and wildcard certificate, the image repository, the container cluster, the AWS
+account itself, and the infrastructure state bucket, which holds every cell's generated secrets
+(encrypted).
 
 ## What we store
 
@@ -30,16 +32,19 @@ of an agent session. Machines send us enrollment and sync requests, and nothing 
 leaves KMS, and nobody, including us, can read it out. But we control the account, so a person with
 the right access in it could cause a signature to be made. What limits and exposes that:
 
-- Only your cell's service role may sign with your key, and only that key.
-- Every `Sign` call is recorded in AWS CloudTrail. We will share the log of your key's signatures
-  on request.
+- Only your cell's service role can sign with your key. The key policy denies Sign to every other
+  principal, including our administrators. An administrator could change the key policy, and that
+  change is itself recorded in CloudTrail.
+- Every `Sign` call is recorded in AWS CloudTrail. We can share the `Sign` events for the last 90
+  days (AWS event history), filtered to your key.
 - Machines pin your key when they enroll and check every policy bundle against it.
 
 This does not protect you from us. A signature made by the cell is valid whether the policy came
 from you or from someone with access to our account. **Co-signed revisions**, where a key you hold
 must also sign, are planned and not built yet.
 
-Rotating the key today means re-enrolling your machines. We will tell you before we do it and agree
+Keys can be rotated without re-enrolling your machines: the old key signs a statement handing over
+to the new one, and machines follow on their next sync. We will tell you before we do it and agree
 a date with you.
 
 ## Where it runs
@@ -60,6 +65,7 @@ The database keeps automated backups for 7 days. When you leave, or ask us to de
 
 - We delete the database. Its automated backups go with it, and no final snapshot is kept.
 - The signing key enters AWS's 7-day deletion window and cannot be recovered after it.
+  CloudTrail event history naming your key id persists for up to 90 days after deletion.
 - Secrets, logs and the cell's infrastructure are deleted. The infrastructure state file and its
   versions, which hold the old secrets, are deleted too.
 - We do this within 30 days of your written request, and tell you when it is done.
