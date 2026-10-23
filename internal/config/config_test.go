@@ -136,6 +136,9 @@ func TestConsoleClientSecretBothSetIsAnError(t *testing.T) {
 	setConsoleEnv(t)
 	t.Setenv("AWD_CONSOLE_CLIENT_SECRET", "s3cret")
 	_, err := config.FromEnv()
+	if err != nil && strings.Contains(err.Error(), "s3cret") {
+		t.Errorf("error %q echoes the secret", err)
+	}
 	if err == nil || !strings.Contains(err.Error(), "AWD_CONSOLE_CLIENT_SECRET_FILE") || !strings.Contains(err.Error(), "AWD_CONSOLE_CLIENT_SECRET ") {
 		t.Fatalf("err = %v", err)
 	}

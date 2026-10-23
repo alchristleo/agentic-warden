@@ -184,18 +184,9 @@ func serve() error {
 	}
 
 	if cfg.ConsoleEnabled() {
-		clientSecret := strings.TrimSpace(cfg.Console.ClientSecret)
-		if cfg.Console.ClientSecretFile != "" {
-			secret, err := os.ReadFile(cfg.Console.ClientSecretFile)
-			if err != nil {
-				return fmt.Errorf("awd: AWD_CONSOLE_CLIENT_SECRET_FILE: %w", err)
-			}
-			clientSecret = strings.TrimSpace(string(secret))
-			if clientSecret == "" {
-				return fmt.Errorf("awd: AWD_CONSOLE_CLIENT_SECRET_FILE %s is empty", cfg.Console.ClientSecretFile)
-			}
-		} else if clientSecret == "" {
-			return errors.New("awd: AWD_CONSOLE_CLIENT_SECRET is empty")
+		clientSecret, err := consoleClientSecret(cfg.Console)
+		if err != nil {
+			return err
 		}
 		client := sso.New(sso.Config{
 			Issuer: cfg.Console.Issuer, ClientID: cfg.Console.ClientID, ClientSecret: clientSecret,
@@ -747,4 +738,25 @@ func revoke(argv []string) error {
 	}
 	fmt.Printf("revoked %s\n", a.positional[0])
 	return nil
+}
+
+// consoleClientSecret resolves the OIDC client secret from the env value or
+// the file, trimmed. An empty result is an error that never echoes the value.
+func consoleClientSecret(c config.ConsoleConfig) (string, error) {
+	if c.ClientSecretFile != "" {
+		b, err := os.ReadFile(c.ClientSecretFile)
+		if err != nil {
+			return "", fmt.Errorf("awd: AWD_CONSOLE_CLIENT_SECRET_FILE: %w", err)
+		}
+		v := strings.TrimSpace(string(b))
+		if v == "" {
+			return "", fmt.Errorf("awd: AWD_CONSOLE_CLIENT_SECRET_FILE %s is empty", c.ClientSecretFile)
+		}
+		return v, nil
+	}
+	v := strings.TrimSpace(c.ClientSecret)
+	if v == "" {
+		return "", errors.New("awd: AWD_CONSOLE_CLIENT_SECRET is empty")
+	}
+	return v, nil
 }
