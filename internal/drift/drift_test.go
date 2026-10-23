@@ -30,6 +30,12 @@ const (
 	claudeHooksURL = "https://code.claude.com/docs/en/hooks.md"
 )
 
+// claudeKeyedBlocks are the blocks the settings index lists dotted keys for
+// today. statusLine, fileSuggestion, spinnerVerbs, spinnerTipsOverride,
+// subagentStatusLine and voice have none upstream, so they are exempt; hooks
+// is covered by the hook events page.
+var claudeKeyedBlocks = []string{"attribution", "permissions", "sandbox", "worktree", "autoMode", "policyHelper"}
+
 // claudeBlocks are the settings blocks that reject unknown keys.
 var claudeBlocks = []string{
 	"attribution", "permissions", "hooks", "statusLine", "fileSuggestion", "sandbox",
@@ -139,7 +145,14 @@ func parseCodexKeys(page string) ([]string, error) {
 	}
 	var keys []string
 	for _, m := range codexKeyRe.FindAllStringSubmatch(sec, -1) {
-		keys = append(keys, strings.FieldsFunc(m[1], func(r rune) bool { return r == '.' || r == '[' })[0])
+		name := m[1]
+		if i := strings.IndexAny(name, ".["); i >= 0 {
+			name = name[:i]
+		}
+		if name == "" {
+			return nil, fmt.Errorf("key %q has no name", m[1])
+		}
+		keys = append(keys, name)
 	}
 	if len(keys) == 0 {
 		return nil, fmt.Errorf("no key entries in the requirements.toml section")
@@ -315,6 +328,15 @@ func TestClaudeNestedKeys(t *testing.T) {
 	keys, err := parseClaudeSettingsKeys(fetch(t, claudeURL))
 	if err != nil {
 		t.Fatalf("upstream page changed shape: %s: %v", claudeURL, err)
+	}
+	for _, b := range claudeKeyedBlocks {
+		found := false
+		for _, k := range keys {
+			found = found || strings.HasPrefix(k, b+".")
+		}
+		if !found {
+			t.Fatalf("upstream page changed shape: %s lists no keys under %q", claudeURL, b)
+		}
 	}
 	events, err := parseClaudeHookEvents(fetch(t, claudeHooksURL))
 	if err != nil {

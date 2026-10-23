@@ -104,3 +104,27 @@ func TestParseClaudeHookEvents(t *testing.T) {
 		t.Fatal("want an error")
 	}
 }
+
+func TestParsersRejectEmptySections(t *testing.T) {
+	cases := map[string]func() error{
+		"codex": func() error { _, err := parseCodexKeys("## `requirements.toml`\n\nprose only\n"); return err },
+		"codex empty name": func() error {
+			_, err := parseCodexKeys("## `requirements.toml`\n\n      key: \"[]\",\n")
+			return err
+		},
+		"gemini keys": func() error {
+			_, err := parseGeminiSettingsKeys("const SETTINGS_SCHEMA = {\n    deep: {\n}\n")
+			return err
+		},
+		"gemini decisions": func() error { _, err := parseGeminiDecisions("enum PolicyDecision {\n}\n"); return err },
+		"claude events": func() error {
+			_, err := parseClaudeHookEvents("## Hook events\n\nprose only\n\n## Next\n")
+			return err
+		},
+	}
+	for name, f := range cases {
+		if f() == nil {
+			t.Errorf("%s: want an error", name)
+		}
+	}
+}
