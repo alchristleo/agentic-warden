@@ -44,7 +44,7 @@ Tests (mock provider, `command = plan`): listener policy + cert; 80 redirect; AL
 Checks: AC1 (platform), AC3.
 
 ### T4 — cell module + cell root (agent: sdd-implementer)
-Files: `deploy/aws/modules/cell/**` (incl. `tests/cell.tftest.hcl`), `deploy/aws/cell/{versions,main,variables,outputs}.tf`, `deploy/aws/cell/.terraform.lock.hcl`, `deploy/aws/cell/example.tfvars` (placeholder tenant `example`).
+Files: `deploy/aws/cell/{versions,main,variables,outputs}.tf` (incl. `tests/cell.tftest.hcl`; the former `modules/cell` is collapsed into the root), `deploy/aws/cell/.terraform.lock.hcl`, `deploy/aws/cell/example.tfvars` (placeholder tenant `example`).
 - Module inputs: `tenant` (validation `^[a-z][a-z0-9-]{1,30}$`), `image` (validation: contains `@sha256:`), the platform contract values, optional `console = { issuer, client_id, client_secret, admin_group, user_claim }` (null = no console).
 - Resources per spec Design: KMS key (+ alias `alias/aw-<tenant>`, deletion window 7), `random_password` ×3 → Secrets Manager (admin token, SCIM token, DB URL composed with the RDS endpoint, `sslmode=require`; console secret when set), DB subnet group + RDS `db.t4g.micro` postgres 17 (private, encrypted, deletion protection, backup 7, `delete_automated_backups = true`, `skip_final_snapshot = true`), RDS SG ingress only from task SG on 5432, task SG ingress only from ALB SG, IAM task role (KMS only) + execution role (logs + only this cell's secrets), log group 30 days, task definition (port 8080, health `/readyz` on target group), service `desired_count = 1` public IP on public subnets, target group + listener rule host `<tenant>.<domain>`, Route 53 alias record.
 - Env: `AWD_ADDR=:8080`, `AWD_PUBLIC_URL`, `AWD_SIGNING_KEY=awskms:<arn>`, `AWD_LOG_LEVEL=info`, console non-secret vars; secrets: `AWD_DATABASE_URL`, `AWD_ADMIN_TOKEN`, `AWD_SCIM_TOKEN`, `AWD_CONSOLE_CLIENT_SECRET` (when console set; T2 adds this env var).
@@ -55,7 +55,7 @@ Checks: AC1 (cell), AC2.
 ## Group B (after A merges)
 
 ### T5 — infra CI (agent: sdd-implementer-lite)
-Files: `.github/workflows/infra.yml`. On push/PR paths `deploy/aws/**` and the workflow itself; `permissions: contents: read`; checkout with `persist-credentials: false`; `opentofu/setup-opentofu` pinned to OpenTofu 1.13.2; steps: `tofu fmt -check -recursive deploy/aws`, then for platform and cell `init -backend=false` + `validate`, then `tofu test` in `platform` and `modules/cell`. Check: AC7 (grep) and the commands pass locally.
+Files: `.github/workflows/infra.yml`. On push/PR paths `deploy/aws/**` and the workflow itself; `permissions: contents: read`; checkout with `persist-credentials: false`; `opentofu/setup-opentofu` pinned to OpenTofu 1.13.2; steps: `tofu fmt -check -recursive deploy/aws`, then for platform and cell `init -backend=false` + `validate`, then `tofu test` in `platform` and `cell`. Check: AC7 (grep) and the commands pass locally.
 
 ### T6 — runbook and trust statement (agent: sdd-implementer)
 Files: `docs/hosting/runbook.md`, `docs/hosting/trust.md`, one link from README.

@@ -50,12 +50,12 @@ AWS KMS Ed25519 signing key held by us; AWS (ECS Fargate, RDS, KMS, Secrets Mana
 deploy/aws/
   platform/      VPC (2 AZ public subnets), ALB (443, HTTP→HTTPS redirect), wildcard ACM cert,
                  Route 53 zone data source, ECR repo, ECS cluster. Outputs consumed by cells.
-  modules/cell/  KMS key (ECC_NIST_EDWARDS25519, SIGN_VERIFY), Secrets Manager secrets,
+  cell/          Root: backend "s3" (partial), reads platform outputs via terraform_remote_state.
+                 KMS key (ECC_NIST_EDWARDS25519, SIGN_VERIFY), Secrets Manager secrets,
                  RDS (encrypted, private, deletion protection, 7-day backups), security groups,
                  task + execution IAM roles, task definition, service, target group,
                  listener rule, Route 53 record, log group (30-day retention).
-  cell/          Root: backend "s3" (partial), reads platform outputs via terraform_remote_state,
-                 calls modules/cell. Inputs: tenant, region, image_digest, console OIDC (optional).
+                 Inputs: tenant, region, image_digest, console OIDC (optional).
 docs/hosting/runbook.md   bootstrap, push image, create cell, hand over credentials, configure
                           console, upgrade, rotate signing key, backup/restore, delete cell.
 docs/hosting/trust.md     the trust statement.
@@ -74,7 +74,7 @@ with it, no final snapshot), and the KMS key enters its 7-day pending-deletion w
 1. Formatting and validation pass: `tofu fmt -check -recursive deploy/aws` and
    `tofu -chdir=deploy/aws/<root> init -backend=false && tofu -chdir=deploy/aws/<root> validate`
    for `platform` and `cell`.
-2. Cell module plan assertions pass with a mocked AWS provider: `tofu -chdir=deploy/aws/modules/cell test`.
+2. Cell module plan assertions pass with a mocked AWS provider: `tofu -chdir=deploy/aws/cell test`.
    They assert: RDS `publicly_accessible = false`, `storage_encrypted = true`, `deletion_protection = true`,
    `backup_retention_period = 7`; KMS key spec `ECC_NIST_EDWARDS25519` and usage `SIGN_VERIFY`;
    the task role policy allows exactly `kms:Sign` and `kms:GetPublicKey` on this cell's key ARN only;
@@ -117,3 +117,9 @@ with it, no final snapshot), and the KMS key enters its 7-day pending-deletion w
   state bucket holds them, so it is encrypted, versioned and private (runbook bootstrap).
 - Key custody: we hold the signing keys; the trust statement says so plainly, offers the CloudTrail
   log, and names co-signing as the planned upgrade.
+
+## Changes after review
+
+- `deploy/aws/modules/cell` is collapsed into the `deploy/aws/cell` root (one Tofu root, no
+  module). Its tests live in `deploy/aws/cell/tests/` and stub the platform remote state with
+  `override_data`; run them with `tofu -chdir=deploy/aws/cell test`.

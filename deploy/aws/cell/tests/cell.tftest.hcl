@@ -20,19 +20,29 @@ mock_provider "aws" {
 
 mock_provider "random" {}
 
+override_data {
+  target = data.terraform_remote_state.platform
+  values = {
+    outputs = {
+      vpc_id                = "vpc-0123456789abcdef0"
+      public_subnet_ids     = ["subnet-0aaaaaaaaaaaaaaaa", "subnet-0bbbbbbbbbbbbbbbb"]
+      alb_security_group_id = "sg-0123456789abcdef0"
+      https_listener_arn    = "arn:aws:elasticloadbalancing:eu-west-1:123456789012:listener/app/aw/0123456789abcdef/0123456789abcdef"
+      alb_dns_name          = "aw-1234.eu-west-1.elb.amazonaws.com"
+      alb_zone_id           = "Z32O12XQLNTSW2"
+      ecs_cluster_arn       = "arn:aws:ecs:eu-west-1:123456789012:cluster/aw"
+      ecr_repository_url    = "123456789012.dkr.ecr.eu-west-1.amazonaws.com/aw/awd"
+      zone_id               = "Z0123456789ABCDEFGHIJ"
+      domain                = "example.com"
+    }
+  }
+}
+
 variables {
-  tenant                = "example"
-  image                 = "123456789012.dkr.ecr.eu-west-1.amazonaws.com/aw@sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
-  vpc_id                = "vpc-0123456789abcdef0"
-  public_subnet_ids     = ["subnet-0aaaaaaaaaaaaaaaa", "subnet-0bbbbbbbbbbbbbbbb"]
-  alb_security_group_id = "sg-0123456789abcdef0"
-  https_listener_arn    = "arn:aws:elasticloadbalancing:eu-west-1:123456789012:listener/app/aw/0123456789abcdef/0123456789abcdef"
-  alb_dns_name          = "aw-1234.eu-west-1.elb.amazonaws.com"
-  alb_zone_id           = "Z32O12XQLNTSW2"
-  ecs_cluster_arn       = "arn:aws:ecs:eu-west-1:123456789012:cluster/aw"
-  ecr_repository_url    = "123456789012.dkr.ecr.eu-west-1.amazonaws.com/aw"
-  zone_id               = "Z0123456789ABCDEFGHIJ"
-  domain                = "example.com"
+  tenant       = "example"
+  region       = "eu-west-1"
+  state_bucket = "example-aw-tfstate"
+  image        = "123456789012.dkr.ecr.eu-west-1.amazonaws.com/aw/awd@sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
 }
 
 run "database_is_private_encrypted_protected" {
@@ -76,7 +86,7 @@ run "database_accepts_only_the_task" {
     error_message = "DB SG ingress must come from a security group only"
   }
   assert {
-    condition     = one(aws_security_group.db.ingress).security_groups == toset([aws_security_group.task.id]) && aws_security_group.task.id != var.alb_security_group_id
+    condition     = one(aws_security_group.db.ingress).security_groups == toset([aws_security_group.task.id]) && aws_security_group.task.id != "sg-0123456789abcdef0"
     error_message = "DB SG ingress must come only from the task SG"
   }
 }
@@ -144,7 +154,7 @@ run "task_accepts_only_the_alb" {
     error_message = "task SG ingress must be tcp 8080"
   }
   assert {
-    condition     = one(aws_security_group.task.ingress).security_groups == toset([var.alb_security_group_id]) && try(length(one(aws_security_group.task.ingress).cidr_blocks), 0) == 0
+    condition     = one(aws_security_group.task.ingress).security_groups == toset(["sg-0123456789abcdef0"]) && try(length(one(aws_security_group.task.ingress).cidr_blocks), 0) == 0
     error_message = "task SG ingress must come only from the ALB SG"
   }
 }
@@ -239,7 +249,7 @@ run "image_without_digest_is_rejected" {
   command = plan
 
   variables {
-    image = "123456789012.dkr.ecr.eu-west-1.amazonaws.com/aw:latest"
+    image = "123456789012.dkr.ecr.eu-west-1.amazonaws.com/aw/awd:latest"
   }
 
   expect_failures = [var.image]

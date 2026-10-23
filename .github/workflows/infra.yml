@@ -28,5 +28,4 @@ jobs:
       - run: tofu -chdir=deploy/aws/cell init -backend=false
       - run: tofu -chdir=deploy/aws/cell validate
       - run: tofu -chdir=deploy/aws/platform test
-      - run: tofu -chdir=deploy/aws/modules/cell init -backend=false
-      - run: tofu -chdir=deploy/aws/modules/cell test
+      - run: tofu -chdir=deploy/aws/cell test

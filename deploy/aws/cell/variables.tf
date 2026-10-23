@@ -1,6 +1,11 @@
 variable "tenant" {
   type        = string
   description = "Tenant name; the cell is served at <tenant>.<domain>."
+
+  validation {
+    condition     = can(regex("^[a-z][a-z0-9-]{1,30}$", var.tenant))
+    error_message = "tenant must match ^[a-z][a-z0-9-]{1,30}$."
+  }
 }
 
 variable "region" {
@@ -16,6 +21,11 @@ variable "state_bucket" {
 variable "image" {
   type        = string
   description = "Image pinned by digest: <ecr_repository_url>@sha256:<hex>."
+
+  validation {
+    condition     = strcontains(var.image, "@sha256:")
+    error_message = "image must be pinned by digest (contain @sha256:)."
+  }
 }
 
 variable "console" {
