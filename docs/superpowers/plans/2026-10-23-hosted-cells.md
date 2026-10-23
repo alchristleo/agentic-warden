@@ -66,6 +66,15 @@ Use the variable and output names from T3/T4 exactly.
 ## Ledger
 
 ```
+T2 done 02c2d62 sdd-implementer AWD_CONSOLE_CLIENT_SECRET; review approve w/ 1 should
+T1 done 6d8948c sdd-implementer advisory lock; first hand-back was "placeholder", re-asked; review approve (independent pg17 + mutation)
+T2 fix 0a893bc sdd-implementer extracted consoleClientSecret + table test
+T3 done 8e261fc sdd-implementer platform root; review approve (3 mutations caught)
+T4 done 8411504 sdd-implementer cell module+root; agent stuck on background tofu init, stopped; review fix-needed (DB SG test vacuous)
+T6 done 1bfa93b sdd-implementer runbook+trust; gaps: no rotation, invented 5-day SLA (user chose 30 days dd831c8); review deferred to panel (user OK)
+T4 fix 5bda8b9 sdd-implementer DB SG source asserted (apply run); re-review approve
+T5 done 98628cb sdd-implementer-lite infra.yml; 160k tokens fighting stalled provider downloads; review approve
+PANEL correctness fix-needed(2 must) design fix-needed(2 must) security fix-needed(1 must) /security-review 0 findings; must: ECR ARN, AWD_PUBLIC_URL w/o console, KMS key policy, restore section; user picks: enforce key policy, 90-day CloudTrail statement, fix+mark restore unrehearsed, collapse module into root
 ```
 
 ## Backlog
@@ -75,3 +84,9 @@ Use the variable and output names from T3/T4 exactly.
 - Alarms (target unhealthy, 5xx) and a PITR restore drill.
 - `sslmode=verify-full` with the RDS CA bundle.
 - CI Go matrix `[go.mod floor, stable]` (from the platform-refresh retro).
+- `deploy/aws/cell.sh <tenant> plan|apply|destroy|output` wrapper (panel design; user deferred).
+- Delete AWD_ADDR/AWD_LOG_LEVEL defaults, KMS alias, platform `name` knob → local, collapse .gitignore files (panel design; user deferred).
+- Trim change-detector asserts in tofu tests (panel design; user deferred).
+- CloudTrail trail with 1-year retention (user chose the 90-day statement for the pilot).
+- Pin actions to commit SHAs (panel security nit).
+- Local provider mirror script for this WSL box: registry downloads stall (T5 spent ~160k tokens).
