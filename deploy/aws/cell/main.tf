@@ -9,15 +9,13 @@ data "terraform_remote_state" "platform" {
 }
 
 data "aws_region" "current" {}
-data "aws_caller_identity" "current" {}
 
 locals {
   p = data.terraform_remote_state.platform.outputs
 
-  name           = "aw-${var.tenant}"
-  host           = "${var.tenant}.${local.p.domain}"
-  port           = 8080
-  ecr_repository = "arn:aws:ecr:${data.aws_region.current.region}:${data.aws_caller_identity.current.account_id}:repository/${element(split("/", local.p.ecr_repository_url), 1)}"
+  name = "aw-${var.tenant}"
+  host = "${var.tenant}.${local.p.domain}"
+  port = 8080
 
   console_env = var.console == null ? [] : [
     { name = "AWD_CONSOLE_ISSUER", value = nonsensitive(var.console.issuer) },
@@ -251,7 +249,7 @@ resource "aws_iam_role_policy" "execution_runtime" {
       {
         Effect   = "Allow"
         Action   = ["ecr:BatchGetImage", "ecr:GetDownloadUrlForLayer"]
-        Resource = local.ecr_repository
+        Resource = local.p.ecr_repository_arn
       },
     ]
   })

@@ -32,6 +32,7 @@ override_data {
       alb_zone_id           = "Z32O12XQLNTSW2"
       ecs_cluster_arn       = "arn:aws:ecs:eu-west-1:123456789012:cluster/aw"
       ecr_repository_url    = "123456789012.dkr.ecr.eu-west-1.amazonaws.com/aw/awd"
+      ecr_repository_arn    = "arn:aws:ecr:eu-west-1:123456789012:repository/aw/awd"
       zone_id               = "Z0123456789ABCDEFGHIJ"
       domain                = "example.com"
     }
@@ -139,6 +140,15 @@ run "execution_role_reads_only_own_secrets" {
   assert {
     condition     = toset(jsondecode(aws_iam_role_policy.execution_secrets.policy).Statement[0].Resource) == toset([aws_secretsmanager_secret.admin_token.arn, aws_secretsmanager_secret.scim_token.arn, aws_secretsmanager_secret.database_url.arn])
     error_message = "execution role must read exactly this cell's secrets"
+  }
+}
+
+run "execution_role_pulls_only_from_the_platform_repository" {
+  command = plan
+
+  assert {
+    condition     = one([for st in jsondecode(aws_iam_role_policy.execution_runtime.policy).Statement : st if contains(st.Action, "ecr:BatchGetImage")]).Resource == "arn:aws:ecr:eu-west-1:123456789012:repository/aw/awd"
+    error_message = "execution role must pull from exactly the platform ECR repository ARN"
   }
 }
 

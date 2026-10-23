@@ -30,6 +30,10 @@ output "ecr_repository_url" {
   value = aws_ecr_repository.awd.repository_url
 }
 
+output "ecr_repository_arn" {
+  value = aws_ecr_repository.awd.arn
+}
+
 output "zone_id" {
   value = data.aws_route53_zone.main.zone_id
 }
