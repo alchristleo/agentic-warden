@@ -662,7 +662,11 @@ func TestConsoleStaticFiles(t *testing.T) {
 	if api := e.do(t, "GET", "/console/api/nope", nil); api.StatusCode != 404 {
 		t.Fatalf("unknown api = %d", api.StatusCode)
 	}
-	if bare := e.do(t, "GET", "/console", nil); bare.StatusCode != http.StatusMovedPermanently {
-		t.Fatalf("/console = %d", bare.StatusCode)
+	// ServeMux redirects to the trailing slash with 301 up to Go 1.25 and
+	// 307 from Go 1.26; either is fine as long as it lands on /console/.
+	bare := e.do(t, "GET", "/console", nil)
+	if (bare.StatusCode != http.StatusMovedPermanently && bare.StatusCode != http.StatusTemporaryRedirect) ||
+		bare.Header.Get("Location") != "/console/" {
+		t.Fatalf("/console = %d %q", bare.StatusCode, bare.Header.Get("Location"))
 	}
 }
