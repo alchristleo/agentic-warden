@@ -119,6 +119,19 @@ run "signing_key_spec_and_name" {
 run "key_policy_confines_signing_to_the_task_role" {
   command = plan
 
+  override_resource {
+    target = aws_iam_role.task
+    values = {
+      arn = "arn:aws:iam::123456789012:role/aw-example-task"
+    }
+  }
+  override_resource {
+    target = aws_iam_role.execution
+    values = {
+      arn = "arn:aws:iam::123456789012:role/aw-example-execution"
+    }
+  }
+
   assert {
     condition     = length(jsondecode(aws_kms_key.signing["k1"].policy).Statement) == 2
     error_message = "key policy must have exactly the admin allow and the sign deny"
@@ -132,7 +145,7 @@ run "key_policy_confines_signing_to_the_task_role" {
     error_message = "key policy must deny kms:Sign to everyone ..."
   }
   assert {
-    condition     = one([for st in jsondecode(aws_kms_key.signing["k1"].policy).Statement : st if st.Effect == "Deny"]).Condition.StringNotEquals["aws:PrincipalArn"] == "arn:aws:iam::123456789012:role/example"
+    condition     = one([for st in jsondecode(aws_kms_key.signing["k1"].policy).Statement : st if st.Effect == "Deny"]).Condition.StringNotEquals["aws:PrincipalArn"] == "arn:aws:iam::123456789012:role/aw-example-task"
     error_message = "... except the cell's task role"
   }
 }
