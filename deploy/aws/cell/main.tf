@@ -273,7 +273,7 @@ resource "aws_ecs_task_definition" "this" {
 
   container_definitions = jsonencode([{
     name         = "awd"
-    image        = var.image
+    image        = "${local.p.ecr_repository_url}@${var.image_digest}"
     essential    = true
     portMappings = [{ containerPort = local.port, protocol = "tcp" }]
 

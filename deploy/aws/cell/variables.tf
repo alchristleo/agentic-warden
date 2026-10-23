@@ -18,13 +18,13 @@ variable "state_bucket" {
   description = "S3 bucket holding the platform state (key platform.tfstate)."
 }
 
-variable "image" {
+variable "image_digest" {
   type        = string
-  description = "Image pinned by digest: <ecr_repository_url>@sha256:<hex>."
+  description = "Digest of the awd image in the platform repository, for example sha256:<64 hex>."
 
   validation {
-    condition     = strcontains(var.image, "@sha256:")
-    error_message = "image must be pinned by digest (contain @sha256:)."
+    condition     = can(regex("^sha256:[0-9a-f]{64}$", var.image_digest))
+    error_message = "image_digest must match ^sha256:[0-9a-f]{64}$."
   }
 }
 

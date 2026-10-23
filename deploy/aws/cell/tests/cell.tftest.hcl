@@ -43,7 +43,7 @@ variables {
   tenant       = "example"
   region       = "eu-west-1"
   state_bucket = "example-aw-tfstate"
-  image        = "123456789012.dkr.ecr.eu-west-1.amazonaws.com/aw/awd@sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+  image_digest = "sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
 }
 
 run "database_is_private_encrypted_protected" {
@@ -255,14 +255,33 @@ run "console_adds_environment_and_one_secret" {
   }
 }
 
-run "image_without_digest_is_rejected" {
+run "image_is_pinned_by_digest" {
+  command = plan
+
+  assert {
+    condition     = jsondecode(aws_ecs_task_definition.this.container_definitions)[0].image == "123456789012.dkr.ecr.eu-west-1.amazonaws.com/aw/awd@sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+    error_message = "image must be the platform repository URL pinned by the digest"
+  }
+}
+
+run "bad_digest_is_rejected" {
   command = plan
 
   variables {
-    image = "123456789012.dkr.ecr.eu-west-1.amazonaws.com/aw/awd:latest"
+    image_digest = "latest"
   }
 
-  expect_failures = [var.image]
+  expect_failures = [var.image_digest]
+}
+
+run "short_digest_is_rejected" {
+  command = plan
+
+  variables {
+    image_digest = "sha256:0123"
+  }
+
+  expect_failures = [var.image_digest]
 }
 
 run "bad_tenant_is_rejected" {
