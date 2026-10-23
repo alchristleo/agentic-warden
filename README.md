@@ -391,7 +391,7 @@ them. See `web/.env.example`.
 
 ## Maintenance
 
-A weekly drift job checks the Codex requirements keys, the Gemini settings keys and decisions, and the Claude nested settings keys against upstream. Run it with `go test -tags drift ./internal/drift/`.
+A weekly drift job checks the Codex requirements keys, the Gemini settings keys and decisions, and the Claude nested settings keys against upstream. Run it with `go test -tags drift ./internal/drift/`; keys we skip on purpose are in `claudeUnsupported`.
 On drift, edit `internal/agent/codex/requirements/keys.go`, `internal/agent/gemini/managed/keys.go` or `internal/agent/claude/schema/overlay.go`.
 GitHub disables scheduled workflows after 60 days of repository inactivity.
 

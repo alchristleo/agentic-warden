@@ -36,6 +36,12 @@ const (
 // is covered by the hook events page.
 var claudeKeyedBlocks = []string{"attribution", "permissions", "sandbox", "worktree", "autoMode", "policyHelper"}
 
+// claudeUnsupported are upstream keys the overlay deliberately lacks.
+var claudeUnsupported = map[string]string{
+	"sandbox.credentials.awsPairs": "needs sandbox.credentials mask mode; see plan Backlog",
+	"sandbox.credentials.sigv4":    "same",
+}
+
 // claudeBlocks are the settings blocks that reject unknown keys.
 var claudeBlocks = []string{
 	"attribution", "permissions", "hooks", "statusLine", "fileSuggestion", "sandbox",
@@ -339,11 +345,20 @@ func TestClaudeNestedKeys(t *testing.T) {
 	upstream := append(keys, events...)
 	var added []string
 	for _, k := range upstream {
-		if !schema.Defines(k) {
+		if _, skip := claudeUnsupported[k]; !skip && !schema.Defines(k) {
 			added = append(added, k)
 		}
 	}
 	_, removed := diffNames(upstream, schema.OverlayPaths())
+	up := map[string]bool{}
+	for _, k := range upstream {
+		up[k] = true
+	}
+	for k := range claudeUnsupported {
+		if !up[k] {
+			t.Errorf("claudeUnsupported lists %s but upstream no longer does; remove it from claudeUnsupported", k)
+		}
+	}
 	if msg := message("Claude settings ("+claudeURL+", "+claudeHooksURL+")",
 		"internal/agent/claude/schema/overlay.go", added, removed); msg != "" {
 		t.Error(msg)
