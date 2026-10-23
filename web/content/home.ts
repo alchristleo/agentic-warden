@@ -38,8 +38,8 @@ export const home = {
         body: "Managed settings apply machine-wide. A payments repository and a sandbox get the same rules unless something targets the repository itself.",
       },
       {
-        title: "Rules per group on seat plans",
-        body: "Organizations on per-seat plans cannot give the platform team one policy and contractors another from the vendor console.",
+        title: "Rules per group on Claude Code seats",
+        body: "On claude.ai seat plans, Claude Code takes one policy for the whole organization. The console cannot target a group. Codex on ChatGPT plans does have per-group rules, in Agent Security.",
       },
       {
         title: "More than one agent",
