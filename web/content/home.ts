@@ -39,7 +39,7 @@ export const home = {
       },
       {
         title: "Rules per group on Claude Code seats",
-        body: "On claude.ai seat plans, Claude Code takes one policy for the whole organization. The console cannot target a group. Codex on ChatGPT plans does have per-group rules, in Agent Security.",
+        body: "Claude Code on claude.ai seats takes one policy for the whole organization; the console cannot target a group. Codex on ChatGPT plans can, through OpenAI's Agent Security.",
       },
       {
         title: "More than one agent",

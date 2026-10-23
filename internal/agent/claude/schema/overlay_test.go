@@ -42,7 +42,7 @@ func TestApplyRejectsExistingKey(t *testing.T) {
 			},
 		},
 	}
-	err := apply(doc, []Extra{{Path: "sandbox.enabled", Schema: map[string]any{"type": "boolean"}}})
+	err := apply(doc, []extra{{Path: "sandbox.enabled", Schema: map[string]any{"type": "boolean"}}})
 	if err == nil || !strings.Contains(err.Error(), "sandbox.enabled") {
 		t.Fatalf("apply() = %v, want an error naming sandbox.enabled", err)
 	}
@@ -51,7 +51,7 @@ func TestApplyRejectsExistingKey(t *testing.T) {
 func TestApplyRejectsUnresolvableParent(t *testing.T) {
 	doc := map[string]any{"properties": map[string]any{"sandbox": map[string]any{"type": "object"}}}
 	for _, path := range []string{"nosuch.key", "sandbox.key"} {
-		err := apply(doc, []Extra{{Path: path, Schema: map[string]any{"type": "boolean"}}})
+		err := apply(doc, []extra{{Path: path, Schema: map[string]any{"type": "boolean"}}})
 		if err == nil || !strings.Contains(err.Error(), path) {
 			t.Fatalf("apply(%s) = %v, want an error naming the path", path, err)
 		}
@@ -63,7 +63,7 @@ func TestApplyFollowsLocalRef(t *testing.T) {
 		"$defs":      map[string]any{"box": map[string]any{"properties": map[string]any{}}},
 		"properties": map[string]any{"b": map[string]any{"$ref": "#/$defs/box"}},
 	}
-	if err := apply(doc, []Extra{{Path: "b.k", Schema: map[string]any{"type": "string"}}}); err != nil {
+	if err := apply(doc, []extra{{Path: "b.k", Schema: map[string]any{"type": "string"}}}); err != nil {
 		t.Fatalf("apply() = %v, want nil", err)
 	}
 	props := doc["$defs"].(map[string]any)["box"].(map[string]any)["properties"].(map[string]any)
@@ -74,12 +74,6 @@ func TestApplyFollowsLocalRef(t *testing.T) {
 
 func TestOverlayEntriesValidate(t *testing.T) {
 	hook := []any{map[string]any{"matcher": "*", "hooks": []any{map[string]any{"type": "command", "command": "true"}}}}
-	creds := func(k string, v any) map[string]any {
-		return map[string]any{"sandbox": map[string]any{"credentials": map[string]any{k: v}}}
-	}
-	pair := func(extra string) []any {
-		return []any{map[string]any{"accessKeyIdVar": "A", "secretAccessKeyVar": "B", extra: "C"}}
-	}
 	cases := []struct {
 		name     string
 		settings map[string]any
@@ -91,12 +85,6 @@ func TestOverlayEntriesValidate(t *testing.T) {
 		{"blockReads wrong type", map[string]any{"permissions": map[string]any{"blockReadsOutsideWorkingDirectories": "yes"}}, true},
 		{"location ok", map[string]any{"worktree": map[string]any{"location": "~/worktrees"}}, false},
 		{"location wrong type", map[string]any{"worktree": map[string]any{"location": true}}, true},
-		{"sigv4 ok", creds("sigv4", map[string]any{"streaming": "passthrough"}), false},
-		{"sigv4 bad enum", creds("sigv4", map[string]any{"streaming": "allow"}), true},
-		{"sigv4 typo", creds("sigv4", map[string]any{"sigv4A": "deny"}), true},
-		{"awsPairs ok", creds("awsPairs", pair("sessionTokenVar")), false},
-		{"awsPairs missing required", creds("awsPairs", []any{map[string]any{"accessKeyIdVar": "A"}}), true},
-		{"awsPairs typo", creds("awsPairs", pair("sessionTokenVr")), true},
 	}
 	for _, c := range cases {
 		err := Validate(c.settings)
@@ -109,5 +97,23 @@ func TestOverlayEntriesValidate(t *testing.T) {
 func TestOverlayEntriesAllApply(t *testing.T) {
 	if _, err := load(); err != nil {
 		t.Fatalf("load() = %v, want nil", err)
+	}
+}
+
+func TestDefines(t *testing.T) {
+	cases := map[string]bool{
+		"sandbox.enabled":                   true,
+		"sandbox.allowNestedUserNamespaces": true,
+		"hooks.PreModelSwitch":              true,
+		"sandbox.credentials.files":         true,
+		"sandbox.credentials.awsPairs":      false,
+		"sandbox.nosuch":                    false,
+		"nosuch.key":                        false,
+		"permissions":                       true,
+	}
+	for path, want := range cases {
+		if got := Defines(path); got != want {
+			t.Errorf("Defines(%q) = %v, want %v", path, got, want)
+		}
 	}
 }

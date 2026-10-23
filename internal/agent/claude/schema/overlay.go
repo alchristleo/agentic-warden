@@ -5,12 +5,8 @@ import (
 	"strings"
 )
 
-// KeysAsOf is the date Overlay was read from the Claude Code settings
-// reference (https://code.claude.com/docs/en/settings-reference.md).
-const KeysAsOf = "2026-10-23"
-
-// Extra is one settings key the vendored schema has not learned yet.
-type Extra struct {
+// extra is one settings key the vendored schema has not learned yet.
+type extra struct {
 	// Path is the dotted settings path, e.g. "sandbox.allowNestedUserNamespaces".
 	Path string
 	// Schema is the JSON schema of the value. It is a real type, never "any":
@@ -18,39 +14,17 @@ type Extra struct {
 	Schema map[string]any
 }
 
-// Overlay lists the keys under the strict blocks (the ones that reject
+// overlay lists the keys under the strict blocks (the ones that reject
 // unknown keys) that the settings reference documents and the vendored
 // schema lacks. Hook event names come from the hooks documentation
 // (https://code.claude.com/docs/en/hooks.md), which the settings reference
 // does not list. An entry the vendored schema later gains makes load fail,
 // which is the signal to delete it.
-var Overlay = []Extra{
+var overlay = []extra{
 	{"hooks.PostModelSwitch", hookEvent},
 	{"hooks.PreModelSwitch", hookEvent},
 	{"permissions.blockReadsOutsideWorkingDirectories", map[string]any{"type": "boolean"}},
 	{"sandbox.allowNestedUserNamespaces", map[string]any{"type": "boolean"}},
-	{"sandbox.credentials.awsPairs", map[string]any{
-		"type": "array",
-		"items": map[string]any{
-			"type": "object",
-			"properties": map[string]any{
-				"accessKeyIdVar":     map[string]any{"type": "string"},
-				"secretAccessKeyVar": map[string]any{"type": "string"},
-				"sessionTokenVar":    map[string]any{"type": "string"},
-			},
-			"required":             []any{"accessKeyIdVar", "secretAccessKeyVar"},
-			"additionalProperties": false,
-		},
-	}},
-	{"sandbox.credentials.sigv4", map[string]any{
-		"type": "object",
-		"properties": map[string]any{
-			"streaming": sigv4Mode,
-			"presigned": sigv4Mode,
-			"sigv4a":    sigv4Mode,
-		},
-		"additionalProperties": false,
-	}},
 	{"worktree.location", map[string]any{"type": "string"}},
 }
 
@@ -59,7 +33,6 @@ var (
 		"type":  "array",
 		"items": map[string]any{"$ref": "#/$defs/hookMatcher"},
 	}
-	sigv4Mode = map[string]any{"type": "string", "enum": []any{"deny", "passthrough"}}
 )
 
 // apply adds each extra's schema to doc, the parsed vendored schema, under the
@@ -67,7 +40,7 @@ var (
 // block defined in $defs gains the key there. It fails when the parent does
 // not resolve to a schema with properties, or when the key is already
 // defined.
-func apply(doc map[string]any, extras []Extra) error {
+func apply(doc map[string]any, extras []extra) error {
 	for _, e := range extras {
 		i := strings.LastIndex(e.Path, ".")
 		if i < 0 {
@@ -132,4 +105,34 @@ func ownProperties(doc, node map[string]any) (map[string]any, error) {
 		return nil, fmt.Errorf("parent block has no properties")
 	}
 	return props, nil
+}
+
+// OverlayPaths returns the dotted path of every overlay entry.
+func OverlayPaths() []string {
+	out := make([]string, len(overlay))
+	for i, e := range overlay {
+		out[i] = e.Path
+	}
+	return out
+}
+
+// Defines reports whether the dotted settings path names a property in the
+// schema document, overlay included.
+func Defines(path string) bool {
+	if _, err := load(); err != nil {
+		return false
+	}
+	i := strings.LastIndex(path, ".")
+	var props map[string]any
+	var err error
+	if i < 0 {
+		props, err = ownProperties(parsed, parsed)
+	} else {
+		props, err = propertiesOf(parsed, path[:i])
+	}
+	if err != nil {
+		return false
+	}
+	_, ok := props[path[i+1:]]
+	return ok
 }

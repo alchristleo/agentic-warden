@@ -16,14 +16,16 @@ files, MDM delivery, server-managed settings from the claude.ai console,
 Claude apps gateway adds SSO, per-IdP-group managed settings and spend limits
 for organizations that bring their own API key or cloud provider.
 
-What remains uncovered: **per-repository targeting**; per-group policy for
-Claude Code on claude.ai seats (the console applies one policy to the whole
-organization, and the gateway needs an upstream API or cloud credential); and
-one policy across agents, since Gemini CLI has no per-group delivery. Codex on
-ChatGPT plans already gets per-group requirements from OpenAI's Agent Security,
-so for Codex this project adds per-repository rules, Codex on API keys and
-self-hosting. This project fills those gaps, on an agent-agnostic interface so
-other agents can follow.
+What remains uncovered:
+
+- Per-repository rules.
+- Per-group policy for Claude Code on claude.ai seats (the console is
+  organization-uniform; the gateway needs an upstream API or cloud credential).
+- One policy across Claude Code, Codex and Gemini CLI.
+
+Codex on ChatGPT plans already has per-group rules in OpenAI's Agent Security,
+so for Codex this project adds per-repository rules, API-key use and
+self-hosting.
 
 ## How policy reaches the agent
 
@@ -386,6 +388,12 @@ with the Go module.
 Production deploys (`VERCEL_ENV=production`) need `NEXT_PUBLIC_SITE_URL`,
 `RESEND_API_KEY`, `DEMO_INBOX` and `DEMO_FROM`; the build fails without
 them. See `web/.env.example`.
+
+## Maintenance
+
+A weekly drift job checks the Codex requirements keys, the Gemini settings keys and decisions, and the Claude nested settings keys against upstream. Run it with `go test -tags drift ./internal/drift/`.
+On drift, edit `internal/agent/codex/requirements/keys.go`, `internal/agent/gemini/managed/keys.go` or `internal/agent/claude/schema/overlay.go`.
+GitHub disables scheduled workflows after 60 days of repository inactivity.
 
 ## License
 

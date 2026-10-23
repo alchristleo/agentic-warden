@@ -3,9 +3,13 @@
 package drift
 
 import (
+	"io"
+	"net/http"
+	"net/http/httptest"
 	"reflect"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestDiffNames(t *testing.T) {
@@ -126,5 +130,37 @@ func TestParsersRejectEmptySections(t *testing.T) {
 		if f() == nil {
 			t.Errorf("%s: want an error", name)
 		}
+	}
+}
+
+func TestDiffFetchRetry(t *testing.T) {
+	calls := 0
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls++
+		if calls < 3 {
+			http.Error(w, "busy", http.StatusBadGateway)
+			return
+		}
+		io.WriteString(w, "ok")
+	}))
+	defer srv.Close()
+	got, err := get(srv.URL, 3, time.Millisecond)
+	if err != nil || got != "ok" || calls != 3 {
+		t.Fatalf("get = %q, %v after %d calls; want ok after 3", got, err, calls)
+	}
+	calls = -10
+	_, err = get(srv.URL, 3, time.Millisecond)
+	if err == nil || !strings.HasPrefix(err.Error(), "fetch failed:") {
+		t.Fatalf("get error = %v; want a message starting \"fetch failed:\"", err)
+	}
+}
+
+func TestParseLatestTag(t *testing.T) {
+	tag, err := parseLatestTag(`{"tag_name":"v0.9.0","name":"x"}`)
+	if err != nil || tag != "v0.9.0" {
+		t.Fatalf("parseLatestTag = %q, %v; want v0.9.0", tag, err)
+	}
+	if _, err := parseLatestTag(`{}`); err == nil {
+		t.Fatal("parseLatestTag accepted a release without tag_name")
 	}
 }

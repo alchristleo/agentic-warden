@@ -23,11 +23,11 @@ import (
 )
 
 const (
-	codexURL       = "https://learn.chatgpt.com/docs/config-file/config-reference.md"
-	geminiURL      = "https://raw.githubusercontent.com/google-gemini/gemini-cli/main/packages/cli/src/config/settingsSchema.ts"
-	geminiTypesURL = "https://raw.githubusercontent.com/google-gemini/gemini-cli/main/packages/core/src/policy/types.ts"
-	claudeURL      = "https://code.claude.com/docs/en/settings-reference.md"
-	claudeHooksURL = "https://code.claude.com/docs/en/hooks.md"
+	codexURL        = "https://learn.chatgpt.com/docs/config-file/config-reference.md"
+	geminiLatestURL = "https://api.github.com/repos/google-gemini/gemini-cli/releases/latest"
+	geminiRawURL    = "https://raw.githubusercontent.com/google-gemini/gemini-cli/%s/packages/%s"
+	claudeURL       = "https://code.claude.com/docs/en/settings-reference.md"
+	claudeHooksURL  = "https://code.claude.com/docs/en/hooks.md"
 )
 
 // claudeKeyedBlocks are the blocks the settings index lists dotted keys for
@@ -43,22 +43,63 @@ var claudeBlocks = []string{
 	"voice", "policyHelper",
 }
 
+// get fetches url, trying up to attempts times with a growing pause. Its
+// error starts "fetch failed:" so that an outage is not mistaken for drift.
+func get(url string, attempts int, backoff time.Duration) (string, error) {
+	c := &http.Client{Timeout: 60 * time.Second}
+	var err error
+	for i := 0; i < attempts; i++ {
+		if i > 0 {
+			time.Sleep(backoff * time.Duration(i))
+		}
+		var resp *http.Response
+		if resp, err = c.Get(url); err != nil {
+			continue
+		}
+		var b []byte
+		if resp.StatusCode != http.StatusOK {
+			err = fmt.Errorf("status %s", resp.Status)
+		} else {
+			b, err = io.ReadAll(resp.Body)
+		}
+		resp.Body.Close()
+		if err == nil {
+			return string(b), nil
+		}
+	}
+	return "", fmt.Errorf("fetch failed: %s after %d attempts: %w", url, attempts, err)
+}
+
 func fetch(t *testing.T, url string) string {
 	t.Helper()
-	c := &http.Client{Timeout: 60 * time.Second}
-	resp, err := c.Get(url)
+	body, err := get(url, 3, 2*time.Second)
 	if err != nil {
-		t.Fatalf("fetch %s: %v", url, err)
+		t.Fatal(err)
 	}
-	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
-		t.Fatalf("fetch %s: status %s", url, resp.Status)
+	return body
+}
+
+// parseLatestTag returns tag_name from a GitHub "latest release" response.
+func parseLatestTag(body string) (string, error) {
+	var rel struct {
+		Tag string `json:"tag_name"`
 	}
-	b, err := io.ReadAll(resp.Body)
+	if err := json.Unmarshal([]byte(body), &rel); err != nil || rel.Tag == "" {
+		return "", fmt.Errorf("no tag_name in the latest release response")
+	}
+	return rel.Tag, nil
+}
+
+// geminiURLs returns the settings schema and policy types URLs at the latest
+// Gemini CLI release tag.
+func geminiURLs(t *testing.T) (settings, types string) {
+	t.Helper()
+	tag, err := parseLatestTag(fetch(t, geminiLatestURL))
 	if err != nil {
-		t.Fatalf("fetch %s: %v", url, err)
+		t.Fatalf("upstream page changed shape: %s: %v", geminiLatestURL, err)
 	}
-	return string(b)
+	return fmt.Sprintf(geminiRawURL, tag, "cli/src/config/settingsSchema.ts"),
+		fmt.Sprintf(geminiRawURL, tag, "core/src/policy/types.ts")
 }
 
 // diffNames returns the names upstream has that pinned lacks (added) and the
@@ -92,7 +133,7 @@ func message(source, file string, added, removed []string) string {
 		return ""
 	}
 	var b strings.Builder
-	fmt.Fprintf(&b, "%s drifted from the pinned list; edit %s and its KeysAsOf date.", source, file)
+	fmt.Fprintf(&b, "%s drifted: edit %s.", source, file)
 	if len(added) > 0 {
 		fmt.Fprintf(&b, "\n  added upstream: %s", strings.Join(added, ", "))
 	}
@@ -237,55 +278,6 @@ func parseClaudeHookEvents(page string) ([]string, error) {
 	return sortedUnique(keys), nil
 }
 
-// vendoredPaths lists every dotted property path under the strict blocks in
-// the vendored schema, following local $ref links.
-func vendoredPaths(t *testing.T) []string {
-	t.Helper()
-	var doc map[string]any
-	if err := json.Unmarshal(schema.Source, &doc); err != nil {
-		t.Fatalf("vendored schema: %v", err)
-	}
-	var out []string
-	var walk func(node map[string]any, path string, depth int)
-	walk = func(node map[string]any, path string, depth int) {
-		for hops := 0; hops < 16; hops++ {
-			ref, ok := node["$ref"].(string)
-			if !ok || !strings.HasPrefix(ref, "#/") {
-				break
-			}
-			var cur any = doc
-			for _, part := range strings.Split(ref[2:], "/") {
-				m, _ := cur.(map[string]any)
-				cur = m[part]
-			}
-			next, ok := cur.(map[string]any)
-			if !ok {
-				return
-			}
-			node = next
-		}
-		props, _ := node["properties"].(map[string]any)
-		for name, v := range props {
-			child, ok := v.(map[string]any)
-			if !ok {
-				continue
-			}
-			p := path + "." + name
-			out = append(out, p)
-			if depth < 5 {
-				walk(child, p, depth+1)
-			}
-		}
-	}
-	top, _ := doc["properties"].(map[string]any)
-	for _, b := range claudeBlocks {
-		if blk, ok := top[b].(map[string]any); ok {
-			walk(blk, b, 0)
-		}
-	}
-	return out
-}
-
 func check(t *testing.T, source, file string, upstream, pinned []string, bothWays bool) {
 	t.Helper()
 	added, removed := diffNames(upstream, pinned)
@@ -306,6 +298,7 @@ func TestCodexRequirementsKeys(t *testing.T) {
 }
 
 func TestGeminiSettingsKeys(t *testing.T) {
+	geminiURL, _ := geminiURLs(t)
 	keys, err := parseGeminiSettingsKeys(fetch(t, geminiURL))
 	if err != nil {
 		t.Fatalf("upstream page changed shape: %s: %v", geminiURL, err)
@@ -314,6 +307,7 @@ func TestGeminiSettingsKeys(t *testing.T) {
 }
 
 func TestGeminiDecisions(t *testing.T) {
+	_, geminiTypesURL := geminiURLs(t)
 	vals, err := parseGeminiDecisions(fetch(t, geminiTypesURL))
 	if err != nil {
 		t.Fatalf("upstream page changed shape: %s: %v", geminiTypesURL, err)
@@ -322,8 +316,8 @@ func TestGeminiDecisions(t *testing.T) {
 }
 
 // TestClaudeNestedKeys reports keys the settings reference documents under a
-// strict block that neither the vendored schema nor the overlay knows. The
-// reverse direction is not reported: removals are noisy.
+// strict block that the schema (vendored plus overlay) does not define, and
+// overlay entries upstream no longer lists.
 func TestClaudeNestedKeys(t *testing.T) {
 	keys, err := parseClaudeSettingsKeys(fetch(t, claudeURL))
 	if err != nil {
@@ -342,10 +336,16 @@ func TestClaudeNestedKeys(t *testing.T) {
 	if err != nil {
 		t.Fatalf("upstream page changed shape: %s: %v", claudeHooksURL, err)
 	}
-	pinned := vendoredPaths(t)
-	for _, e := range schema.Overlay {
-		pinned = append(pinned, e.Path)
+	upstream := append(keys, events...)
+	var added []string
+	for _, k := range upstream {
+		if !schema.Defines(k) {
+			added = append(added, k)
+		}
 	}
-	check(t, "Claude settings ("+claudeURL+", "+claudeHooksURL+")",
-		"internal/agent/claude/schema/overlay.go (schema.Overlay)", append(keys, events...), pinned, false)
+	_, removed := diffNames(upstream, schema.OverlayPaths())
+	if msg := message("Claude settings ("+claudeURL+", "+claudeHooksURL+")",
+		"internal/agent/claude/schema/overlay.go", added, removed); msg != "" {
+		t.Error(msg)
+	}
 }
