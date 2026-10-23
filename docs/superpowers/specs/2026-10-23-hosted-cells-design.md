@@ -123,3 +123,41 @@ with it, no final snapshot), and the KMS key enters its 7-day pending-deletion w
 - `deploy/aws/modules/cell` is collapsed into the `deploy/aws/cell` root (one Tofu root, no
   module). Its tests live in `deploy/aws/cell/tests/` and stub the platform remote state with
   `override_data`; run them with `tofu -chdir=deploy/aws/cell test`.
+- Review-driven changes, briefly:
+  - `image_digest` input (must be `sha256:` plus 64 lowercase hex); the full image reference is built from the platform's ECR repository. The platform exports `ecr_repository_arn` for the execution role.
+  - Console: the client secret is its own sensitive variable (`console_client_secret`), outside the `console` object, and reaches the task as a secret. `AWD_PUBLIC_URL` is set only when the console is configured.
+  - `signing_keys` takes one or two labels (1–16 characters each) for rotation; the first is the previous key while two are present.
+  - KMS key policy: account root keeps administration; an explicit Deny on `kms:Sign` for every principal except the task role (`aws:PrincipalArn`).
+  - Tenant name: `^[a-z][a-z0-9-]{1,30}$` (at most 31 characters), no leading, trailing or double hyphen.
+  - Trust statement: deletion completes within 30 days of a written request; the CloudTrail `Sign` history offer covers the last 90 days.
+  - The ECS service `depends_on` (secrets and role policies exist before the first task starts) has no automated test, by user decision. The first-apply check (AC11) covers it.
+
+## Status (converged 2026-10-24)
+
+Branch `hosted-cells` at `3ede3c8`, compared with base `7ba02b2`. Environment: OpenTofu 1.13.2, Go 1.24.0 (the `go.mod` floor) and `GOTOOLCHAIN=go1.27.3`, PostgreSQL 17.11 (Docker `postgres:17`, container removed after the run).
+
+| # | criterion (short) | status | evidence (command + key output line) |
+|---|---|---|---|
+| 1 | fmt and validate pass for platform and cell | VERIFIED | `tofu fmt -check -recursive deploy/aws` exit 0; `tofu -chdir=deploy/aws/platform validate` and `tofu -chdir=deploy/aws/cell validate`: `Success! The configuration is valid.` (both) |
+| 2 | cell plan assertions pass (mocked provider) | VERIFIED | `tofu -chdir=deploy/aws/cell test`: `Success! 28 passed, 0 failed.` exit 0 |
+| 3 | platform plan assertions pass (mocked provider) | VERIFIED | `tofu -chdir=deploy/aws/platform test`: `Success! 5 passed, 0 failed.` exit 0 |
+| 4 | 4 parallel store opens on empty DB succeed | VERIFIED | `AWD_TEST_DATABASE_URL=postgres://…@localhost:5435/… go test ./internal/store/ -run TestConcurrentMigrate -v -count=5`: `--- PASS: TestConcurrentMigrate` ×5, `ok`. Red-before-lock was not re-run (see deviations) |
+| 5 | full Postgres store suite passes on PG 17 | VERIFIED | `AWD_TEST_DATABASE_URL=… go test ./internal/store/... -count=1 -v`: `--- PASS: TestPostgres`, `--- PASS: TestConcurrentMigrate`, `ok github.com/acme/agent-wrapper/internal/store` |
+| 6 | console client secret works; both set is a named error | VERIFIED | `go test ./internal/config/ ./cmd/awd/ -count=1 -v`: `--- PASS: TestConsoleClientSecretFromEnv`, `--- PASS: TestConsoleClientSecretBothSetIsAnError` (asserts error names both variables), `--- PASS: TestConsolePartialConfigRefusesToStart`, `ok …/cmd/awd`. The "starts the console" part is a config-level check (`ConsoleEnabled()`), not a launch of the binary |
+| 7 | CI runs criteria 1–3 on OpenTofu 1.13.x, read-only permissions | INCONCLUSIVE | `.github/workflows/infra.yml` read: `tofu_version: 1.13.2`, the fmt/validate/test steps on `deploy/aws/**`, `permissions: contents: read`; YAML parses. The same commands ran locally (rows 1–3). Missing run: a GitHub Actions run of this workflow on a PR |
+| 8 | runbook has sections for the nine operations with exact commands | VERIFIED | `grep -n "^#" docs/hosting/runbook.md`: §1 bootstrap state bucket, §3 push image, §4 create cell, §6 hand over credentials, §7 configure console, §8 upgrade, §9 rotate signing key, §10 backup and restore, §11 delete cell; each has fenced shell or HCL commands. Reviewed by reading the file (content review, see deviations for a dangling step reference) |
+| 9 | trust statement covers the required points | VERIFIED | `docs/hosting/trust.md` read: "What we store" (data stored), "What never reaches us" (data never received), "Who holds the signing key" with the CloudTrail offer, "Where it runs" (one region), "Backups and deletion" (7-day KMS window, backups deleted with the instance), "Subprocessors" (`Amazon Web Services is our only subprocessor`). Reviewed by reading the file |
+| 10 | full suite green on go.mod floor and on current Go | VERIFIED | Go 1.24.0: `go vet ./... && go test ./...` exit 0, last `ok` lines include `internal/store`. `GOTOOLCHAIN=go1.27.3 go vet ./... && go test ./... -count=1`: exit 0, 30 `ok` packages. Both runs without `AWD_TEST_DATABASE_URL`, so the Postgres tests were skipped there (row 5 covers them) |
+| 11 | manual first apply: `/readyz` 200 and `aw doctor` verified | INCONCLUSIVE | Manual step by the user on a real AWS account; not run (no account). By design |
+
+Result: 9 of 11 criteria VERIFIED, 2 INCONCLUSIVE (7 and 11). No criterion NOT VERIFIED. No timing criteria in this spec, so no base-versus-branch timing was measured.
+
+### Deviations and follow-ups
+
+- `deploy/aws/modules/` is an untracked working-tree leftover (a provider cache from the collapsed module). It is not part of the branch and was not committed. Delete it locally.
+- Row 4: the red-before-lock run was not repeated; only the green run is recorded.
+- Row 7: the workflow itself has not run on GitHub.
+- Row 10: the `GOTOOLCHAIN` and floor runs did not set `AWD_TEST_DATABASE_URL`.
+- `docs/hosting/runbook.md` §10 says "the plan in step 5 updates the database URL secret", but §10 has no step 5. Not fixed here; the runbook is out of scope for this commit.
+- The ECS `depends_on` ordering has no automated test (user decision, see Changes after review).
+- Row 11 remains the user's manual first apply.
