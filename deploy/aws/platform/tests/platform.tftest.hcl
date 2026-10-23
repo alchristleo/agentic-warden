@@ -74,6 +74,10 @@ run "alb_sg_inbound" {
     condition     = alltrue([for r in aws_vpc_security_group_ingress_rule.alb : r.from_port == r.to_port && r.ip_protocol == "tcp"])
     error_message = "ingress rules must be single-port tcp"
   }
+  assert {
+    condition     = alltrue([for r in aws_vpc_security_group_ingress_rule.alb : r.cidr_ipv4 == "0.0.0.0/0"])
+    error_message = "ALB ingress must be open to 0.0.0.0/0"
+  }
 }
 
 run "registry_and_subnets" {
@@ -99,5 +103,21 @@ run "outputs_present" {
   assert {
     condition     = length(output.public_subnet_ids) == 2
     error_message = "public_subnet_ids output"
+  }
+  assert {
+    condition = alltrue([for o in [
+      output.vpc_id,
+      output.public_subnet_ids,
+      output.alb_security_group_id,
+      output.https_listener_arn,
+      output.alb_dns_name,
+      output.alb_zone_id,
+      output.ecs_cluster_arn,
+      output.ecr_repository_url,
+      output.ecr_repository_arn,
+      output.zone_id,
+      output.domain,
+    ] : o != null])
+    error_message = "every platform output must be set"
   }
 }
