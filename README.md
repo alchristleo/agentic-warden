@@ -355,6 +355,7 @@ first:
 | `AWD_PUBLIC_URL` | External https origin of `awd` (e.g. `https://awd.example.com`); enables the console together with `AWD_CONSOLE_*`. Plain http is only accepted on `localhost`/`127.0.0.1`, for local development. |
 | `AWD_CONSOLE_ISSUER` | The identity provider's OIDC issuer URL. |
 | `AWD_CONSOLE_CLIENT_ID` | `awd`'s client id at the identity provider. |
+| `AWD_CONSOLE_CLIENT_SECRET` | The OIDC client secret. Set this or `AWD_CONSOLE_CLIENT_SECRET_FILE`, not both. |
 | `AWD_CONSOLE_CLIENT_SECRET_FILE` | Path to a file holding the OIDC client secret. |
 | `AWD_CONSOLE_ADMIN_GROUP` | The identity-provider group whose members may administer the console. |
 | `AWD_CONSOLE_USER_CLAIM` | ID token claim naming the signed-in user (default `email`). |
@@ -388,6 +389,10 @@ with the Go module.
 Production deploys (`VERCEL_ENV=production`) need `NEXT_PUBLIC_SITE_URL`,
 `RESEND_API_KEY`, `DEMO_INBOX` and `DEMO_FROM`; the build fails without
 them. See `web/.env.example`.
+
+## Hosted cells
+
+We run `awd` for design partners on AWS. How we operate it is in [docs/hosting/runbook.md](docs/hosting/runbook.md), and what a partner is trusting us with is in [docs/hosting/trust.md](docs/hosting/trust.md).
 
 ## Maintenance
 

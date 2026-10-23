@@ -51,10 +51,33 @@ func OpenPostgres(ctx context.Context, url string) (*Postgres, error) {
 // Close releases the connection pool.
 func (p *Postgres) Close() { p.pool.Close() }
 
+// migrateLockID is the advisory lock that serialises migrations across
+// processes sharing a database (ASCII "awdmigra").
+const migrateLockID int64 = 0x6177646d69677261
+
 // migrate applies every embedded migration in name order. Each one is
 // idempotent, so re-running them on an existing database is a no-op and no
-// version table is needed yet.
+// version table is needed yet. A session-level advisory lock on one pooled
+// connection keeps concurrent starters from racing on the DDL.
 func (p *Postgres) migrate(ctx context.Context) error {
+	conn, err := p.pool.Acquire(ctx)
+	if err != nil {
+		return fmt.Errorf("store: acquiring a migration connection: %w", err)
+	}
+	defer conn.Release()
+	if _, err := conn.Exec(ctx, "SELECT pg_advisory_lock($1)", migrateLockID); err != nil {
+		return fmt.Errorf("store: taking the migration lock: %w", err)
+	}
+	defer func() {
+		// Unlock on a fresh context so a cancelled ctx still releases it; if
+		// this fails the connection is dropped, which also frees the lock.
+		uctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
+		defer cancel()
+		if _, err := conn.Exec(uctx, "SELECT pg_advisory_unlock($1)", migrateLockID); err != nil {
+			conn.Conn().Close(uctx)
+		}
+	}()
+
 	names, err := fs.Glob(migrations, "migrations/*.sql")
 	if err != nil {
 		return fmt.Errorf("store: listing migrations: %w", err)
@@ -64,7 +87,7 @@ func (p *Postgres) migrate(ctx context.Context) error {
 		if err != nil {
 			return fmt.Errorf("store: reading migration %s: %w", name, err)
 		}
-		if _, err := p.pool.Exec(ctx, string(statements)); err != nil {
+		if _, err := conn.Exec(ctx, string(statements)); err != nil {
 			return fmt.Errorf("store: applying migration %s: %w", name, err)
 		}
 	}

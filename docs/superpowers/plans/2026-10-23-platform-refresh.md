@@ -80,3 +80,10 @@ PANEL correctness approve(3 should) design fix-needed(7 should) security approve
 - Drift job checks keys only, not enum values (e.g. `mask`, `attribution: false`); consider an enum check.
 - Pin GitHub actions to commit SHAs and Docker base images to digests.
 - `worktree.location` value pattern (absolute or `~/`).
+- CI Go matrix `[go.mod floor, stable]` so Go behavior changes (e.g. Go 1.26 ServeMux 307) show up in PR CI.
+
+## Retro (2026-10-23, merged as PR #1 `20c64d2`)
+
+- **Numbers:** 5 tasks; fix rounds T3 1, T4 1, panel 1 (+1 follow-up for the unsupported-keys list), CI 1; 0 blocked; panel must-fix 3; 5h usage 33% → ~70%.
+- **Wasted effort → structure:** (1) CI failed on Go 1.27 while every local run used the go.mod floor 1.24 → Backlog: CI Go matrix `[go.mod floor, stable]` in console.yml. (2) Worktree agents started from stale bases and 2 committed on detached HEADs, needing manual merges → proposed rule in `sdd-implementer[-lite]`: first sync the worktree to the brief's base sha, commit on the worktree branch. (3) `review-pkg.sh` names the package by HEAD sha only, so two packages at one HEAD overwrote each other → proposed: include the base sha in the file name.
+- **Kept as is:** the drift audit itself is now the weekly drift job.

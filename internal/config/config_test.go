@@ -122,6 +122,28 @@ func TestConsoleAllSet(t *testing.T) {
 	}
 }
 
+func TestConsoleClientSecretFromEnv(t *testing.T) {
+	setConsoleEnv(t)
+	t.Setenv("AWD_CONSOLE_CLIENT_SECRET_FILE", "")
+	t.Setenv("AWD_CONSOLE_CLIENT_SECRET", "s3cret")
+	cfg, err := config.FromEnv()
+	if err != nil || !cfg.ConsoleEnabled() || cfg.Console.ClientSecret != "s3cret" {
+		t.Fatalf("cfg=%+v err=%v", cfg, err)
+	}
+}
+
+func TestConsoleClientSecretBothSetIsAnError(t *testing.T) {
+	setConsoleEnv(t)
+	t.Setenv("AWD_CONSOLE_CLIENT_SECRET", "s3cret")
+	_, err := config.FromEnv()
+	if err != nil && strings.Contains(err.Error(), "s3cret") {
+		t.Errorf("error %q echoes the secret", err)
+	}
+	if err == nil || !strings.Contains(err.Error(), "AWD_CONSOLE_CLIENT_SECRET_FILE") || !strings.Contains(err.Error(), "AWD_CONSOLE_CLIENT_SECRET ") {
+		t.Fatalf("err = %v", err)
+	}
+}
+
 func TestConsolePartlySetNamesTheMissing(t *testing.T) {
 	setConsoleEnv(t)
 	t.Setenv("AWD_CONSOLE_CLIENT_ID", "")

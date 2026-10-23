@@ -1,0 +1,31 @@
+name: infra
+
+on:
+  push:
+    branches: [main]
+    paths: ["deploy/aws/**", ".github/workflows/infra.yml"]
+  pull_request:
+    paths: ["deploy/aws/**", ".github/workflows/infra.yml"]
+
+permissions:
+  contents: read
+
+jobs:
+  tofu:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: opentofu/setup-opentofu@v2
+        with:
+          tofu_version: 1.13.2
+          tofu_wrapper: false
+      - run: tofu fmt -check -recursive deploy/aws
+      - run: tofu -chdir=deploy/aws/platform init -backend=false
+      - run: tofu -chdir=deploy/aws/platform validate
+      - run: tofu -chdir=deploy/aws/cell init -backend=false
+      - run: tofu -chdir=deploy/aws/cell validate
+      - run: tofu -chdir=deploy/aws/platform test
+      - run: tofu -chdir=deploy/aws/cell test
