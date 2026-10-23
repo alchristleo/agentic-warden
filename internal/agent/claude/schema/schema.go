@@ -36,6 +36,7 @@ var Source []byte
 var (
 	compileOnce sync.Once
 	compiled    *jsonschema.Schema
+	parsed      map[string]any // the vendored document with the overlay applied
 	compileErr  error
 )
 
@@ -44,11 +45,16 @@ var (
 // every Validate call rather than a panic at init.
 func load() (*jsonschema.Schema, error) {
 	compileOnce.Do(func() {
-		var doc any
+		var doc map[string]any
 		if err := json.Unmarshal(Source, &doc); err != nil {
 			compileErr = fmt.Errorf("schema: parsing the vendored schema: %w", err)
 			return
 		}
+		if err := apply(doc, overlay); err != nil {
+			compileErr = err
+			return
+		}
+		parsed = doc
 		compiler := jsonschema.NewCompiler()
 		if err := compiler.AddResource(url, doc); err != nil {
 			compileErr = fmt.Errorf("schema: loading the vendored schema: %w", err)

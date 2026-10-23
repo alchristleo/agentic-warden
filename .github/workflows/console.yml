@@ -3,9 +3,9 @@ name: console
 on:
   push:
     branches: [main]
-    paths: ["console/**", "internal/**", "cmd/awd/**", "go.mod", "go.sum", ".github/workflows/console.yml"]
+    paths: ["console/**", "internal/**", "cmd/**", "deploy/**", "go.mod", "go.sum", ".github/workflows/console.yml"]
   pull_request:
-    paths: ["console/**", "internal/**", "cmd/awd/**", "go.mod", "go.sum", ".github/workflows/console.yml"]
+    paths: ["console/**", "internal/**", "cmd/**", "deploy/**", "go.mod", "go.sum", ".github/workflows/console.yml"]
 
 permissions:
   contents: read
@@ -38,10 +38,13 @@ jobs:
           package_json_file: console/package.json
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 24
           cache: pnpm
           cache-dependency-path: console/pnpm-lock.yaml
       - run: go test ./...
+      - run: go vet -tags drift ./internal/drift/
+      - run: go test -tags drift -run 'TestDiff|TestParse' ./internal/drift/
+      - run: docker build -f deploy/Dockerfile .
       - working-directory: console
         run: pnpm install --frozen-lockfile
       - working-directory: console

@@ -99,3 +99,25 @@ func TestTheAllowlistIsSortedAndDated(t *testing.T) {
 		t.Errorf("KeysAsOf = %q, want an ISO date", requirements.KeysAsOf)
 	}
 }
+
+func TestKeysAcceptsOctober2026Additions(t *testing.T) {
+	added := []string{
+		"additional_developer_instructions", "allow_browser_and_computer_use", "allow_login_shell",
+		"application", "apps", "auto_review", "check_for_update_on_startup", "enforce_residency",
+		"feedback", "guardian_extra_policy", "in_app_browser", "log_dir", "model_catalog_json",
+		"model_provider", "model_providers", "models", "plugins", "sqlite_home", "windows",
+	}
+	for _, key := range added {
+		if err := requirements.Validate(map[string]any{key: "x"}); err != nil {
+			t.Errorf("Validate(%q) = %v, want nil", key, err)
+		}
+	}
+}
+
+func TestKeysRejectsRemovedKeyNamingDate(t *testing.T) {
+	err := requirements.Validate(map[string]any{"allow_locked_computer_use": true})
+
+	if err == nil || !strings.Contains(err.Error(), `"allow_locked_computer_use"`) || !strings.Contains(err.Error(), "2026-10-23") {
+		t.Errorf("err = %v; want the removed key named with the date 2026-10-23", err)
+	}
+}
