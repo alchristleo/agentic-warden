@@ -90,3 +90,9 @@ PANEL correctness fix-needed(2 must) design fix-needed(2 must) security fix-need
 - CloudTrail trail with 1-year retention (user chose the 90-day statement for the pilot).
 - Pin actions to commit SHAs (panel security nit).
 - Local provider mirror script for this WSL box: registry downloads stall (T5 spent ~160k tokens).
+
+## Retro (2026-10-24, merged as PR #2 `87fe1f0`)
+
+- **Numbers:** 6 tasks; fix rounds T2 1, T4 1, panel wave (infra + docs) 1, +1 key-policy test round (user-approved); 0 blocked; panel must-fix 4; `/security-review` 0 findings; 5h usage ~1% → 65%.
+- **Wasted effort → structure (applied, see lean-sdd CHANGELOG 2026-10-24):** hung background `tofu init` in 3 agents → implementers stop background processes before reporting; 2 vacuous security tests passed TDD → implementers mutation-check every security assertion; 3 false Haiku-trailer findings → lite reviewer checks `.git/claude-trailer`; ECR ARN bug hidden by a fake fixture → consumer fixtures use producer's real-shaped values (lean-sdd step 4).
+- **Still open:** local provider mirror for this WSL box (Backlog); AC11 first real apply is the user's.
