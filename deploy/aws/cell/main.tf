@@ -385,7 +385,17 @@ resource "aws_ecs_service" "this" {
     container_port   = local.port
   }
 
-  depends_on = [aws_lb_listener_rule.this]
+  # First apply: the task must not start before its secrets and role policies exist.
+  depends_on = [
+    aws_lb_listener_rule.this,
+    aws_secretsmanager_secret_version.admin_token,
+    aws_secretsmanager_secret_version.scim_token,
+    aws_secretsmanager_secret_version.database_url,
+    aws_secretsmanager_secret_version.console_client_secret,
+    aws_iam_role_policy.task,
+    aws_iam_role_policy.execution_secrets,
+    aws_iam_role_policy.execution_runtime,
+  ]
 }
 
 resource "aws_route53_record" "this" {

@@ -440,3 +440,46 @@ run "console_user_claim_defaults_to_email" {
     error_message = "user_claim must default to email"
   }
 }
+
+run "tenant_trailing_hyphen_is_rejected" {
+  command = plan
+
+  variables {
+    tenant = "acme-"
+  }
+
+  expect_failures = [var.tenant]
+}
+
+run "tenant_double_hyphen_is_rejected" {
+  command = plan
+
+  variables {
+    tenant = "ac--me"
+  }
+
+  expect_failures = [var.tenant]
+}
+
+run "tenant_with_inner_hyphen_is_accepted" {
+  command = plan
+
+  variables {
+    tenant = "ac-me"
+  }
+
+  assert {
+    condition     = aws_db_instance.this.identifier == "aw-ac-me"
+    error_message = "single inner hyphens are valid"
+  }
+}
+
+run "tenant_over_31_characters_is_rejected" {
+  command = plan
+
+  variables {
+    tenant = "abcdefghijklmnopqrstuvwxyzabcdef"
+  }
+
+  expect_failures = [var.tenant]
+}

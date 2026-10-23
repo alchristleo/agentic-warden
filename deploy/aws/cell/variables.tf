@@ -3,8 +3,8 @@ variable "tenant" {
   description = "Tenant name; the cell is served at <tenant>.<domain>."
 
   validation {
-    condition     = can(regex("^[a-z][a-z0-9-]{1,30}$", var.tenant))
-    error_message = "tenant must match ^[a-z][a-z0-9-]{1,30}$."
+    condition     = can(regex("^[a-z]([a-z0-9]|-[a-z0-9]){1,30}$", var.tenant)) && length(var.tenant) <= 31
+    error_message = "tenant must be 2 to 31 characters of a-z, 0-9 and single inner hyphens, starting with a letter."
   }
 }
 
