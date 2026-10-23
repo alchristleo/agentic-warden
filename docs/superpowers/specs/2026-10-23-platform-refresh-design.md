@@ -59,6 +59,18 @@ Drift audit, 2026-10-23 (pinned 2026-09-22):
 - Copy: README "What remains uncovered" and `web/content/home.ts` "Rules per group on seat plans"
   state the gap for Claude Code seats and name OpenAI Agent Security for Codex.
 
+### Changes after review
+
+Panel review changed the code in these places. Decisions above are unchanged.
+
+- Overlay is unexported: the type is `extra`, the list `overlay`, and `apply` does the injection.
+  The exported surface is `OverlayPaths()` and `Defines(path)`, not `Overlay []Extra`.
+- `sandbox.credentials.awsPairs` and sigv4 are dropped and moved to Backlog. `Defines` reports false for them.
+- Drift: `claudeUnsupported` in `drift_test.go` lists upstream Claude keys the overlay deliberately
+  lacks. They are skipped, and an entry that is stale or no longer upstream is flagged.
+- Gemini is fetched at the latest release tag (`api.github.com/.../releases/latest`), not `main`.
+- The parser tests are in `internal/drift/parse_test.go` too (also `//go:build drift`).
+
 ## Acceptance criteria
 
 1. The image builds: `docker build -f deploy/Dockerfile .` exits 0, and CI runs the same build.
@@ -83,3 +95,28 @@ Drift audit, 2026-10-23 (pinned 2026-09-22):
 Validator strictness decides what reaches a fail-closed `policyHelper`. The overlay widens the
 accepted set only by named keys with typed value schemas; typos in strict blocks still fail.
 The drift job is read-only, needs no secrets, and runs with `permissions: contents: read`.
+
+## Status (converged 2026-10-23)
+
+Branch `platform-refresh` at 78a5bdd, checked against base f25750a. No timing criteria in this spec.
+
+| # | criterion (short) | status | evidence (command, key output) |
+|---|---|---|---|
+| 1 | Image builds; CI runs the same build | VERIFIED | `docker build -f deploy/Dockerfile .` gives exit 0 (`#15 DONE`); console.yml:47 `docker build -f deploy/Dockerfile .` |
+| 2 | 19 Codex keys validate; removed key rejected, names 2026-10-23 | VERIFIED | `go test ./internal/agent/codex/requirements/ -run TestKeys -v` gives `--- PASS: TestKeysAcceptsOctober2026Additions` and `--- PASS: TestKeysRejectsRemovedKeyNamingDate` (test loops over the 19 keys) |
+| 3 | `allowNestedUserNamespaces: true` validates; `"yes"` fails; `permissions.denny` fails | VERIFIED | `go test ./internal/agent/claude/schema/ -v` gives PASS for TestOverlayAcceptsNestedUserNamespaces, TestOverlayRejectsWrongValueType (names /sandbox/allowNestedUserNamespaces), TestStrictBlockStillRejectsTypo (names denny) |
+| 4 | Overlay entry for a vendored key, or an unresolvable parent, fails the suite | VERIFIED | Mutation run on overlay.go: adding `sandbox.enabled` gives `FAIL ... overlay "sandbox.enabled": the vendored schema already defines it`; adding `nosuch.key` gives `overlay "nosuch.key": parent block "nosuch" does not resolve`. File restored; `git diff` clean |
+| 5 | Live drift passes; fixture fails with key name on one removed key | VERIFIED | `GOTOOLCHAIN=auto go test -tags drift -count=1 -v ./internal/drift/` gives exit 0 with PASS for TestCodexRequirementsKeys, TestGeminiSettingsKeys, TestGeminiDecisions, TestClaudeNestedKeys; `go test -tags drift ./internal/drift/ -run TestDiffNames -v` gives PASS. Fixture asserts the message names the key and file; it does not run check() end to end |
+| 6 | Untagged `go test ./...` makes no network request | VERIFIED | `go test -count=1 ./internal/drift/` gives `build constraints exclude all Go files` (both drift files carry `//go:build drift`); `HTTP_PROXY=HTTPS_PROXY=http://127.0.0.1:9 go test -count=1 ./...` gives no FAIL lines, only ok |
+| 7 | Node 24 in both workflows; drift has schedule and workflow_dispatch | VERIFIED | `grep -n "node-version: 24" .github/workflows/{console,web}.yml` gives web.yml:28, console.yml:41; `grep -n "schedule\|workflow_dispatch" .github/workflows/drift.yml` gives lines 4 and 6 |
+| 8 | Group copy names Claude Code for the gap; web tests pass | VERIFIED | Reviewed `grep -rn -i "group" README.md web/content`: README.md:22 and web/content/home.ts:41 name Claude Code seats and OpenAI Agent Security; `cd web && pnpm test` gives `Tests 66 passed (66)`, exit 0 (run as `pnpm test` in web/, not `pnpm -C web test`) |
+| 9 | Full suite green: `go vet ./... && go test ./...` | VERIFIED | `go vet ./...` exit 0; `go test -count=1 ./...` gives 0 FAIL lines, every package `ok` |
+
+### Deviations
+
+- Overlay exports differ from the Design section (see Changes after review): `extra` and `overlay` are unexported; `OverlayPaths` and `Defines` are exported.
+- awsPairs and sigv4 are not in the overlay (Backlog). Design's seed list is therefore smaller by those keys.
+- Gemini is pinned to the latest release tag, not `main`.
+- Drift has a `claudeUnsupported` skip list, which Design did not mention.
+- Parser tests also live in `parse_test.go`.
+- Criterion 4 was checked by mutation of the real overlay, not only by the synthetic `apply()` tests.
