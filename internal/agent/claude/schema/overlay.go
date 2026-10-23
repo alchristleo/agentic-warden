@@ -20,7 +20,9 @@ type Extra struct {
 
 // Overlay lists the keys under the strict blocks (the ones that reject
 // unknown keys) that the settings reference documents and the vendored
-// schema lacks. An entry the vendored schema later gains makes load fail,
+// schema lacks. Hook event names come from the hooks documentation
+// (https://code.claude.com/docs/en/hooks.md), which the settings reference
+// does not list. An entry the vendored schema later gains makes load fail,
 // which is the signal to delete it.
 var Overlay = []Extra{
 	{"hooks.PostModelSwitch", hookEvent},
@@ -36,7 +38,8 @@ var Overlay = []Extra{
 				"secretAccessKeyVar": map[string]any{"type": "string"},
 				"sessionTokenVar":    map[string]any{"type": "string"},
 			},
-			"required": []any{"accessKeyIdVar", "secretAccessKeyVar"},
+			"required":             []any{"accessKeyIdVar", "secretAccessKeyVar"},
+			"additionalProperties": false,
 		},
 	}},
 	{"sandbox.credentials.sigv4", map[string]any{
@@ -46,6 +49,7 @@ var Overlay = []Extra{
 			"presigned": sigv4Mode,
 			"sigv4a":    sigv4Mode,
 		},
+		"additionalProperties": false,
 	}},
 	{"worktree.location", map[string]any{"type": "string"}},
 }
