@@ -60,6 +60,14 @@ Checks: AC5, AC6 (`go list ./internal/drift/` without tag reports no Go files / 
 ## Ledger
 
 ```
+T2 done 574bd57 sdd-implementer 19 codex keys added, allow_locked_computer_use removed; review approve
+T3 done 7454ab7 sdd-implementer 7 overlay entries; review approve w/ 2 should
+T5 done 1a063ab sdd-implementer-lite copy; reviewed inline (10-line diff)
+T1 done 49c9d64 sdd-implementer-lite Dockerfile go1.27/alpine3.22, node 24, CI image build; reviewed inline
+T3 fix 73a86e0 sdd-implementer strict awsPairs/sigv4, per-entry table test
+T4 done e66d92c sdd-implementer drift package + weekly workflow; review fix-needed (1 must)
+T4 fix d41e91d sdd-implementer empty-section guards tested, keyed-block guard, no panic, persist-credentials false; re-review approve
+PANEL correctness approve(3 should) design fix-needed(7 should) security approve(2 nit); must-fix x3 (2+ seats): drop awsPairs/sigv4, console.yml paths, single schema walker via schema.Defines
 ```
 
 ## Backlog
@@ -68,3 +76,7 @@ Checks: AC5, AC6 (`go list ./internal/drift/` without tag reports no Go files / 
 - Deliver Claude policy as an organization mod (`prependPlugins`, `tool.check`).
 - Next 16.3.6 → 16.4.x; frontend major bumps on Node 24.
 - Rebuild the deleted design doc from specs + memory.
+- Claude `sandbox.credentials` `mask` mode (+ awsPairs, sigv4, injectHosts): vendored schema allows only `deny`; supporting it forwards real secrets — needs its own security review.
+- Drift job checks keys only, not enum values (e.g. `mask`, `attribution: false`); consider an enum check.
+- Pin GitHub actions to commit SHAs and Docker base images to digests.
+- `worktree.location` value pattern (absolute or `~/`).
