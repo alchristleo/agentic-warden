@@ -165,7 +165,10 @@ two step GIFs, `/docs` index at 1280 and 390 px. Plus the usual correctness pane
    `aw doctor | grep -c $'\x1b'` prints 0 in the quickstart state.
 6. **Scripts unaffected.** `token=$(awd enroll-token you@acme.com)` yields a token with no `\x1b`
    byte even when stderr is a terminal; `aw-policy` output is byte-identical to `main`.
-   Check: `go test ./cmd/awd/ -run EnrollTokenNoColor` and existing aw-policy tests pass.
+   Check: `enrollToken` (cmd/awd/main.go) prints the token with plain `fmt.Println` and has no
+   `termcolor` call (`sed -n '/^func enrollToken/,/^}/p' cmd/awd/main.go | grep -c termcolor` = 0);
+   `git diff --stat main -- cmd/aw-policy` is empty; `go test ./...` passes. (The
+   `EnrollTokenNoColor` test was dropped in the fix wave: no color path exists to test.)
 7. **Tapes look colored.** Every tape (CI and manual) sets `Theme "Catppuccin Mocha"` and the
    window bar; `vhs validate docs/tapes/*.tape docs/tapes/manual/*.tape` passes; the `tapes` CI job
    is green. A frame from each re-rendered GIF shows colored prompt and colored CLI output
