@@ -10,14 +10,14 @@ and `docs/site/index.md`.
 | `manual/06-claude.tape` | `06-claude.gif` | you, with your Claude login |
 | `manual/hero.tape` | `hero.gif` | you, with your Claude login |
 
-CI (`.github/workflows/docs.yml`) renders every tape in this directory and uploads the GIFs as the
-`docs-gifs` artifact. It does not compare GIF bytes. It fails only if a tape fails to render.
+CI (`.github/workflows/tapes.yml`, on `workflow_dispatch` and changes under `docs/tapes/`) renders
+every tape in this directory and uploads the GIFs as the `docs-gifs` artifact. It does not compare GIF bytes. It fails only if a tape fails to render.
 Download the artifact and commit the GIFs you want.
 
 Each CI tape runs the quickstart commands, as written, in a fresh temp `HOME`. Steps before the
 visible one run hidden through `lib/prep.sh`. The clone in step 1 comes from your checkout, not from
-GitHub. `aw doctor` prints its `file:` line only when `claude` is on `PATH`, so CI puts a stub
-`claude` first on `PATH`.
+GitHub. `aw doctor` prints its `file:` line only when `claude` is on `PATH`, so `lib/prep.sh` puts a
+stub `claude` first on `PATH` (unless `AW_MANUAL=1`).
 
 ## Render locally
 
@@ -25,8 +25,7 @@ You need [vhs](https://github.com/charmbracelet/vhs) (`go install github.com/cha
 ffmpeg and ttyd. From the repository root, with changes committed (the clone reads your checkout):
 
 ```sh
-mkdir -p /tmp/stub && printf '#!/bin/sh\nexit 0\n' > /tmp/stub/claude && chmod +x /tmp/stub/claude
-export AW_REPO=$PWD AW_STUB_BIN=/tmp/stub
+export AW_REPO=$PWD
 vhs docs/tapes/01-build.tape
 vhs validate docs/tapes/*.tape docs/tapes/manual/*.tape
 ```

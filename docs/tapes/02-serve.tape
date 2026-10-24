@@ -13,7 +13,9 @@ Enter
 Wait+Screen@240s /prep done/
 Show
 
-Type "export AWD_ADMIN_TOKEN=try-me"
+Type "export AWD_ADDR=127.0.0.1:8080"
+Enter
+Type "export AWD_ADMIN_TOKEN=$(openssl rand -hex 16)"
 Enter
 Type "awd serve &"
 Enter

@@ -3,9 +3,9 @@ name: web
 on:
   push:
     branches: [main]
-    paths: ["web/**", ".github/workflows/web.yml"]
+    paths: ["web/**", "docs/**", ".github/workflows/web.yml"]
   pull_request:
-    paths: ["web/**", ".github/workflows/web.yml"]
+    paths: ["web/**", "docs/**", ".github/workflows/web.yml"]
 
 permissions:
   contents: read
