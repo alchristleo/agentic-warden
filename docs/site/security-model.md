@@ -21,7 +21,7 @@ Agentic Warden is a client-side control. It is not a security boundary against a
 
 **`aw-policy` re-checks the bundle on disk at every launch.** It verifies the bundle, its signature and the trust file together before compiling. Evidence: `TestRunRefusesATamperedBundle`, `TestRunRefusesAMissingSignature` and `TestRunRefusesAnUnreadableTrustFile` in `internal/policyhelper/helper_test.go`.
 
-**Sync is all-or-nothing.** If any agent's renderer fails, or the bundle fails validation, nothing is written for any agent. If the server is unreachable, the files stay as they were. Evidence: `TestRunWritesNothingForAnyAgentWhenOneRendererFails`, `TestRunWritesNothingWhenTheBundleFailsValidation` and `TestRunKeepsFilesWhenTheServerIsUnreachable` in `internal/sync/sync_test.go`.
+**Sync stops before writing on a renderer or validation failure.** If any agent's renderer fails, or the bundle fails validation, nothing is written for any agent. If the server is unreachable, the files stay as they were. If a later write fails after earlier ones landed, those earlier files stay in place and state records what was written, so the set can be mixed until the next good cycle (`TestRunRecordsWhatItWroteWhenALaterWriteFails`). Evidence: `TestRunWritesNothingForAnyAgentWhenOneRendererFails`, `TestRunWritesNothingWhenTheBundleFailsValidation` and `TestRunKeepsFilesWhenTheServerIsUnreachable` in `internal/sync/sync_test.go`.
 
 **Signing keys are handled with care.** A seed file that others can read is refused, and `awd keygen` will not overwrite an existing key (`TestLoadSeedRefusesAReadableFile`, `TestWriteSeedDoesNotOverwrite` in `internal/signing/signing_test.go`). `awd` refuses a KMS key that is not `ECC_NIST_EDWARDS25519` with `SIGN_VERIFY` usage (`internal/signing/awskms/awskms.go`, `TestNewRejectsTheWrongKey`). A signer failure answers 503, never an unsigned bundle (`TestSignerFailureIs503NeverUnsigned` in `internal/handler/bundle_test.go`).
 
@@ -35,8 +35,9 @@ Agentic Warden is a client-side control. It is not a security boundary against a
 
 - a `C:\ProgramData` subtree whose inherited ACLs let a standard user write files the deploy assumed were administrator-only (caught, though the loose ACL itself is not something `aw doctor` can read)
 - a state directory with the wrong owner or mode
-- a bundle copied between machines, restored from a backup or served by a stale cache
 - a compromised or impersonated `aw-sync`, on the fetch path, where the anchor is the 0600 `machine.json` and not a file next to what it verifies
+
+It does not prevent a bundle copied between machines, restored from a backup or served by a stale cache. The signature covers the key id and the body hash only, with no revision, expiry or machine field (`internal/policy/bundle.go`), so each of those still verifies.
 
 This list is from the "Bundle signing" section of the [README](https://github.com/alchristleo/agentic-warden/blob/main/README.md). The fetch-path tests are the ones above.
 
@@ -48,7 +49,7 @@ This list is from the "Bundle signing" section of the [README](https://github.co
 
 - **A developer with local administrator rights** can edit the managed source, remove the drop-in or run a modified client. Pair Agentic Warden with scheduled MDM redeployment and network-level egress restriction.
 - **Repository-scoped rules key on `.git/config`.** The `origin` remote there is the developer's to edit, so a rule that targets one repository can be avoided by changing it. `internal/repo` reads it (`TestDetectReadsTheOriginRemote`). There is no trusted answer to "which repository is this" on a developer machine.
-- **It fails open by default.** With no bundle, an unusable bundle or one that fails verification, `aw-policy` prints an empty envelope and exits 0, and Claude Code falls back to the static managed-settings files. Set `requireBundle: true` in `aw-policy.json` and it exits non-zero, so Claude Code refuses to start. Evidence: `TestAMissingBundleStillExitsZero`, `TestATamperedSignedBundleProducesAnEmptyEnvelope` and `TestATamperedSignedBundleFailsClosedUnderRequireBundle` in `cmd/aw-policy/e2e_test.go`. Failing closed also blocks developers when the sync is down, so the choice is yours.
+- **It fails open by default.** With no bundle, an unusable bundle or one that fails verification, `aw-policy` prints an empty envelope and exits 0, and Claude Code falls back to the static managed-settings files. Set `requireBundle: true` in `aw-policy.json` and it exits non-zero, so Claude Code refuses to start. Evidence: `TestAMissingBundleStillExitsZero`, `TestATamperedSignedBundleProducesAnEmptyEnvelope` and `TestATamperedSignedBundleFailsClosedUnderRequireBundle` in `cmd/aw-policy/e2e_test.go`. Under `requireBundle`, a machine with a good verified bundle keeps launching. Machines that never synced, or whose bundle is bad, are blocked, so the choice is yours. Compiled output of 1 MiB or more gets the same treatment: an empty envelope with exit 0, or exit 1 under `requireBundle` (`internal/policyhelper/helper.go`).
 - **A machine that cannot reach the control plane keeps the policy it has.** We found no expiry on a bundle. Evidence for the keeping: `TestRunKeepsFilesWhenTheServerIsUnreachable`.
 - **A validly signed old bundle still verifies.** A v2 signature covers the key id and the SHA-256 of the bundle bytes (`BundleStatement` in `internal/signing/signer.go`). We found no revision counter or expiry in the verify path, so signing alone does not stop someone with write access from putting an earlier signed bundle back.
 - **Server-managed settings from the claude.ai console shadow the helper.** Use one channel or the other. `aw doctor` detects the collision (`TestInspectDetectsServerManagedSettingsShadowingTheHelper`).
