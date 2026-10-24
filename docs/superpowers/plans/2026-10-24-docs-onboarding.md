@@ -195,3 +195,5 @@ T5b done 899a067 in review; discloses 6 product security gaps (unauth GET /v1/po
 T5b review=fix-needed (2 must overclaims: signing vs stale/copied bundle, sync all-or-nothing); fix r1 sent. T6 note: README L146-147 + site signing claim share overclaim
 T5b fix r1 5bdf873 re-review=fix-needed (coordinator brief error: Version field exists, unchecked); fix r2 sent
 T5b done c8e2190 fix r2 verified by coordinator grep vs bundle.go; merged
+T5a done e467bd7 in review (step6 prompt-first arg order; aw-sync status needs --state-dir; CI needs stub claude)
+T5a review=fix-needed; dismissed: main lacks quickstart.yaml (pre-merge only; recheck AC3 without insteadOf post-merge); fix r1 sent
