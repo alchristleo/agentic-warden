@@ -253,3 +253,4 @@ W3 done b488f50 web 81 + e2e docs 9 + go ok; 390px not eyeballed (e2e overflow c
 W1 done a922ec8 quickstart+README checks ok, web 79; precedence claim reworded (no source); mcpServers not claimed; follow-ups: og image title, 'top of settings stack' in enforce-plain-claude+quickstart
 coord fix a20422c: W1 put user title on page H1, moved to fail-safe card (H1 restored); precedence wording in enforce-plain-claude+how-it-works; copy e2e -> /docs/quickstart; one-band assert. e2e 47/47. 390px eyeballed ok; backlog: table env names break mid-word
 rereview fix-needed: 2 quickstart text-block parse (fixed coord), README apply (dismissed: GitHub main lacks examples/ pre-merge, passes with insteadOf; recheck post-push), capture.log note, TLS source. check-quickstart both ok
+GIFs rendered 8b67b5e: 6 CI + 06-claude + hero (real login, ~/.aw-try removed, new cache files removed); vhs needs ttyd>=1.7.2 (apt has 1.6.3; static 1.7.7 used); prompt shows cwd; check-links ok
