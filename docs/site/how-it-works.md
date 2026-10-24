@@ -63,8 +63,9 @@ the one decision left in it (which repository the session is in), validates
 the result against the published Claude Code settings schema, and prints it.
 With no bundle, or one it cannot use, it prints an envelope with no settings,
 which leaves the static managed-settings files in force, and still exits 0.
-It exits non-zero only when the organization sets `requireBundle`. Every run
-appends one line to a local audit log. [deploy/aw-sync/README.md](https://github.com/alchristleo/agentic-warden/blob/main/deploy/aw-sync/README.md)
+It exits non-zero only when the organization sets `requireBundle`. Each run
+tries to append one line to a local audit log; the write is best effort and is skipped silently if
+it fails. [deploy/aw-sync/README.md](https://github.com/alchristleo/agentic-warden/blob/main/deploy/aw-sync/README.md)
 installs the timer;
 [deploy/managed-settings/README.md](https://github.com/alchristleo/agentic-warden/blob/main/deploy/managed-settings/README.md)
 describes the files it writes.
@@ -100,5 +101,3 @@ project adds per-repository rules, API-key use and self-hosting.
 
 Bundles can be signed with an Ed25519 key or an AWS KMS key. Signing detects tampering; it does not
 stop a root user. See the [security model](./security-model.md).
-
-**Bring your rules.** See it against your own policy. [Request a demo](/demo)

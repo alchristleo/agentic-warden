@@ -15,15 +15,16 @@ The trial writes under your home directory and nothing else:
 
 - `~/.aw-try/`: `machine.json`, `state.json`, `aw-bundle.json`, `aw-sync-audit.log`, `aw-sync.lock`
 - `~/.aw-try/claude/`: `aw-bundle.json` and `managed-settings.d/50-agent-wrapper.json`
-- a `.aw-revision` file beside each rendered file
+- a `.aw-revision` file beside each rendered `.json` file
 - `~/.cache/agent-wrapper/claude/settings-<hash>.json`, the merged settings cache `aw` writes
+- the two repositories `../payments-api` and `../sandbox` from step 5
 
-`awd serve` keeps its policy in memory and writes nothing to disk. The clone and its `bin/` hold the binaries.
+`awd serve` keeps its policy in memory and writes nothing to disk. The clone and its `bin/` hold the binaries, and `quickstart.2.yaml` from step 7 sits in the clone.
 
 To remove it:
 
 1. Stop `awd`.
-2. Run `rm -rf ~/.aw-try ~/.cache/agent-wrapper`.
+2. From inside the clone, run `rm -rf ~/.aw-try ~/.cache/agent-wrapper ../payments-api ../sandbox`.
 3. Delete the clone.
 
 Claude Code does not read `~/.aw-try/claude`. In this mode only `aw claude`, through `--settings`, applies the policy, so nothing else changes while it is there.
@@ -37,6 +38,8 @@ These are the Linux paths. macOS and Windows differ.
 | Claude bundle and drop-in | `/etc/claude-code/aw-bundle.json` and `/etc/claude-code/managed-settings.d/50-agent-wrapper.json` |
 | Codex, if enrolled | `/etc/codex/requirements.toml` |
 | Gemini, if enrolled | `/etc/gemini-cli/settings.json` and `/etc/gemini-cli/policies/50-agent-wrapper.toml` |
+| Helper settings, if you created them | `/etc/claude-code/aw-policy.json` (for example `requireBundle`) |
+| Helper audit log, one per developer | `~/.cache/agent-wrapper/aw-policy/aw-policy.log` (the platform's user cache directory elsewhere) |
 | State | `/var/lib/agent-wrapper/`: `machine.json` (private), `state.json`, `aw-bundle.json`, the audit log, the lock |
 | Timer (`install-timer`) | `/etc/systemd/system/aw-sync.service` and `aw-sync.timer`; on macOS `/Library/LaunchDaemons/com.agent-wrapper.aw-sync.plist` and `/Library/Logs/agent-wrapper` |
 | Binaries | `/usr/local/bin/aw-policy` and `/usr/local/bin/aw-sync` |
@@ -46,7 +49,7 @@ The drop-in `50-agent-wrapper.json` is what makes bare `claude` run the helper. 
 To remove it:
 
 1. Run `sudo aw-sync uninstall-timer`. It stops the timer and removes the unit files (`TestUninstallLinux` in `internal/sync/timer/install_test.go`). Enrollment, state and the rendered files stay.
-2. Delete `/etc/claude-code/managed-settings.d/50-agent-wrapper.json`, then `/etc/claude-code/aw-bundle.json` and the other rendered files for each agent you enrolled. `aw-sync` writes each rendered file with an `.aw-revision` file beside it; delete those too.
+2. Delete `/etc/claude-code/managed-settings.d/50-agent-wrapper.json`, then `/etc/claude-code/aw-bundle.json`, `/etc/claude-code/aw-policy.json` if you created it, and the other rendered files for each agent you enrolled. `aw-sync` writes an `.aw-revision` file beside each rendered `.json` file; delete those too. Signed deployments also leave `aw-bundle.json.sig` and `aw-trust.pub` in the state directory, which step 3 removes.
 3. Delete `/var/lib/agent-wrapper/`.
 4. Delete `/usr/local/bin/aw-policy` and `/usr/local/bin/aw-sync`.
 5. Optionally, revoke the machine on the control plane with `awd revoke <id>`, so its credential stops working.

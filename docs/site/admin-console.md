@@ -50,5 +50,3 @@ never locks an operator out. Actions taken through the token path are
 attributed in the audit log as `token:<AWD_APPLIED_BY>`, falling back to
 `$USER` then `$USERNAME` when `AWD_APPLIED_BY` is unset, and just `token:`
 when none of those are set, distinct from a console admin's own identity.
-
-**Bring your rules.** See it against your own policy. [Request a demo](/demo)

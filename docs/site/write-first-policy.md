@@ -121,5 +121,3 @@ holds the user under a different case.
     awd apply my-policy.yaml
     aw-sync once          # on a machine, or wait for the timer
     aw doctor             # in a repository
-
-**Bring your rules.** See it against your own policy. [Request a demo](/demo)
