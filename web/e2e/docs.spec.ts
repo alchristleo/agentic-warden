@@ -33,6 +33,11 @@ test("every internal /docs link returns 200", async ({ page, request }) => {
   for (const h of hrefs) expect((await request.get(h)).status(), h).toBe(200);
 });
 
+test("sitemap lists every docs page", async ({ request }) => {
+  const body = await (await request.get("/sitemap.xml")).text();
+  for (const d of docs) expect(body).toContain(`<loc>http://localhost:3000${url(d.slug)}</loc>`);
+});
+
 test("code blocks have a copy button that copies the code", async ({ page, context }) => {
   await context.grantPermissions(["clipboard-read", "clipboard-write"]);
   await page.goto("/docs");

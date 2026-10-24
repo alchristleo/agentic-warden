@@ -48,6 +48,13 @@ describe("robotsFor", () => {
   });
 });
 
+describe("sitemapFor extra paths", () => {
+  it("lists docs pages after the routes", () => {
+    const urls = sitemapFor(prod, ["/docs", "/docs/quickstart"]).map((e) => e.url);
+    expect(urls.slice(-2)).toEqual(["https://warden.example/docs", "https://warden.example/docs/quickstart"]);
+  });
+});
+
 describe("sitemapFor", () => {
   it("lists every route with absolute URLs", () => {
     expect(sitemapFor(prod).map((e) => e.url)).toEqual([

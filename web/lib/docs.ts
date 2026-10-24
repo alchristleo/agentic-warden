@@ -30,7 +30,7 @@ export function parseDoc(file: string, raw: string): Doc {
   const fm: Record<string, string> = {};
   for (const line of m[1].split(/\r?\n/)) {
     const kv = /^(\w+):\s*(.*?)\s*$/.exec(line);
-    if (kv) fm[kv[1]] = kv[2].replace(/\s+#.*$/, "");
+    if (kv) fm[kv[1]] = kv[2].replace(/^(["'])(.*)\1$/, "$2");
   }
   for (const key of ["title", "section", "order", "description"]) {
     if (!fm[key]) throw new Error(`${file}: frontmatter needs ${key}`);
@@ -79,13 +79,27 @@ export const assetType = (file: string): string | undefined => ASSET_TYPES[file.
 
 /** Absolute path of an image in docs/assets, or null for anything that is not a plain image file name. */
 export function assetPath(file: string): string | null {
-  if (basename(file) !== file || file.startsWith(".")|| !assetType(file)) return null;
+  if (basename(file) !== file || file.startsWith(".") ||!assetType(file)) return null;
   return join(ASSETS_DIR, file);
 }
 
 const escapeHtml = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 
+/** Pages link the GitHub way (./slug.md, ../assets/x.gif); the site serves them at /docs/slug and /docs-assets/x.gif. */
+function rewriteHref(href: string): string {
+  const page = /^\.\/([\w-]+)\.md(#.*)?$/.exec(href);
+  if (page) return `${docHref(page[1])}${page[2] ?? ""}`;
+  const asset = /^\.\.\/assets\/([^/#?]+)$/.exec(href);
+  if (asset) return `/docs-assets/${asset[1]}`;
+  return href;
+}
+
 const marked = new Marked({
+  walkTokens(token) {
+    if (token.type === "link" || token.type === "image") token.href = rewriteHref(token.href);
+    // The page title is the h1.
+    if (token.type === "heading" && token.depth === 1) token.depth = 2;
+  },
   renderer: {
     code({ text, lang }) {
       const cls = lang ? ` class="language-${escapeHtml(lang)}"` : "";

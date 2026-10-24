@@ -22,14 +22,17 @@ consumer: T4 `scripts/check-quickstart.sh`):
 ```yaml
 ---
 title: Quickstart
-section: get-started   # get-started | security-review | guides | reference
+section: get-started
 order: 2
 description: One line, used for meta and cards.
 ---
 ```
+`section` is one of `get-started`, `security-review`, `guides`, `reference`. Values are plain `key: value` lines (no inline comments; one pair of surrounding quotes is stripped).
 The slug is the filename without `.md` (`docs/site/quickstart.md` → `/docs/quickstart`), and
-`index.md` maps to `/docs`. Links between pages use `/docs/<slug>`. Images use `/docs-assets/<file>`,
-served from `docs/assets/`.
+`index.md` maps to `/docs`. Pages are written to read well on GitHub: link pages as `./<slug>.md`
+(optionally `#anchor`) and images as `../assets/<file>`. The renderer rewrites those to `/docs/<slug>`
+and `/docs-assets/<file>` (served from `docs/assets/`); absolute and external links are left alone.
+A leading `# Title` is dropped (the page renders the title as h1); any other `#` heading renders as h2.
 
 **Tapes** (producer: T7): `docs/tapes/<NN>-<name>.tape` → `docs/assets/<NN>-<name>.gif`. The hero GIF
 is `docs/assets/hero.gif`.

@@ -55,8 +55,8 @@ export function robotsFor(env: Env = process.env): MetadataRoute.Robots {
   return { rules: [{ userAgent: "*", allow: "/" }], sitemap: abs("/sitemap.xml", env) };
 }
 
-export function sitemapFor(env: Env = process.env): MetadataRoute.Sitemap {
-  return routes.map((r) => ({ url: abs(r.path, env) }));
+export function sitemapFor(env: Env = process.env, extraPaths: string[] = []): MetadataRoute.Sitemap {
+  return [...routes.map((r) => r.path as string), ...extraPaths].map((p) => ({ url: abs(p, env) }));
 }
 
 export function organizationJsonLd(env: Env = process.env) {

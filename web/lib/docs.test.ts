@@ -2,7 +2,7 @@ import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { assetPath, docSlug, loadDocs, navSections, parseDoc } from "./docs";
+import { assetPath, docSlug, loadDocs, navSections, parseDoc, renderMarkdown } from "./docs";
 
 const page = (fm: string, body = "Body.") => `---\n${fm}\n---\n${body}\n`;
 
@@ -16,7 +16,7 @@ describe("parseDoc", () => {
   it("reads frontmatter and body", () => {
     const d = parseDoc(
       "quickstart.md",
-      page("title: Quickstart\nsection: get-started   # comment\norder: 2\ndescription: One line: with colon.", "## Hi"),
+      page("title: Quickstart\nsection: get-started\norder: 2\ndescription: One line: with colon.", "## Hi"),
     );
     expect(d).toMatchObject({
       slug: "quickstart",
@@ -29,6 +29,29 @@ describe("parseDoc", () => {
   });
   it("drops a leading h1 because the page renders the title", () => {
     expect(parseDoc("a.md", page("title: A\nsection: guides\norder: 1\ndescription: d", "# A\n\ntext")).body).toBe("text\n");
+  });
+  it("keeps a # inside a value, strips one pair of quotes, and reads CRLF", () => {
+    const raw = '---\r\ntitle: "Fix issue #12"\r\nsection: guides\r\norder: 3\r\ndescription: \'Use a # here\'\r\n---\r\ntext\r\n';
+    expect(parseDoc("a.md", raw)).toMatchObject({ title: "Fix issue #12", description: "Use a # here", order: 3 });
+    expect(parseDoc("a.md", page("title: A #1 thing\nsection: guides\norder: 1\ndescription: \"it's\"")).title).toBe("A #1 thing");
+  });
+  it("renders extra body h1s as h2", () => {
+    expect(renderMarkdown("# Again\n\n## Two\n")).toBe('<h2>Again</h2>\n<h2>Two</h2>\n');
+  });
+  it("drops a leading h1 even when its text differs from the title", () => {
+    expect(parseDoc("a.md", page("title: A\nsection: guides\norder: 1\ndescription: d", "# Other words\n\ntext")).body).toBe("text\n");
+  });
+  it("rewrites GitHub-style links to site routes and leaves others alone", () => {
+    const html = renderMarkdown(
+      "[a](./quickstart.md) [b](./index.md#top) [c](../assets/x.gif) ![d](../assets/hero.gif) [e](https://x.test/y.md) [f](/docs/z) [g](#h)",
+    );
+    expect(html).toContain('href="/docs/quickstart"');
+    expect(html).toContain('href="/docs#top"');
+    expect(html).toContain('href="/docs-assets/x.gif"');
+    expect(html).toContain('src="/docs-assets/hero.gif"');
+    expect(html).toContain('href="https://x.test/y.md"');
+    expect(html).toContain('href="/docs/z"');
+    expect(html).toContain('href="#h"');
   });
   it("rejects an unknown section", () => {
     expect(() => parseDoc("a.md", page("title: A\nsection: blog\norder: 1\ndescription: d"))).toThrow(/unknown section "blog"/);
@@ -73,5 +96,7 @@ describe("assetPath", () => {
     expect(assetPath("../site/index.md")).toBeNull();
     expect(assetPath("a/../../x.png")).toBeNull();
     expect(assetPath("notes.md")).toBeNull();
+    expect(assetPath("../x.png")).toBeNull();
+    expect(assetPath(".hidden.png")).toBeNull();
   });
 });
