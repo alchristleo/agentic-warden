@@ -97,14 +97,14 @@ applied revision quickstart.1 (2 rules)
 
 ## 4. Enroll this machine and sync
 
+After these commands, look for the lines below. The machine id and the paths are yours.
+
 ```sh
 export AW_SYNC_STATE_DIR=~/.aw-try
 token=$(awd enroll-token you@acme.com)
 AW_SYNC_TOKEN=$token aw-sync enroll --server http://localhost:8080 --agents claude --state-dir ~/.aw-try
 aw-sync once --state-dir ~/.aw-try --root claude=$HOME/.aw-try/claude
 ```
-
-Look for these lines. The machine id and the paths are yours.
 
 ```text
 enrolled machine
@@ -174,6 +174,10 @@ it runs. The `.env` rule applies in both.
 
 The prompt goes before `--allowedTools`, which takes a list and would otherwise swallow it.
 
+Claude's wording changes from run to run. Below the commands is one real example of each output, in
+order: in `payments-api` the `curl` command did not run, the `.env` line comes from Claude Code and is
+stable, and in `sandbox` the command ran.
+
 <!-- check: skip (needs a logged-in Claude) -->
 ```sh
 aw claude -p "Run: curl -sI https://example.com and show the status line" --allowedTools "Bash(curl *)"
@@ -181,10 +185,6 @@ aw claude -p "Print the contents of .env"
 cd ../sandbox
 aw claude -p "Run: curl -sI https://example.com and show the status line" --allowedTools "Bash(curl *)"
 ```
-
-Claude's wording changes from run to run. This is one real example of each, in the order above. In
-`payments-api` the `curl` command did not run. The `.env` line comes from Claude Code and is stable.
-In `sandbox` the command ran:
 
 ```text
 Command didn't run. Permission to run `curl -sI https://example.com` was denied, so I have no status line to show.
