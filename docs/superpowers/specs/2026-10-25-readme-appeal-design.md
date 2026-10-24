@@ -149,7 +149,7 @@ two step GIFs, `/docs` index at 1280 and 390 px. Plus the usual correctness pane
    Check: `scripts/check-readme.sh` exits 0 (also run as a step in `docs.yml`, authenticated with
    the workflow's `GITHUB_TOKEN` to avoid the unauthenticated rate limit; my call).
 2. **First screen sells.** In `README.md`, the hero GIF appears before line 20, and the H2 headings
-   appear in this order: The problem, See it in 30 seconds, How it works, Why teams pick it,
+   appear in this order: The problem, See it work, How it works, What you get,
    (comparison), Questions your security team will ask, Try it.
    Check: `scripts/check-readme.sh` asserts the order (`grep -n '^## '`).
 3. **Every README claim is backed.** Each factual sentence in README maps to a line in

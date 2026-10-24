@@ -33,7 +33,7 @@ done < <(grep -oE '(src|srcset)="[^"]*"' <<<"$html" | sed -E 's/^[a-z]+="//; s/"
 hero=$(grep -n 'hero\.gif' "$file" | head -1 | cut -d: -f1 || true)
 [[ -n $hero && $hero -lt 20 ]] || err "hero.gif is not before line 20 (found: ${hero:-none})"
 
-want=$'The problem\nSee it in 30 seconds\nHow it works\nWhy teams pick it\nHow it compares\nQuestions your security team will ask\nTry it'
+want=$'The problem\nSee it work\nHow it works\nWhat you get\nHow it compares\nQuestions your security team will ask\nTry it'
 got=$(grep '^## ' "$file" | sed 's/^## //' || true)
 [[ $got == "$want" ]] || err $'H2 headings differ from the expected order.\nwant:\n'"$want"$'\ngot:\n'"$got"
 
