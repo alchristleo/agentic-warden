@@ -42,8 +42,9 @@ vhs docs/tapes/manual/06-claude.tape
 vhs docs/tapes/manual/hero.tape
 ```
 
-`AW_MANUAL=1` keeps your real `HOME`, so the trial state lands in `~/.aw-try` and
-`~/.cache/agent-wrapper`. The tapes stop `awd` at the end. Remove both when you are done (`rm -rf ~/.aw-try ~/.cache/agent-wrapper`).
+`AW_MANUAL=1` keeps your real `HOME`, so the trial state lands in `~/.aw-try` and `aw` writes one
+settings file per launch under `~/.cache/agent-wrapper/claude/`. Run `rm -rf ~/.aw-try` before each
+Claude tape (or the second enroll fails) and when you are done. The tapes stop `awd` at the end.
 Each tape runs the step 6 `aw claude -p` command with the prompt before `--allowedTools`. The hero
 shows it refused in `payments-api` and then running in `sandbox`. Claude's wording varies per run.
 

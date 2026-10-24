@@ -12,9 +12,9 @@ if [ -z "${AW_MANUAL:-}" ]; then
   mkdir "$HOME/stub" && printf '#!/bin/sh\nexit 0\n' > "$HOME/stub/claude" && chmod +x "$HOME/stub/claude"
   export PATH=$HOME/stub:$PATH
 fi
-cd "$(mktemp -d)"
+cd "$(mktemp -d)" && mkdir demo && cd demo
 export GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0="url.$AW_REPO.insteadOf" GIT_CONFIG_VALUE_0=https://github.com/alchristleo/agentic-warden.git
-PS1='$ '
+PS1='\W \$ '
 
 if [ "$_aw_n" -gt 1 ]; then
   _aw_r git clone https://github.com/alchristleo/agentic-warden.git &&
