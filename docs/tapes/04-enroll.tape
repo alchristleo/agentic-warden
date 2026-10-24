@@ -11,6 +11,9 @@ Hide
 Type ". docs/tapes/lib/prep.sh 4"
 Enter
 Wait+Screen@240s /prep done/
+Type "clear"
+Enter
+Sleep 300ms
 Show
 
 Type "export AW_SYNC_STATE_DIR=~/.aw-try"

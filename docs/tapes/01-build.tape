@@ -11,6 +11,9 @@ Hide
 Type ". docs/tapes/lib/prep.sh 1"
 Enter
 Wait+Screen@120s /prep done/
+Type "clear"
+Enter
+Sleep 300ms
 Show
 
 Type "git clone https://github.com/alchristleo/agentic-warden.git"

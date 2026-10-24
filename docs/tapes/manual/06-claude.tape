@@ -12,6 +12,9 @@ Hide
 Type ". docs/tapes/lib/prep.sh 6"
 Enter
 Wait+Screen@240s /prep done/
+Type "clear"
+Enter
+Sleep 300ms
 Show
 
 Type `aw claude -p "Run: curl -sI https://example.com and show the status line" --allowedTools "Bash(curl *)"`

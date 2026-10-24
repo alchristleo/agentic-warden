@@ -11,6 +11,9 @@ Hide
 Type ". docs/tapes/lib/prep.sh 5"
 Enter
 Wait+Screen@240s /prep done/
+Type "clear"
+Enter
+Sleep 300ms
 Show
 
 Type "cd .."
