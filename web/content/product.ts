@@ -10,7 +10,7 @@ export const product = {
     {
       id: "signed-bundles",
       title: "Signed bundles",
-      body: "When you configure a signing key, the control plane signs each machine's bundle and aw-sync verifies it against the key pinned at enrollment before writing anything, so a tampered bundle never reaches an agent.",
+      body: "When you configure a signing key, the control plane signs each machine's bundle and aw-sync verifies it against the key pinned at enrollment before writing anything, so tampering with a bundle is detected before it reaches an agent. Machines enrolled before the key was set pin nothing and need re-enrolling. Signing detects tampering; it cannot stop a root user. Details: /docs/security-model.",
     },
     {
       id: "scim",
@@ -24,8 +24,8 @@ export const product = {
     },
     {
       id: "fail-safe",
-      title: "Fails safe by default",
-      body: "The policy helper works offline from the last synced bundle, validates its output against Claude Code's settings schema and exits cleanly by default, so a network outage never blocks a developer. Organizations that must never run unmanaged can opt into requiring a bundle instead.",
+      title: "Fails open by default, closed when you choose",
+      body: "The policy helper works offline from the last synced bundle and validates its output against Claude Code's settings schema, so a network outage never blocks a developer. On a missing or bad bundle it fails open and Claude Code falls back to the static managed files, unless you set requireBundle to refuse to start instead.",
     },
     {
       id: "doctor",
@@ -37,7 +37,7 @@ export const product = {
     id: "console",
     title: "Hosted console",
     badge: "Coming soon",
-    body: "Manage policy, groups and enrolled machines from a browser, without running the control plane yourself.",
+    body: "Manage policy, groups and enrolled machines from a browser, without running the control plane yourself. Until it launches, self-host awd, whose /console/ is opt-in via AWD_PUBLIC_URL and AWD_CONSOLE_*.",
     cta: { href: "/demo?plan=team", label: "Join early access" },
   },
 } as const;

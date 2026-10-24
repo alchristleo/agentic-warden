@@ -1,0 +1,63 @@
+name: tapes
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - "docs/tapes/**"
+      - ".github/workflows/tapes.yml"
+  pull_request:
+    paths:
+      - "docs/tapes/**"
+      - ".github/workflows/tapes.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  tapes:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      # The tapes run with a temp HOME, so the Go caches are pinned.
+      GOMODCACHE: ${{ github.workspace }}/.ci/gomod
+      GOCACHE: ${{ github.workspace }}/.ci/gocache
+      # Step 1 clones from GitHub. Point that URL at this checkout instead (also read in a temp HOME).
+      GIT_CONFIG_COUNT: "1"
+      GIT_CONFIG_KEY_0: url.${{ github.workspace }}.insteadOf
+      GIT_CONFIG_VALUE_0: https://github.com/alchristleo/agentic-warden.git
+      AW_REPO: ${{ github.workspace }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@v5
+        with:
+          # vhs v0.12.1 needs a newer Go than go.mod asks for, so use the current stable release.
+          go-version: stable
+          cache: false
+      - name: Install vhs, ffmpeg and ttyd
+        run: |
+          go install github.com/charmbracelet/vhs@v0.12.1
+          sudo apt-get update
+          sudo apt-get install -y ffmpeg
+          # vhs needs ttyd 1.7.2 or newer; distro packages lag, so pin the upstream static build.
+          sudo curl -fsSL -o /usr/local/bin/ttyd https://github.com/tsl0922/ttyd/releases/download/1.7.7/ttyd.x86_64
+          sudo chmod +x /usr/local/bin/ttyd
+          echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
+      - name: Render the tapes
+        # docs/tapes/manual needs a logged-in Claude and is rendered by hand.
+        # vhs has no no-sandbox option. If this step fails to start Chrome, the likely cause is
+        # Ubuntu 24.04 AppArmor blocking unprivileged user namespaces for the sandbox.
+        run: |
+          mkdir -p docs/assets
+          for t in docs/tapes/*.tape; do
+            echo "::group::$t"
+            vhs "$t"
+            echo "::endgroup::"
+          done
+      - uses: actions/upload-artifact@v4
+        with:
+          name: docs-gifs
+          path: docs/assets/*.gif
+          if-no-files-found: error

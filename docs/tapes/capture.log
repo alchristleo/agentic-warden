@@ -1,0 +1,162 @@
+# Captured 2026-10-24T12:59Z on Linux x86_64, go1.24.0 (go.mod: see note). Temp HOME, no root, nothing under /etc. Paths shortened: ~ = temp HOME, <repo> = fresh clone source.
+# Note: this run used the throwaway token try-me; the quickstart now binds 127.0.0.1 and uses a random AWD_ADMIN_TOKEN.
+$ git clone <repo> agentic-warden && cd agentic-warden && go build -o bin/ ./cmd/... && export PATH=$PWD/bin:$PATH
+$ ls bin
+aw
+aw-policy
+aw-sync
+awd
+[step 1 took 0.7s; elapsed since first command 0.7s]
+(note: examples/quickstart.yaml written by hand here because T2 has not landed)
+
+$ export AWD_ADMIN_TOKEN=try-me; awd serve &
+time=2026-10-24T19:59:51.025+07:00 level=WARN msg="AWD_DATABASE_URL is unset; storing policy in memory, which does not survive a restart"
+time=2026-10-24T19:59:51.025+07:00 level=WARN msg="bundles are not signed; set AWD_SIGNING_KEY to sign them"
+time=2026-10-24T19:59:51.025+07:00 level=INFO msg="admin console disabled; set AWD_PUBLIC_URL and AWD_CONSOLE_* to enable it"
+listening on [::]:8080
+[step 2 took 1.0s; elapsed since first command 1.7s]
+
+$ awd apply examples/quickstart.yaml
+applied revision quickstart.1 (2 rules)
+[step 3 took 0.1s; elapsed since first command 1.8s]
+
+$ export AW_SYNC_STATE_DIR=~/.aw-try
+$ AW_SYNC_TOKEN=$(awd enroll-token you@acme.com) aw-sync enroll --server http://localhost:8080 --agents claude --state-dir ~/.aw-try
+token for you@acme.com expires 2026-10-25T19:59:52+07:00
+enrolled machine bc57d77885bef7ccddba4ba56a98cb5f for you@acme.com; syncing claude into ~/.aw-try
+$ aw-sync once --state-dir ~/.aw-try --root claude=$HOME/.aw-try/claude
+synced bundle quickstart.1: wrote 3 files
+  ~/.aw-try/claude/aw-bundle.json
+  ~/.aw-try/claude/managed-settings.d/50-agent-wrapper.json
+  ~/.aw-try/aw-bundle.json
+[step 4 took 0.1s; elapsed since first command 1.9s]
+$ find ~/.aw-try -type f | sort   # files written
+~/.aw-try/aw-bundle.json
+~/.aw-try/aw-bundle.json.aw-revision
+~/.aw-try/aw-sync-audit.log
+~/.aw-try/aw-sync.lock
+~/.aw-try/claude/aw-bundle.json
+~/.aw-try/claude/aw-bundle.json.aw-revision
+~/.aw-try/claude/managed-settings.d/50-agent-wrapper.json
+~/.aw-try/claude/managed-settings.d/50-agent-wrapper.json.aw-revision
+~/.aw-try/machine.json
+~/.aw-try/state.json
+
+$ cd .. ; for r in payments-api sandbox; do git init -q $r && git -C $r remote add origin https://github.com/acme/$r; done
+$ cd payments-api && aw doctor
+wrapper: aw
+policy:  ~/.aw-try/aw-bundle.json (bundle quickstart.1, repo github.com/acme/payments-api)
+sync:    ~/.aw-try
+  machine: bc57d77885bef7ccddba4ba56a98cb5f at http://localhost:8080
+  synced:  0s ago, version quickstart.1
+
+agent claude
+  binary: <node-bin>/claude
+  warn:   no policyHelper in /etc/claude-code: organization policy is not enforced on bare `claude`
+  warn:   no bundle at /etc/claude-code/aw-bundle.json: aw-policy emits no settings until aw-sync has run
+  ok:     bundle signature: unsigned deployment
+  warn:   enrolled before bundle signing; re-enroll to pin a key
+  warn:   ~/.aw-try/aw-bundle.json is owned by uid 1000, not root: its owner can replace the file and the key it is checked against together, and the check would still report verified
+  warn:   AW_SYNC_STATE_DIR points this report at ~/.aw-try: the bundle-signature finding above describes that directory, not /var/lib/agent-wrapper, which is where aw-policy reads the bundle it enforces at session start
+  args:   --settings ~/.cache/agent-wrapper/claude/settings-43ad81f46063.json
+  file:   ~/.cache/agent-wrapper/claude/settings-43ad81f46063.json
+  note:   settings layers (low to high): managed (org, locked)
+  note:   merged settings written to ~/.cache/agent-wrapper/claude/settings-43ad81f46063.json
+  note:   policy compiled for github.com/acme/payments-api
+
+agent codex
+  warn:   no /etc/codex/requirements.toml: Codex is not governed on this machine until aw-sync has run
+  error:  agent: "codex" not found on PATH (searched: PATH, elided)
+
+agent gemini
+  warn:   no /etc/gemini-cli/settings.json: Gemini's system settings are not governed until aw-sync has run
+  warn:   no /etc/gemini-cli/policies/50-agent-wrapper.toml: Gemini's admin policies are not governed until aw-sync has run
+  error:  agent: "gemini" not found on PATH (searched: PATH, elided)
+[step 5 took 0.1s; elapsed since first command 2.0s]
+$ (sandbox) cd ../sandbox && aw doctor
+wrapper: aw
+policy:  ~/.aw-try/aw-bundle.json (bundle quickstart.1, repo github.com/acme/sandbox)
+sync:    ~/.aw-try
+  machine: bc57d77885bef7ccddba4ba56a98cb5f at http://localhost:8080
+  synced:  0s ago, version quickstart.1
+
+agent claude
+  binary: <node-bin>/claude
+  warn:   no policyHelper in /etc/claude-code: organization policy is not enforced on bare `claude`
+  warn:   no bundle at /etc/claude-code/aw-bundle.json: aw-policy emits no settings until aw-sync has run
+  ok:     bundle signature: unsigned deployment
+  warn:   enrolled before bundle signing; re-enroll to pin a key
+  warn:   ~/.aw-try/aw-bundle.json is owned by uid 1000, not root: its owner can replace the file and the key it is checked against together, and the check would still report verified
+  warn:   AW_SYNC_STATE_DIR points this report at ~/.aw-try: the bundle-signature finding above describes that directory, not /var/lib/agent-wrapper, which is where aw-policy reads the bundle it enforces at session start
+  args:   --settings ~/.cache/agent-wrapper/claude/settings-da49facc0b1c.json
+  file:   ~/.cache/agent-wrapper/claude/settings-da49facc0b1c.json
+  note:   settings layers (low to high): managed (org, locked)
+  note:   merged settings written to ~/.cache/agent-wrapper/claude/settings-da49facc0b1c.json
+  note:   policy compiled for github.com/acme/sandbox
+
+agent codex
+  warn:   no /etc/codex/requirements.toml: Codex is not governed on this machine until aw-sync has run
+  error:  agent: "codex" not found on PATH (searched: PATH, elided)
+
+agent gemini
+  warn:   no /etc/gemini-cli/settings.json: Gemini's system settings are not governed until aw-sync has run
+  warn:   no /etc/gemini-cli/policies/50-agent-wrapper.toml: Gemini's admin policies are not governed until aw-sync has run
+  error:  agent: "gemini" not found on PATH (searched: PATH, elided)
+
+[time to step 5 complete: 2.278925133s]
+
+# Steps 6 and 7
+--- step 6 evidence (no Claude auth in temp HOME): the settings aw would hand to claude
+$ (payments-api) cat the --settings file named by aw doctor
+{
+  "allowManagedPermissionRulesOnly": true,
+  "permissions": {
+    "deny": [
+      "Read(./.env)",
+      "Bash(curl *)"
+    ]
+  }
+}
+$ (sandbox)
+{
+  "allowManagedPermissionRulesOnly": true,
+  "permissions": {
+    "deny": [
+      "Read(./.env)"
+    ]
+  }
+}
+--- step 7: edit the YAML (deny Bash(wget *) in payments), apply, sync
+$ awd apply examples/quickstart.yaml
+applied revision quickstart.2 (2 rules)
+$ aw-sync once --state-dir ~/.aw-try --root claude=$HOME/.aw-try/claude
+synced bundle quickstart.2: wrote 3 files
+  ~/.aw-try/claude/aw-bundle.json
+  ~/.aw-try/claude/managed-settings.d/50-agent-wrapper.json
+  ~/.aw-try/aw-bundle.json
+$ (payments-api) aw doctor | grep -E "policy:|synced:|compiled"
+policy:  ~/.aw-try/aw-bundle.json (bundle quickstart.2, repo github.com/acme/payments-api)
+  synced:  0s ago, version quickstart.2
+  note:   policy compiled for github.com/acme/payments-api
+Bash(curl *)
+Bash(wget *)
+
+--- stop awd (the plug), then repeat
+awd stopped
+$ aw-sync once ... (awd down)
+aw-sync: sync: reaching the control plane at http://localhost:8080: Get "http://localhost:8080/v1/bundle": dial tcp 127.0.0.1:8080: connect: connection refused
+exit=1
+$ (payments-api) aw doctor (awd down)
+policy:  ~/.aw-try/aw-bundle.json (bundle quickstart.2, repo github.com/acme/payments-api)
+  synced:  1s ago, version quickstart.2
+  error:   sync: reaching the control plane at http://localhost:8080: Get "http://localhost:8080/v1/bundle": dial tcp 127.0.0.1:8080: connect: connection refused
+  note:   policy compiled for github.com/acme/payments-api
+Bash(curl *)
+Bash(wget *)
+$ aw-sync status
+machine bc57d77885bef7ccddba4ba56a98cb5f against http://localhost:8080, agents claude
+last sync 2026-10-24T12:59:53Z, bundle quickstart.2
+last error: sync: reaching the control plane at http://localhost:8080: Get "http://localhost:8080/v1/bundle": dial tcp 127.0.0.1:8080: connect: connection refused
+ok  ~/.aw-try/aw-bundle.json
+ok  ~/.aw-try/claude/aw-bundle.json
+ok  ~/.aw-try/claude/managed-settings.d/50-agent-wrapper.json

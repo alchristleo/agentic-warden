@@ -64,7 +64,7 @@ export const pricing = {
     },
     {
       q: "Can a developer bypass it by running claude directly?",
-      a: "Not for Claude Code, short of local administrator rights: it runs the policy helper on every launch, wrapper or not. For Codex and Gemini CLI the machine-wide files always apply; repository-specific rules apply when launched through aw codex or aw gemini.",
+      a: "Not for Claude Code outside the copy your organization installs: the policy helper runs on every launch of that copy, wrapper or not. For Codex and Gemini CLI the machine-wide files always apply; repository-specific rules apply when launched through aw codex or aw gemini.",
     },
     {
       q: "Which identity providers work?",
@@ -72,7 +72,7 @@ export const pricing = {
     },
     {
       q: "Is the hosted console available?",
-      a: "Not yet. Choose Team or pick hosted on the demo form and we will contact you when early access opens.",
+      a: "Not yet. Self-host awd today; its /console/ is opt-in via AWD_PUBLIC_URL and AWD_CONSOLE_*. Choose Team or pick hosted on the demo form and we will contact you when early access opens.",
     },
     {
       q: "How much does it cost?",

@@ -1,0 +1,69 @@
+name: docs
+
+on:
+  push:
+    paths:
+      - "docs/**"
+      - "README.md"
+      - "scripts/**"
+      - "examples/**"
+      - "cmd/**"
+      - "internal/**"
+      - "go.mod"
+      - "go.sum"
+      - ".github/workflows/docs.yml"
+  pull_request:
+    paths:
+      - "docs/**"
+      - "README.md"
+      - "scripts/**"
+      - "examples/**"
+      - "cmd/**"
+      - "internal/**"
+      - "go.mod"
+      - "go.sum"
+      - ".github/workflows/docs.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  docs:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      # The tapes and the quickstart check run with a temp HOME, so the Go caches are pinned.
+      GOMODCACHE: ${{ github.workspace }}/.ci/gomod
+      GOCACHE: ${{ github.workspace }}/.ci/gocache
+      # Step 1 clones from GitHub. Point that URL at this checkout instead (also read in a temp HOME).
+      GIT_CONFIG_COUNT: "1"
+      GIT_CONFIG_KEY_0: url.${{ github.workspace }}.insteadOf
+      GIT_CONFIG_VALUE_0: https://github.com/alchristleo/agentic-warden.git
+      AW_REPO: ${{ github.workspace }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@v5
+        with:
+          # vhs v0.12.1 needs a newer Go than go.mod asks for, so use the current stable release.
+          go-version: stable
+          cache: false
+      - name: Add a stub claude
+        # aw doctor prints its "file:" line only when claude is on PATH. The quickstart steps that
+        # run a real Claude are marked check: skip, so a stub is enough.
+        run: |
+          mkdir -p "$RUNNER_TEMP/stub"
+          printf '#!/bin/sh\nexit 0\n' > "$RUNNER_TEMP/stub/claude"
+          chmod +x "$RUNNER_TEMP/stub/claude"
+          echo "$RUNNER_TEMP/stub" >> "$GITHUB_PATH"
+      - name: Test the doc checks
+        run: scripts/test-checks.sh
+      - name: Run the quickstart
+        run: scripts/check-quickstart.sh docs/site/quickstart.md
+      - name: Run the README
+        run: scripts/check-quickstart.sh README.md
+      - name: Check links
+        run: |
+          scripts/check-links.sh README.md
+          for f in docs/site/*.md; do scripts/check-links.sh "$f"; done

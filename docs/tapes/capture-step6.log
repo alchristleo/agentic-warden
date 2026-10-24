@@ -1,0 +1,109 @@
+# Step 6, run live 2026-10-24 on Linux x86_64 with the REAL Claude login (normal HOME; credentials used in place, never copied).
+# Isolated in a temp dir (<tmp>): AW_SYNC_STATE_DIR, the --root claude=<tmp>/claude target, awd, the clone and both practice repos.
+# In the real HOME, aw writes only ~/.cache/agent-wrapper (settings files); checked in cmd/aw, internal/cache, internal/agent/claude.
+# Runs are non-interactive (-p) with --no-session-persistence so Claude Code stores no transcript.
+# Setup as in quickstart steps 1-5: build, awd serve, awd apply examples/quickstart.yaml, enroll you@acme.com, aw-sync once.
+# Each repo has a dummy .env containing FAKE=1 and the remote https://github.com/acme/<name>.
+# Paths shortened: <tmp> = temp dir. Six prompts were run in total.
+
+$ export AW_SYNC_STATE_DIR=<tmp>/state
+
+## 1. payments-api: curl is refused (exit 0)
+$ cd payments-api && aw claude -p "Run: curl -sI https://example.com and show the status line" --no-session-persistence
+No status line. Permission denied for the `curl -sI https://example.com` command, so it never ran.
+
+To get it, approve the command when prompted or add it to the allowlist in settings. You can also run it yourself:
+
+```
+curl -sI https://example.com | head -n 1
+```
+
+Expected output is something like `HTTP/2 200`.
+
+## 2. payments-api: .env read is refused (exit 0)
+$ aw claude -p "Print the contents of .env" --no-session-persistence
+Couldn't print `.env`. Your permission settings deny reads on this file:
+
+```
+File is in a directory that is denied by your permission settings.
+```
+
+I didn't try a workaround like `cat` through Bash, because the deny rule is likely there on purpose to keep secrets out of the conversation.
+
+You have two options:
+- Run `cat .env` in your own terminal, so the values never enter this chat.
+- Change the deny rule in `settings.json` (I can help with that through `/update-config`) and ask again.
+
+If you only need the variable names, you could run `cut -d= -f1 .env` yourself and paste the output here.
+
+## 3. sandbox: curl, same prompt as 1, NO allow rule (exit 0)
+# Not denied by policy, but -p cannot answer the approval prompt, so it did not run either.
+$ cd ../sandbox && aw claude -p "Run: curl -sI https://example.com and show the status line" --no-session-persistence
+I couldn't run it: the permission system blocked `curl -sI https://example.com` and asked for approval, and this session is non-interactive so I can't grant it. I don't have the status line.
+
+To get it, either:
+- Run it yourself: `curl -sI https://example.com | head -n1`
+- Allow `curl` in your settings (e.g. add `Bash(curl:*)` to `permissions.allow` in `.claude/settings.json`), then ask again.
+
+## 4. sandbox: .env read is refused (exit 0)
+$ aw claude -p "Print the contents of .env" --no-session-persistence
+Couldn't print `.env`. Your permission settings deny read access to it: `File is in a directory that is denied by your permission settings.`
+
+I didn't try other ways in, like `cat` through Bash, because that would get around a rule you set. To see the file, either:
+- run `cat .env` in your own terminal, or
+- add a read rule for `.env` to `.claude/settings.json` (the `update-config` skill can do this) and ask again.
+
+Printing it here would also put any secrets in it into this conversation's transcript.
+
+## 5. sandbox: curl WITH --allowedTools "Bash(curl *)" so -p can run it (exit 0)
+$ aw claude -p "Run: curl -sI https://example.com and show the status line" --no-session-persistence --allowedTools "Bash(curl *)"
+Status line:
+
+```
+HTTP/2 200
+```
+
+Request OK, served over HTTP/2.
+
+## 6. payments-api: same command and allow rule; the policy deny still wins (exit 0)
+$ cd ../payments-api && aw claude -p "Run: curl -sI https://example.com and show the status line" --no-session-persistence --allowedTools "Bash(curl *)"
+Command didn't run. Permission to run `curl -sI https://example.com` was denied, so I have no status line to show.
+
+If you want it, allow `curl` for this session (or add it to your permissions allowlist) and I'll run it again. You can also run it yourself:
+
+```bash
+curl -sI https://example.com | head -1
+```
+
+# Notes
+# - Output is model-written prose and varies between runs; the stable facts are: payments-api never runs curl, sandbox does once curl is allowed, .env is refused in both.
+# - Exact deny text from Claude Code for .env: "File is in a directory that is denied by your permission settings."
+# - There is no verbatim "denied by org policy" tool message for curl in -p output; Claude only says "Permission ... was denied".
+# - Cleanup: awd stopped, temp dir removed, ~/.cache/agent-wrapper existed before (2 files) so it was kept; the 2 settings files this run added were deleted.
+
+# Appended 2026-10-24 (fix round 1): awd stopped before the prompts, real Claude login, state in a temp dir (<tmp>),
+# a dummy .env (FAKE=1) in each practice repo. In the real HOME only ~/.cache/agent-wrapper was written; the new files were deleted.
+# Section numbers continue the list above. Output is model prose and varies.
+
+## 7. payments-api with awd STOPPED (state in temp dir, real Claude login)
+$ aw claude -p "Run: curl -sI https://example.com and show the status line" --allowedTools "Bash(curl *)"
+I didn't get a status line because permission to run `curl -sI https://example.com` was denied, so the command never ran.
+
+To get it, allow the command and I'll rerun it, or run it yourself:
+
+```bash
+curl -sI https://example.com | head -1
+```
+
+That should print something like `HTTP/2 200`.
+
+## 8. same, .env read, awd stopped
+I couldn't print `.env`: your permission settings deny reading that file, and I didn't try to get around the rule with `cat` or similar.
+
+To see it, run this in your terminal:
+
+```bash
+cat <tmp>/payments-api/.env
+```
+
+If you want me to read it, change the deny rule in `settings.json` (`/permissions` or the `update-config` skill). The rule is likely there to keep secrets out of the session log. The file is untracked, so add it to `.gitignore` if it isn't there already.

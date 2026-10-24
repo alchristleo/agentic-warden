@@ -1,5 +1,4 @@
 import Link from "next/link";
-import { ArrowUpRight } from "lucide-react";
 import { site } from "@/content/site";
 import { buttonVariants } from "@/components/ui/button";
 import { ThemeToggle } from "@/components/theme-toggle";
@@ -18,11 +17,14 @@ export function SiteHeader() {
               {item.label}
             </Link>
           ))}
-          <a href={site.docsUrl} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 hover:text-foreground">
-            Docs <ArrowUpRight className="size-3.5" aria-hidden />
-          </a>
+          <Link href={site.docsUrl} className="hover:text-foreground">
+            Docs
+          </Link>
         </nav>
         <div className="ml-auto flex items-center gap-2">
+          <Link href={site.docsUrl} className="px-2 text-sm text-muted-foreground hover:text-foreground sm:hidden">
+            Docs
+          </Link>
           <ThemeToggle />
           <Link href="/demo" className={cn(buttonVariants({ size: "sm" }))}>
             Request demo
