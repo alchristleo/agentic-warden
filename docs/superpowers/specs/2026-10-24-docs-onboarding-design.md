@@ -45,7 +45,7 @@ and finds the security model and its limits before they talk to us.
 6. **Hero GIF:** `aw claude` in `payments-api` refusing `curl`, and the same request running in
    `sandbox`. Rootless and reproducible from the quickstart, captioned with the exact command.
    The plain-`claude` proof (needs root, on a test VM) has its own page and its own clip.
-   *Pending at the spec gate: the CPO preferred plain `claude` for the hero, the CMO preferred `aw claude`.*
+   (Approved 2026-10-24 with the spec; the CPO preferred plain `claude`.)
 7. **Docs nav label:** "Security review" (the buyer's words, CMO) instead of "Evaluate" (CPO).
 8. **The doctor "evaluation mode" line:** rootless `aw doctor` today prints 6 warnings on a healthy
    evaluation setup, so the reader's step 5 opens with red output. When the state dir is not the system
@@ -59,7 +59,11 @@ and finds the security model and its limits before they talk to us.
 ## Design
 
 ### README (60 lines or fewer)
-Start from the CMO r2 draft: H1, line, 3-sentence lede, hero GIF, status line, compact policy YAML,
+Start from the CMO r2 draft, fixed per the CTO critique (2026-10-24): centered header (logo from
+`web/app/icon.svg`, H1, line, license and CI badges), hero GIF directly under it, policy YAML in plain
+block style (no flow-style braces), a short "Try it" teaser whose commands are copied from the tested
+quickstart and link to it, a tighter status-quo table, and a console screenshot if the self-hosted
+console can be shown with demo data. Then: 3-sentence lede, status line, compact policy YAML,
 the dated 3-row status-quo table (mechanisms only, no named vendors), 3 trust facts, a "Try it"
 block with real commands, and links: Quickstart · Enforce on plain `claude` · Security model ·
 Bring your rules · License. The current README sections move as follows:
@@ -129,6 +133,8 @@ fallback is that CI re-renders and uploads an artifact without diffing.
     `panel-correctness` seat checks the claims on Security review pages against code and tests and
     reports 0 unsupported claims.
 12. Go suite unchanged: `go test ./...` passes.
+13. The README "Try it" commands also pass the quickstart check: `scripts/check-quickstart.sh README.md`
+    exits 0 (same extractor, same rules as AC3).
 
 ## Security notes
 
