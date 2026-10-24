@@ -292,6 +292,38 @@ func TestDoctorReportColorOff(t *testing.T) {
 	}
 }
 
+func syncedLine(t *testing.T, rep *sync.Report) string {
+	t.Helper()
+	r := colorTestReport()
+	r.Sync = rep
+	var out strings.Builder
+	printReport(&out, r, true)
+	for _, line := range strings.Split(out.String(), "\n") {
+		if strings.Contains(line, "synced:") {
+			return line
+		}
+	}
+	t.Fatalf("report has no synced line:\n%q", out.String())
+	return ""
+}
+
+func TestDoctorSyncedGreenOnlyAfterCleanSync(t *testing.T) {
+	clean := &sync.Report{Enrolled: true, SyncedAt: time.Now()}
+	if got := syncedLine(t, clean); !strings.Contains(got, "\x1b[32msynced:\x1b[0m") {
+		t.Errorf("clean sync line = %q; want green synced:", got)
+	}
+
+	failed := &sync.Report{Enrolled: true, SyncedAt: time.Now(), Error: "server down"}
+	if got := syncedLine(t, failed); strings.Contains(got, "\x1b[32m") || strings.Contains(got, "\x1b[33m") || !strings.Contains(got, "  synced:  ") {
+		t.Errorf("sync with an error line = %q; want plain synced:", got)
+	}
+
+	never := &sync.Report{Enrolled: true}
+	if got := syncedLine(t, never); !strings.Contains(got, "\x1b[33msynced:\x1b[0m") || !strings.Contains(got, "never") {
+		t.Errorf("never-synced line = %q; want yellow synced: and never", got)
+	}
+}
+
 func TestQuickstartPolicyCompiles(t *testing.T) {
 	set, err := policy.LoadRuleSet(filepath.Join("..", "..", "examples", "quickstart.yaml"))
 	if err != nil {

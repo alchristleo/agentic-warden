@@ -3,12 +3,19 @@
 // as on; with on false every wrapper returns its input unchanged.
 package termcolor
 
-import "os"
+import (
+	"os"
+	"runtime"
+)
+
+// goos is a var so tests can stand in for Windows.
+var goos = runtime.GOOS
 
 // Enabled reports whether f is a terminal that should get color: a character
-// device, NO_COLOR unset or empty, and TERM not "dumb".
+// device, NO_COLOR unset or empty, TERM not "dumb", and not Windows, because
+// old consoles without VT processing print the escape codes raw.
 func Enabled(f *os.File) bool {
-	if os.Getenv("NO_COLOR") != "" || os.Getenv("TERM") == "dumb" {
+	if goos == "windows" || os.Getenv("NO_COLOR") != "" || os.Getenv("TERM") == "dumb" {
 		return false
 	}
 	info, err := f.Stat()

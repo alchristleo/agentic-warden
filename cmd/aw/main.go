@@ -466,7 +466,15 @@ func printReport(w io.Writer, r report, on bool) {
 		fmt.Fprintln(w, "  not enrolled: aw-sync has not run on this machine")
 	default:
 		fmt.Fprintf(w, "  machine: %s at %s\n", orNone(r.Sync.MachineID), orNone(r.Sync.Server))
-		fmt.Fprintf(w, "  %s  %s, version %s\n", termcolor.Green(on, "synced:"), age(r.Sync.SyncedAt, time.Now()), orNone(r.Sync.Version))
+		// Green only for a sync that happened without error; never is yellow.
+		synced := "synced:"
+		switch {
+		case r.Sync.SyncedAt.IsZero():
+			synced = termcolor.Yellow(on, synced)
+		case r.Sync.Error == "":
+			synced = termcolor.Green(on, synced)
+		}
+		fmt.Fprintf(w, "  %s  %s, version %s\n", synced, age(r.Sync.SyncedAt, time.Now()), orNone(r.Sync.Version))
 		if r.Sync.Error != "" {
 			fmt.Fprintf(w, "  %s   %s\n", termcolor.Red(on, "error:"), r.Sync.Error)
 		}

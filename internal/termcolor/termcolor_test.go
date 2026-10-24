@@ -2,8 +2,25 @@ package termcolor
 
 import (
 	"os"
+	"runtime"
 	"testing"
 )
+
+func TestEnabledOffOnWindows(t *testing.T) {
+	t.Setenv("NO_COLOR", "")
+	t.Setenv("TERM", "xterm-256color")
+	dev, err := os.OpenFile(os.DevNull, os.O_WRONLY, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer dev.Close()
+
+	goos = "windows"
+	t.Cleanup(func() { goos = runtime.GOOS })
+	if Enabled(dev) {
+		t.Error("windows consoles may lack VT processing and print raw escapes; color must be off")
+	}
+}
 
 func TestEnabled(t *testing.T) {
 	t.Setenv("NO_COLOR", "")
