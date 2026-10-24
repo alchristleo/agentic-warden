@@ -27,13 +27,13 @@ rules:
 | Managed settings files (MDM) | No             | No               | One format per vendor          |
 | Agentic Warden               | Yes            | Yes              | One policy                     |
 
-- **Works offline.** `aw` compiles from the last synced bundle on local disk, so a stopped control plane changes nothing.
-- **Signed bundles.** Each machine verifies an Ed25519 or AWS KMS signature before it writes anything. Signing detects tampering and cannot stop a root user ([security model](docs/site/security-model.md)).
+- **Works offline.** `aw` compiles from the last synced bundle on local disk, so a stopped control plane changes nothing. A missing or bad bundle fails open to the static files unless you set `requireBundle` ([security model](docs/site/security-model.md)).
+- **Signed bundles.** When you configure a signing key, each machine verifies an Ed25519 or AWS KMS signature before it writes anything. Signing detects tampering and cannot stop a root user ([security model](docs/site/security-model.md)).
 - **Out of the model path.** Your code, prompts and model traffic never reach the control plane ([trust statement](docs/hosting/trust.md)).
 
 ## Try it
 
-Seven steps, no root. These build the binaries, start the control plane and apply the policy above:
+The quickstart is seven steps, no root. These commands get you a running control plane with the policy applied:
 
 ```sh
 git clone https://github.com/alchristleo/agentic-warden.git

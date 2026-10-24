@@ -24,8 +24,8 @@ export const product = {
     },
     {
       id: "fail-safe",
-      title: "Fails safe by default",
-      body: "The policy helper works offline from the last synced bundle, validates its output against Claude Code's settings schema and exits cleanly by default, so a network outage never blocks a developer. Organizations that must never run unmanaged can opt into requiring a bundle instead.",
+      title: "Keeps working when the server is down",
+      body: "The policy helper works offline from the last synced bundle and validates its output against Claude Code's settings schema, so a network outage never blocks a developer. On a missing or bad bundle it fails open and Claude Code falls back to the static managed files, unless you set requireBundle to refuse to start instead.",
     },
     {
       id: "doctor",

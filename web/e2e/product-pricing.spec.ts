@@ -8,7 +8,7 @@ test("product lists shipped capabilities and badges the console", async ({ page 
     "Signed bundles",
     "SCIM provisioning",
     "Scheduled sync on every OS",
-    "Fails safe by default",
+    "Keeps working when the server is down",
     "aw doctor",
     "Hosted console",
   ]) {
