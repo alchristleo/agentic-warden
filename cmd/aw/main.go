@@ -332,7 +332,13 @@ func doctor(registry *agent.Registry, opts options, args []string) error {
 	out := report{Wrapper: "aw", Policy: src.String(), PolicyNote: src.Note, SyncStateDir: stateDir}
 	out.Evaluation = stateDir != sync.StateDir(runtime.GOOS)
 	out.Sync, out.SyncError = syncSection(stateDir)
-	for _, name := range registry.Names() {
+	names := registry.Names()
+	if out.Sync != nil && out.Sync.Enrolled && len(out.Sync.Agents) > 0 {
+		// Only the agents this machine is enrolled for are governed here;
+		// a missing binary for any other is not a finding.
+		names = out.Sync.Agents
+	}
+	for _, name := range names {
 		status := agentStatus{Name: name}
 		adapter, err := registry.Lookup(name)
 		if err != nil {

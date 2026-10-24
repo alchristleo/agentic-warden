@@ -578,3 +578,25 @@ func TestDoctorEvaluationMode(t *testing.T) {
 		t.Errorf("default state dir: evaluation line present:\n%s", out)
 	}
 }
+
+func TestDoctorChecksOnlyEnrolledAgents(t *testing.T) {
+	binDir := t.TempDir()
+	fakeAgent(t, binDir, "claude", "exit 0")
+	stateDir := t.TempDir()
+	state := `{"server":"http://awd.example","machineId":"m1","agents":["claude"],"etag":"","version":"v1","syncedAt":"2026-09-21T12:00:00Z","files":{},"notes":[]}`
+	if err := os.WriteFile(filepath.Join(stateDir, "machine.json"), []byte(`{"server":"http://awd.example","machineId":"m1","credential":"c","agents":["claude"]}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(stateDir, "state.json"), []byte(state), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	env := append(baseEnv(t, binDir), "AW_SYNC_STATE_DIR="+stateDir)
+
+	out, _ := run(t, env, "doctor")
+	if strings.Contains(out, "error:  agent:") || strings.Contains(out, "agent codex") || strings.Contains(out, "agent gemini") {
+		t.Errorf("doctor reported agents the machine is not enrolled for:\n%s", out)
+	}
+	if !strings.Contains(out, "agent claude") {
+		t.Errorf("doctor dropped the enrolled agent:\n%s", out)
+	}
+}
