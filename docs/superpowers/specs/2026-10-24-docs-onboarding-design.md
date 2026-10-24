@@ -143,3 +143,31 @@ There's no new trust boundary in code. The risk is security claims in the docs. 
 the milestone panel (correctness seat), and the security seat reviews the threat model's content.
 Recordings must not show tokens or a real account email. Use `you@acme.com` and the throwaway admin
 token `try-me`.
+
+## Status (converged 2026-10-25)
+
+Checked on branch `docs-onboarding` at 1d5a5f7 against `main`. Commands were run on 2026-10-25.
+
+| # | criterion (short) | verdict | evidence (command + key output line) |
+|---|---|---|---|
+| 1 | README 60 lines or fewer, H1, tagline | VERIFIED | `wc -l < README.md` = 59; `head -3` shows `# Agentic Warden` and `**One policy for every coding agent.**` |
+| 2 | no `agent-wrapper` prose in README or docs/site | VERIFIED | `grep -rn 'agent-wrapper' README.md docs/site` gives 0 prose hits; all hits are filesystem paths (`~/.cache/agent-wrapper`, `/var/lib/agent-wrapper`, `<user-cache>/agent-wrapper/...`) |
+| 3 | quickstart commands run; checker exits 0 | VERIFIED (pre-push) | `GIT_CONFIG_COUNT=1 ... insteadOf ... scripts/check-quickstart.sh docs/site/quickstart.md` → `ok (10 run, 2 skipped, 24 expected lines found)`, exit 0 |
+| 4 | step 6 refusal in payments-api, run in sandbox, log + quoted text | VERIFIED | `docs/tapes/capture-step6.log` step 1 and step 6 (payments-api) "Command didn't run. Permission to run `curl -sI https://example.com` was denied"; step 5 (sandbox, `--allowedTools "Bash(curl *)"`) prints `HTTP/2 200`; the quickstart page quotes the same sentence verbatim |
+| 5 | each `.tape` has a GIF 1:1; CI renders all tapes | INCONCLUSIVE | 1:1 part VERIFIED: `ls docs/tapes/*.tape docs/tapes/manual/*.tape` = 01,02,03,04,05,07 + manual/06-claude, manual/hero; `ls docs/assets/*.gif` = the same 8 names. CI pass not run: needs the PR pushed (no `docs` workflow run exists) |
+| 6 | `/docs` pages render, 4 sections in order, no broken link | VERIFIED | `cd web && pnpm test:e2e -g docs` → `9 passed`, incl. "nav shows the sections that have pages in the fixed order" and "every internal /docs link returns 200" |
+| 7 | web lint, typecheck, unit tests pass | VERIFIED | `pnpm lint` exit 0; `pnpm typecheck` exit 0; `pnpm test` → `Tests 81 passed (81)` |
+| 8 | rootless `aw doctor` evaluation line; `--json` unchanged | VERIFIED | `go test ./cmd/aw/... -run TestDoctorEvaluationMode -v` → `--- PASS`; test asserts the line precedes the warnings, is absent from `--json` and absent for the default state dir |
+| 9 | any printed time claim backed by a timed run | VERIFIED (no claim) | `grep -rn -i '10 min\|ten minutes\|about 10' docs/site README.md web/content web/app` → no hits; only "five minutes" for the timer interval in `enforce-plain-claude.md`, not a quickstart time claim |
+| 10 | every README relative link resolves | VERIFIED | `scripts/check-links.sh README.md` exit 0 |
+| 11 | panel-correctness: 0 unsupported claims on Security review pages | INCONCLUSIVE | Ledger shows 14 unsupported claims found, fixed in W1 and re-reviewed (`docs/superpowers/plans/2026-10-24-docs-onboarding.md`, "Milestone panel triage"). Spot-check of `security-model.md`: cited tests exist (`TestFetchRejectsATamperedBody` in `internal/sync/client_test.go`, `TestEveryRunIsAudited` in `internal/policyhelper/helper_test.go`, `TestRunRefusesATamperedBundle`). No final 0-findings seat report is in the ledger. Missing run: a final panel-correctness pass on this diff |
+| 12 | `go test ./...` passes | VERIFIED | `go test ./...` exit 0; 0 FAIL lines |
+| 13 | README "Try it" passes the quickstart checker | VERIFIED (pre-push) | `GIT_CONFIG_COUNT=1 ... scripts/check-quickstart.sh README.md` → `README.md ok (2 run, 0 skipped, 1 expected lines found)`, exit 0 |
+
+### Deviations and notes
+
+- AC3 and AC13 ran with `GIT_CONFIG_*` `insteadOf` pointing the clone at the local checkout, because GitHub `main` lacks `examples/quickstart.yaml` until this branch merges. No global git config was written. An unredirected re-run is due after the push.
+- AC5: the `docs` workflow has not run on a PR. The GIFs for `06-claude` and `hero` were rendered by hand with a real login (commit 8b67b5e); this convergence did not re-render them.
+- AC4: the capture log is dated 2026-10-24 and was appended in fix rounds. The quoted refusal sentence matches the log exactly.
+- AC2: the `agent-wrapper` hits are state-directory paths the product writes, not product-name prose. Read as the spec's "directory or module path" exception.
+- Decision 10 asked for a timed run before any time claim. Since no page prints a time, no timed run was needed for AC9.
