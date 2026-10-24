@@ -1,0 +1,60 @@
+---
+title: Removing Agentic Warden
+section: security-review
+order: 4
+description: What Agentic Warden writes to a machine and how to take it off by hand. There is no uninstall command yet.
+---
+
+# Removing Agentic Warden
+
+**There is no uninstall command yet.** Neither the README nor the runbooks describe one, and `aw-sync uninstall-timer` stops the timer only: its own help says "enrollment and files stay". Removal today is by hand. This page lists what is written so you can do it. The paths come from reading the code (`SystemDir`, `StateDir` and `internal/sync/timer`); the rootless trial list was observed in a run. Nothing here was run as root.
+
+## After the rootless trial (quickstart)
+
+The trial writes under your home directory and nothing else:
+
+- `~/.aw-try/`: `machine.json`, `state.json`, `aw-bundle.json`, `aw-sync-audit.log`, `aw-sync.lock`
+- `~/.aw-try/claude/`: `aw-bundle.json` and `managed-settings.d/50-agent-wrapper.json`
+- a `.aw-revision` file beside each rendered file
+- `~/.cache/agent-wrapper/claude/settings-<hash>.json`, the merged settings cache `aw` writes
+
+`awd serve` keeps its policy in memory and writes nothing to disk. The clone and its `bin/` hold the binaries.
+
+To remove it:
+
+1. Stop `awd`.
+2. Run `rm -rf ~/.aw-try ~/.cache/agent-wrapper`.
+3. Delete the clone.
+
+Claude Code does not read `~/.aw-try/claude`. In this mode only `aw claude`, through `--settings`, applies the policy, so nothing else changes while it is there.
+
+## After a root setup ("Enforce on bare claude")
+
+These are the Linux paths. macOS and Windows differ.
+
+| What | Where |
+|---|---|
+| Claude bundle and drop-in | `/etc/claude-code/aw-bundle.json` and `/etc/claude-code/managed-settings.d/50-agent-wrapper.json` |
+| Codex, if enrolled | `/etc/codex/requirements.toml` |
+| Gemini, if enrolled | `/etc/gemini-cli/settings.json` and `/etc/gemini-cli/policies/50-agent-wrapper.toml` |
+| State | `/var/lib/agent-wrapper/`: `machine.json` (private), `state.json`, `aw-bundle.json`, the audit log, the lock |
+| Timer (`install-timer`) | `/etc/systemd/system/aw-sync.service` and `aw-sync.timer`; on macOS `/Library/LaunchDaemons/com.agent-wrapper.aw-sync.plist` and `/Library/Logs/agent-wrapper` |
+| Binaries | `/usr/local/bin/aw-policy` and `/usr/local/bin/aw-sync` |
+
+The drop-in `50-agent-wrapper.json` is what makes bare `claude` run the helper. Delete it, or the binary it names, in the wrong order and you can break launches: if the drop-in stays and `aw-policy` is gone, every `claude` launch refuses to start (`deploy/aw-sync/README.md`). Remove the drop-in first.
+
+To remove it:
+
+1. Run `sudo aw-sync uninstall-timer`. It stops the timer and removes the unit files (`TestUninstallLinux` in `internal/sync/timer/install_test.go`). Enrollment, state and the rendered files stay.
+2. Delete `/etc/claude-code/managed-settings.d/50-agent-wrapper.json`, then `/etc/claude-code/aw-bundle.json` and the other rendered files for each agent you enrolled. `aw-sync` writes each rendered file with an `.aw-revision` file beside it; delete those too.
+3. Delete `/var/lib/agent-wrapper/`.
+4. Delete `/usr/local/bin/aw-policy` and `/usr/local/bin/aw-sync`.
+5. Optionally, revoke the machine on the control plane with `awd revoke <id>`, so its credential stops working.
+
+Rendered files are never deleted when a sync fails. That is on purpose: a failed sync leaves the last policy in force (`TestRunKeepsFilesAndStateWhenTheServerFails` in `internal/sync/sync_test.go`). It also means stopping `awd` does not remove any rule.
+
+## Not covered
+
+- We checked the lists against the code and a rootless run, not against a root install on a clean machine.
+- A hosted cell is removed by us on your written request. The steps are in the [trust statement](./trust.md).
+- When an uninstall command exists, this page will say so.
