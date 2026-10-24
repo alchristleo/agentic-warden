@@ -205,3 +205,4 @@ T7 review=fix-needed (must: manual prep writes real ~/.gitconfig); fix r1 sent
 T6 review=fix-needed (signing conditional, fail-open honesty, product.ts "Fails safe" title -> "Keeps working when the server is down" [coordinator wording, surface at merge gate]); fix r1 sent
 T7 done f2caea6 fix verified by coordinator (no global git config; kills; triggers)
 T6 done 5c6d292 (blank-line nit skipped: breaks AC1)
+All T merged aa4c25e; suite green. Step 7 panel dispatched: correctness, design, security, browser QA
