@@ -172,3 +172,12 @@ FIX WAVE F1 README/quickstart, F2 diagram, F3 tapes, F4 Go
 FIX WAVE merged: F4 f31fb45, F1 de8ece9, F2 4c3d3f4, F3 445bb50; manual GIFs re-rendered (hero 27s, 06 33s; Claude latency keeps hero >15s). Next: scoped re-run of correctness (AC3) + CDO (AC11), budget tier; then spec-converge.
 PAUSED at step 7 (after fix wave, 5h usage 94%), next: scoped re-run panel-correctness (AC3 claims, model sonnet) + panel-design CDO (AC11) on branch 04b9407, then spec-converge, PR. Note AC6 test TestEnrollTokenNoColor deleted by F4 (no color path) -> update AC6 check text.
 RESUME scoped re-run: correctness approve (8/8 fixed, AC3 all claims sourced; nit: tapes README `|| exit` fixed 1edd7c3; nit: re-add enroll-token test skipped, AC6 check now greps the no-color path f6f6adc). CDO approve, 0 must (AC11); should: What you get bullet 1 advisory caveat fixed 0cb7b40; 4 nits -> Backlog; dismissed again: 05 lacks doctor output (bare aw doctor at 05-doctor.tape:43). Next: spec-converge.
+MERGED PR #4 b1c01cf (13/13 VERIFIED; AC7, AC12 owner-checked at gate)
+
+## Retro (2026-10-25)
+
+- **Numbers:** 6 tasks, 4 fix rounds (T4 1, T5 2, T3 1 coordinator), 0 blocked; panel 1 two-seat must (Codex/Gemini advisory) + 2 claim musts + CDO fix-first list; fix wave F1-F4; scoped re-runs 0 must, 1 should; 5h usage 94% at pause, 6% at end (after reset).
+- **Cost:** panel-correctness was 19% of 24h usage at Opus/xhigh. Applied: Sonnet/medium default, Opus only on trust boundary, scoped re-run on fix diff only (lean-sdd CHANGELOG 2026-10-25).
+- **Wasted:** CDO re-raised "05 lacks doctor output" after it was dismissed with evidence. Structure: scoped re-run briefs list dismissed findings with their reason.
+- **Wasted:** spec-converge marked AC3/AC11 INCONCLUSIVE because seat verdicts lived only in a ledger line. Structure: save each seat report to `.git/panel-<seat>-<sha>.md` and pass the paths to spec-converge.
+- **Kept:** ble.sh pinned by sha in `docs/tapes/lib/get-ble.sh`; tapes need `Sleep 600ms` after typing under ble.
