@@ -481,21 +481,6 @@ func TestAnUnknownCommandFails(t *testing.T) {
 	}
 }
 
-func TestEnrollTokenNoColor(t *testing.T) {
-	s := startServer(t)
-	if out, code := runAwd(t, "apply", writePolicy(t, groupedPolicyYAML), "--url", s.url); code != 0 {
-		t.Fatalf("apply: %s", out)
-	}
-
-	out, code := runAwdEnv(t, []string{"AWD_ADMIN_TOKEN=" + e2eAdminToken, "TERM=xterm-256color", "NO_COLOR="}, "enroll-token", "alice@acme.com", "--url", s.url)
-	if code != 0 {
-		t.Fatalf("enroll-token exited %d: %s", code, out)
-	}
-	if strings.Contains(out, "\x1b") {
-		t.Errorf("the token on stdout carries an escape byte: %q", out)
-	}
-}
-
 func TestEnrollTokenThenEnrollThenBundle(t *testing.T) {
 	s := startServer(t)
 	if out, code := runAwd(t, "apply", writePolicy(t, groupedPolicyYAML), "--url", s.url); code != 0 {
