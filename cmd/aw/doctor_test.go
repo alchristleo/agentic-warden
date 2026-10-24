@@ -5,12 +5,14 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/acme/agent-wrapper/internal/agent"
 	"github.com/acme/agent-wrapper/internal/agent/claude"
+	"github.com/acme/agent-wrapper/internal/policy"
 	"github.com/acme/agent-wrapper/internal/signing"
 	"github.com/acme/agent-wrapper/internal/sync"
 )
@@ -238,5 +240,26 @@ func TestDoctorSaysNothingAboutTheStateDirWhenItIsNotRedirected(t *testing.T) {
 
 	if warn := redirectedStateDir(); warn != nil {
 		t.Errorf("finding = %+v on a machine using the OS default; that is the ordinary case and needs no note", warn)
+	}
+}
+
+func TestQuickstartPolicyCompiles(t *testing.T) {
+	set, err := policy.LoadRuleSet(filepath.Join("..", "..", "examples", "quickstart.yaml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	cases := []struct {
+		repo string
+		want []any
+	}{
+		{"github.com/acme/payments-api", []any{"Read(./.env)", "Bash(curl *)"}},
+		{"github.com/acme/sandbox", []any{"Read(./.env)"}},
+	}
+	for _, c := range cases {
+		doc := set.Compile(policy.Subject{Repo: c.repo})
+		perms, _ := doc.Agent("claude").Managed["permissions"].(map[string]any)
+		if got := perms["deny"]; !reflect.DeepEqual(got, c.want) {
+			t.Errorf("%s: deny = %v, want %v", c.repo, got, c.want)
+		}
 	}
 }
