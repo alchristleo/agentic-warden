@@ -1,4 +1,5 @@
 # Captured 2026-10-24T12:59Z on Linux x86_64, go1.24.0 (go.mod: see note). Temp HOME, no root, nothing under /etc. Paths shortened: ~ = temp HOME, <repo> = fresh clone source.
+# Note: this run used the throwaway token try-me; the quickstart now binds 127.0.0.1 and uses a random AWD_ADMIN_TOKEN.
 $ git clone <repo> agentic-warden && cd agentic-warden && go build -o bin/ ./cmd/... && export PATH=$PWD/bin:$PATH
 $ ls bin
 aw
