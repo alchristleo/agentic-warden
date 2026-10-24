@@ -1,0 +1,28 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "How a policy reaches an agent",
+    "output": "architecture.html",
+    "quality_profile": "showcase",
+    "locale": "en",
+    "legend": { "mode": "hidden" }
+  },
+  "components": [
+    { "id": "awd", "type": "backend", "label": "awd", "sublabel": "policy, not agent traffic", "pos": [40, 60], "size": [160, 64] },
+    { "id": "admin", "type": "external", "label": "Policy author", "sublabel": "writes policies", "pos": [330, 60], "size": [160, 64], "icon": "person" },
+    { "id": "aw-sync", "type": "backend", "label": "aw-sync", "sublabel": "timer on each laptop", "pos": [40, 250], "size": [160, 64] },
+    { "id": "agent", "type": "frontend", "label": "Claude Code", "sublabel": "Codex, Gemini CLI", "pos": [330, 250], "size": [160, 64] },
+    { "id": "vendor", "type": "external", "label": "Model provider", "sublabel": "vendor API", "pos": [620, 250], "size": [160, 64] }
+  ],
+  "boundaries": [
+    { "kind": "region", "label": "Control plane (yours, or our hosted pilot)", "wraps": ["awd"] },
+    { "kind": "region", "label": "Developer laptop", "wraps": ["aw-sync", "agent"] }
+  ],
+  "connections": [
+    { "id": "policies", "from": "admin", "to": "awd", "label": "policies" },
+    { "id": "fetch-bundle", "from": "awd", "to": "aw-sync", "label": "policy bundle", "fromSide": "bottom", "toSide": "top" },
+    { "id": "bundle-file", "from": "aw-sync", "to": "agent", "label": "aw-bundle.json" },
+    { "id": "model-calls", "from": "agent", "to": "vendor", "label": "model calls", "variant": "emphasis" }
+  ]
+}
