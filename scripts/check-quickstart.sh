@@ -12,7 +12,8 @@ mkdir -p "$tmp/home" "$tmp/work" "$tmp/out"
 session=$tmp/session.sh
 checks=$tmp/checks.tsv
 skip_re='^<!-- check: skip \((.*)\) -->$'
-assign_re='^[[:space:]]*[A-Za-z_][A-Za-z0-9_]*=\$\([^)]*\)[[:space:]]+[^[:space:]#]'
+# Known gap: the substitution stops at the first ")", so nested parens are not flagged.
+assign_re='^[[:space:]]*[A-Za-z_][A-Za-z0-9_]*=\$\([^)]*\)[[:space:]]+[^[:space:]#;]'
 : > "$checks"
 
 printf 'set -euo pipefail\nOUT=%q\nn=0\nw=\n' "$tmp/out" > "$session"

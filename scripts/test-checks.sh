@@ -37,6 +37,7 @@ expect "quickstart: failure names the missing line" 1 "expected-but-absent" "$qs
 expect "quickstart: failing block exits 1 and names block 1" 1 "block 1 (" "$qs" "$data/quickstart-failing-block.md"
 expect "quickstart: failing and-list exits 1 and names block 1" 1 "block 1 (" "$qs" "$data/quickstart-and-fail.md"
 expect "quickstart: prefix assignment with command substitution is flagged" 1 "prefix assignment" "$qs" "$data/quickstart-prefix-assign.md"
+expect "quickstart: assignment followed by a semicolon is not flagged" 0 "expected lines found" "$qs" "$data/quickstart-assign-semicolon.md"
 expect "quickstart: children of a block are killed on exit" 0 - "$qs" "$data/quickstart-orphan.md"
 if pgrep -f '^sleep 4242$' >/dev/null; then
   echo "FAIL orphan: sleep 4242 still running after the session"
