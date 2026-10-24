@@ -290,6 +290,9 @@ type report struct {
 	PolicyNote string `json:"policyNote,omitempty"`
 	// SyncStateDir is where aw-sync's state was looked for.
 	SyncStateDir string `json:"syncStateDir"`
+	// Evaluation is set for a non-default state dir; the text report says so
+	// and JSON stays as it was.
+	Evaluation bool `json:"-"`
 	// Sync is aw-sync's own status, read as the developer from its state
 	// directory: enrollment, last cycle, drift. Nil when that directory
 	// could not be read, with SyncError saying why.
@@ -327,6 +330,7 @@ func doctor(registry *agent.Registry, opts options, args []string) error {
 
 	stateDir := stateDirFor()
 	out := report{Wrapper: "aw", Policy: src.String(), PolicyNote: src.Note, SyncStateDir: stateDir}
+	out.Evaluation = stateDir != sync.StateDir(runtime.GOOS)
 	out.Sync, out.SyncError = syncSection(stateDir)
 	for _, name := range registry.Names() {
 		status := agentStatus{Name: name}
@@ -433,6 +437,9 @@ func age(at, now time.Time) string {
 
 func printReport(r report) {
 	fmt.Printf("wrapper: %s\n", r.Wrapper)
+	if r.Evaluation {
+		fmt.Printf("evaluation mode: state dir %s is not the system default; the warnings below are expected for a rootless trial\n", r.SyncStateDir)
+	}
 	fmt.Printf("policy:  %s\n", r.Policy)
 	if r.PolicyNote != "" {
 		fmt.Printf("  %s\n", r.PolicyNote)

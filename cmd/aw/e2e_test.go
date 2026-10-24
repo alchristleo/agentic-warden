@@ -552,3 +552,29 @@ func tamperByte(t *testing.T, path string) {
 	}
 	t.Fatalf("tamperByte: %s has no digit to change", path)
 }
+
+func TestDoctorEvaluationMode(t *testing.T) {
+	binDir := t.TempDir()
+	fakeAgent(t, binDir, "claude", "exit 0")
+	env := baseEnv(t, binDir)
+	stateDir := strings.TrimPrefix(env[3], "AW_SYNC_STATE_DIR=")
+	want := "evaluation mode: state dir " + stateDir + " is not the system default; the warnings below are expected for a rootless trial"
+
+	out, _ := run(t, env, "doctor")
+	if !strings.Contains(out, want) {
+		t.Errorf("non-default state dir: output lacks %q:\n%s", want, out)
+	}
+	if i, j := strings.Index(out, want), strings.Index(out, "warn"); j >= 0 && j < i {
+		t.Errorf("the evaluation line must come before the warnings:\n%s", out)
+	}
+
+	out, _ = run(t, env, "doctor", "--json")
+	if strings.Contains(out, "evaluation mode") {
+		t.Errorf("--json output mentions evaluation mode:\n%s", out)
+	}
+
+	out, _ = run(t, env[:3], "doctor")
+	if strings.Contains(out, "evaluation mode") {
+		t.Errorf("default state dir: evaluation line present:\n%s", out)
+	}
+}

@@ -1,0 +1,23 @@
+# The two-rule policy from the quickstart. Apply it with:  awd apply examples/quickstart.yaml
+version: "quickstart.1"
+
+rules:
+  # Applies everywhere: no match block means no constraint.
+  - name: baseline
+    agents:
+      claude:
+        managed:
+          permissions:
+            deny:
+              - Read(./.env)
+
+  # Repository patterns are globs, and '*' crosses path separators.
+  - name: payments-repos
+    match:
+      repos: ["github.com/acme/payments*"]
+    agents:
+      claude:
+        managed:
+          permissions:
+            deny:
+              - Bash(curl *)
