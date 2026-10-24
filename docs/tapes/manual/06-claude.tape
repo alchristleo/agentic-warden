@@ -2,6 +2,11 @@
 # Run from the repository root: AW_MANUAL=1 AW_REPO=$PWD vhs docs/tapes/manual/06-claude.tape
 Output docs/assets/06-claude.gif
 Set Shell bash
+Set Theme "Catppuccin Mocha"
+Set WindowBar Colorful
+Set BorderRadius 8
+Set Margin 20
+Set MarginFill "#0a0a0a"
 Set FontSize 14
 Set Width 1100
 Set Height 700
@@ -12,6 +17,7 @@ Hide
 Type ". docs/tapes/lib/prep.sh 6"
 Enter
 Wait+Screen@240s /prep done/
+Sleep 3s
 Type "clear"
 Enter
 Sleep 300ms
@@ -23,6 +29,7 @@ Wait+Line@180s /\$\s*$/
 Sleep 3s
 Type "cd ../sandbox"
 Enter
+Sleep 600ms
 Type `aw claude -p "Run: curl -sI https://example.com and show the status line" --allowedTools "Bash(curl *)"`
 Enter
 Wait+Line@180s /\$\s*$/

@@ -24,7 +24,13 @@ stub `claude` first on `PATH` (unless `AW_MANUAL=1`).
 You need [vhs](https://github.com/charmbracelet/vhs) (`go install github.com/charmbracelet/vhs@v0.12.1`),
 ffmpeg and ttyd 1.7.2 or newer (distro packages can be older; the upstream static build works). From the repository root, with changes committed (the clone reads your checkout):
 
+Every tape uses the `Catppuccin Mocha` theme and a colored prompt. For command highlighting, get
+[ble.sh](https://github.com/akinomyoga/ble.sh) (pinned release, sha256-checked, unpacked under the
+gitignored `docs/tapes/.ble/`, never your `HOME`) and export `BLE_DIR`. Without `BLE_DIR` the tapes
+still render, just without highlighting. CI installs the same release.
+
 ```sh
+export BLE_DIR=$(docs/tapes/lib/get-ble.sh)
 export AW_REPO=$PWD
 vhs docs/tapes/01-build.tape
 vhs validate docs/tapes/*.tape docs/tapes/manual/*.tape
@@ -37,6 +43,7 @@ does not have (`claude -p` there answers "Not logged in"). CI does not render th
 hand with your own login, without the stub:
 
 ```sh
+export BLE_DIR=$(docs/tapes/lib/get-ble.sh)
 export AW_REPO=$PWD AW_MANUAL=1
 vhs docs/tapes/manual/06-claude.tape
 vhs docs/tapes/manual/hero.tape
