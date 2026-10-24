@@ -190,3 +190,4 @@ T3 fix ca289c9 re-review=approve; rule for T5: links outside docs/site must be a
 T4 fix a5d4dbc re-review=approve; tiny follow-up (; false positive) sent
 T4 tiny fix 4148669 (13/13). Group A merged; go test ok, web 79/79, lint+typecheck ok
 T1b dispatched (step6 capture, real login, base 16454f0); T5b dispatched (security pages)
+T1b done cc3813a: .env denied both; curl denied in payments even with --allowedTools; sandbox needs --allowedTools under -p. Step 6 = same cmd w/ --allowedTools in both repos
