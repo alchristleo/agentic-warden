@@ -103,6 +103,51 @@ Fixed shared names (so group A does not collide):
 - Browser QA (Playwright) on `/docs` with new GIFs.
 - Scoped re-run of each seat after the fix wave for AC3 and AC11.
 
+## T1 verdict
+
+**Adopted shape: (a) ble.sh in the tape's bash.** (b) not adopted: zsh is not installed locally and
+needs sudo, so (b) is untested; nothing in (a) needs it.
+
+Evidence (vhs v0.12.1, ttyd 1.7.7, theme Catppuccin Mocha, bash, ble.sh v0.4.0-devel3):
+- Frame, last frame of the spike GIF: `/tmp/claude-1000/-home-leo-AI-STUFF-agent-wrapper/c8ecab07-b5bc-4795-a80b-8af4e8b0ab6b/scratchpad/a-last.png`.
+  Mid-typing frame (vhs `Screenshot` while typing): `docs/tapes/spike/a-mid.png`.
+- Colors seen: commands green (`git`, `go`, `ls`), builtins red-pink (`cd`, `export`), paths and
+  URLs underlined blue, `PATH` bold magenta, variable name `X` red until the line is complete,
+  `$(...)` default. Prompt dir blue, `$` green, from the `PS1` set before ble loads.
+- Render time: spike tape (01-build-like, prep step 1 plus ble) 22 to 25 s; current `01-build`
+  17.6 s (go build cached, clone from local checkout). GIF 75 KB versus 45 KB.
+- Commands unchanged: the same bash line editor semantics; `export X=$(...)`, `&`, `$PWD/bin:$PATH`
+  ran as in the plain tape (output `[1] pid`, `ls bin` listing).
+- Glitches and fixes: (1) ble prints `[ble: EOF]` (prompt_eol_mark) after commands whose output
+  does not end at column 0; fixed with `bleopt prompt_eol_mark=''`. (2) Loading ble inside the hidden
+  prep with `--noattach` then `ble-attach` and `clear; echo` garbled the output and hung the Wait;
+  use `--attach=prompt` and `Sleep 3s` before `clear`. (3) ble.sh must be sourced by absolute path
+  (prep.sh cd's into a temp dir); use `$AW_REPO`. (4) Do not put `Wait+Line` on a ble prompt
+  without testing; `Wait+Line@20s /\$\s*$/` worked in a probe. (5) first load generates a cache
+  under the ble dir (`cache.d/`), slow once; CI start is always a first load, so the hidden
+  prep absorbs it (wait for `prep done` plus `Sleep 3s`).
+
+Install lines (pin the tarball by sha256, v0.4.0-devel3 tarball sha256
+`c8612ee612bc6b10dbfd6e85c6cbdfd7caf152a12d1f9de22ea0a9d735b3080c`):
+- `.github/workflows/tapes.yml` step (no apt needed; needs `xz`, preinstalled on ubuntu-latest):
+  ```
+  - name: Install ble.sh
+    run: |
+      curl -fsSL -o ble.tar.xz https://github.com/akinomyoga/ble.sh/releases/download/v0.4.0-devel3/ble-0.4.0-devel3.tar.xz
+      echo "c8612ee612bc6b10dbfd6e85c6cbdfd7caf152a12d1f9de22ea0a9d735b3080c  ble.tar.xz" | sha256sum -c -
+      mkdir -p "$RUNNER_TEMP/ble" && tar xJf ble.tar.xz -C "$RUNNER_TEMP/ble"
+      echo "BLE_DIR=$RUNNER_TEMP/ble/ble-0.4.0-devel3" >> "$GITHUB_ENV"
+  ```
+- `lib/prep.sh`, after `PS1=...` is set (replace the plain PS1 with the colored one) and only
+  when `BLE_DIR` is set (so local runs without ble still work):
+  ```
+  PS1='\[\e[34m\]\W\[\e[0m\] \[\e[32m\]\$\[\e[0m\] '
+  [ -n "${BLE_DIR:-}" ] && { source "$BLE_DIR/ble.sh" --attach=prompt --norc; bleopt prompt_eol_mark=''; }
+  ```
+  The tapes then `Wait+Screen@120s /prep done/`, `Sleep 3s`, `Type "clear"`.
+- Local dev: unpack the same tarball and `export BLE_DIR=...`; spike files in `docs/tapes/spike/`
+  (`a-ble.tape`, `ble.sh`) are the working reference, delete before merge.
+
 ## Backlog
 
 - Demo/contact link once a public site URL exists.
