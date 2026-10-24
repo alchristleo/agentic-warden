@@ -19,11 +19,10 @@
 // no usable bundle, unless the organization opts into failing closed with
 // "requireBundle". See internal/policyhelper for the rules.
 //
-// The one argument it recognises is "build-info", which prints whether the
-// AW_POLICY_BUNDLE and AW_POLICY_CONFIG overrides are compiled in, and the
-// version; they are
-// only under -tags awtest, for tests. Any other argument runs the helper as
-// usual, so a future Claude Code that passes one cannot break a launch.
+// The one argument it recognises is "build-info", which prints the version
+// and whether the AW_POLICY_BUNDLE and AW_POLICY_CONFIG overrides are compiled
+// in; they are only under -tags awtest, for tests. Any other argument runs the
+// helper as usual, so a future Claude Code that passes one cannot break a launch.
 package main
 
 import (
