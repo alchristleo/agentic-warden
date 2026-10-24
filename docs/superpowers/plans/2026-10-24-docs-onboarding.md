@@ -191,3 +191,7 @@ T4 fix a5d4dbc re-review=approve; tiny follow-up (; false positive) sent
 T4 tiny fix 4148669 (13/13). Group A merged; go test ok, web 79/79, lint+typecheck ok
 T1b dispatched (step6 capture, real login, base 16454f0); T5b dispatched (security pages)
 T1b done cc3813a: .env denied both; curl denied in payments even with --allowedTools; sandbox needs --allowedTools under -p. Step 6 = same cmd w/ --allowedTools in both repos
+T5b done 899a067 in review; discloses 6 product security gaps (unauth GET /v1/policy, aw-policy fail-open default, no bundle revision/expiry -> rollback, X-Applied-By actor, no rate limit, plain HTTP)
+T5b review=fix-needed (2 must overclaims: signing vs stale/copied bundle, sync all-or-nothing); fix r1 sent. T6 note: README L146-147 + site signing claim share overclaim
+T5b fix r1 5bdf873 re-review=fix-needed (coordinator brief error: Version field exists, unchecked); fix r2 sent
+T5b done c8e2190 fix r2 verified by coordinator grep vs bundle.go; merged
