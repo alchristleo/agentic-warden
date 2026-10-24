@@ -12,13 +12,13 @@ mkdir -p "$tmp/home" "$tmp/work" "$tmp/out"
 session=$tmp/session.sh
 checks=$tmp/checks.tsv
 skip_re='^<!-- check: skip \((.*)\) -->$'
+assign_re='^[[:space:]]*[A-Za-z_][A-Za-z0-9_]*=\$\([^)]*\)[[:space:]]+[^[:space:]#]'
 : > "$checks"
 
 printf 'set -euo pipefail\nOUT=%q\nn=0\nw=\n' "$tmp/out" > "$session"
 cat >> "$session" <<'EOF'
 exec 3>&2
-trap 'echo "check-quickstart: block $n ($w) failed with exit $?" >&3; cat "$OUT/$n" >&3 2>/dev/null || true' ERR
-trap 'kill $(jobs -p) 2>/dev/null || true' EXIT
+trap 'rc=$?; if [[ $rc -ne 0 ]]; then echo "check-quickstart: block $n ($w) failed with exit $rc" >&3; cat "$OUT/$n" >&3 2>/dev/null || true; fi' EXIT
 EOF
 
 ran=0 skipped=0 n=0 in_fence=0 tag= run=0 after=0 want=0 sh_line=0 prev= line_no=0
@@ -33,6 +33,10 @@ while IFS= read -r line || [[ -n $line ]]; do
       fi
     else
       if [[ $tag == sh && $run -eq 1 ]]; then
+        if [[ $line =~ $assign_re ]]; then
+          echo "check-quickstart: $file:$line_no: prefix assignment with \$(...) hides its failure under set -e; put the assignment on its own line" >&2
+          exit 1
+        fi
         printf '%s\n' "$line" >> "$session"
       fi
       if [[ $tag == text && $want -gt 0 && -n ${line//[[:space:]]/} ]]; then
@@ -66,7 +70,13 @@ while IFS= read -r line || [[ -n $line ]]; do
   prev=$line
 done < "$file"
 
-(cd "$tmp/work" && HOME="$tmp/home" bash "$session") || exit 1
+set -m
+(cd "$tmp/work" && HOME="$tmp/home" bash "$session") &
+pid=$!
+status=0
+wait "$pid" || status=$?
+kill -- -"$pid" 2>/dev/null || true
+[[ $status -eq 0 ]] || exit 1
 
 fail=0 checked=0
 while IFS=$'\t' read -r n where text; do

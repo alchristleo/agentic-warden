@@ -35,6 +35,14 @@ expect "quickstart: missing expected output exits 1" 1 - "$qs" "$data/quickstart
 expect "quickstart: failure names block 1" 1 "block 1" "$qs" "$data/quickstart-missing-output.md"
 expect "quickstart: failure names the missing line" 1 "expected-but-absent" "$qs" "$data/quickstart-missing-output.md"
 expect "quickstart: failing block exits 1 and names block 1" 1 "block 1 (" "$qs" "$data/quickstart-failing-block.md"
+expect "quickstart: failing and-list exits 1 and names block 1" 1 "block 1 (" "$qs" "$data/quickstart-and-fail.md"
+expect "quickstart: prefix assignment with command substitution is flagged" 1 "prefix assignment" "$qs" "$data/quickstart-prefix-assign.md"
+expect "quickstart: children of a block are killed on exit" 0 - "$qs" "$data/quickstart-orphan.md"
+if pgrep -f '^sleep 4242$' >/dev/null; then
+  echo "FAIL orphan: sleep 4242 still running after the session"
+  pkill -f '^sleep 4242$'
+  fail=1
+fi
 expect "quickstart: skip exits 0 and prints the reason" 0 "needs a logged-in Claude" "$qs" "$data/quickstart-skip.md"
 expect "links: passing file exits 0" 0 - "$ln" "$data/quickstart-pass.md"
 expect "links: broken relative link exits 1" 1 "does-not-exist.md" "$ln" "$data/links-broken.md"
