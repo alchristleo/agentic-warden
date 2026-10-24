@@ -96,6 +96,7 @@ curl -sI https://example.com | head -1
 ```
 
 That should print something like `HTTP/2 200`.
+
 ## 8. same, .env read, awd stopped
 I couldn't print `.env`: your permission settings deny reading that file, and I didn't try to get around the rule with `cat` or similar.
 

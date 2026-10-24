@@ -5,7 +5,7 @@ wrapper: aw
 evaluation mode: state dir ~/.aw-try is not the system default; the warnings below are expected for a rootless trial
 policy:  ~/.aw-try/aw-bundle.json (bundle quickstart.1, repo github.com/acme/payments-api)
 sync:    ~/.aw-try
-  machine: 14a6d33c76d4908e3ffb7e9cb46030e9 at http://localhost:8080
+  machine: <machine-id> at http://localhost:8080
   synced:  0s ago, version quickstart.1
 
 agent claude
