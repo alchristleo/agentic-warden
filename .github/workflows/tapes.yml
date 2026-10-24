@@ -40,7 +40,10 @@ jobs:
         run: |
           go install github.com/charmbracelet/vhs@v0.12.1
           sudo apt-get update
-          sudo apt-get install -y ffmpeg ttyd
+          sudo apt-get install -y ffmpeg
+          # vhs needs ttyd 1.7.2 or newer; distro packages lag, so pin the upstream static build.
+          sudo curl -fsSL -o /usr/local/bin/ttyd https://github.com/tsl0922/ttyd/releases/download/1.7.7/ttyd.x86_64
+          sudo chmod +x /usr/local/bin/ttyd
           echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
       - name: Render the tapes
         # docs/tapes/manual needs a logged-in Claude and is rendered by hand.
