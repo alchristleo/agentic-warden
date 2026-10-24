@@ -256,3 +256,4 @@ rereview fix-needed: 2 quickstart text-block parse (fixed coord), README apply (
 GIFs rendered 8b67b5e: 6 CI + 06-claude + hero (real login, ~/.aw-try removed, new cache files removed); vhs needs ttyd>=1.7.2 (apt has 1.6.3; static 1.7.7 used); prompt shows cwd; check-links ok
 AC11 recheck: ~230 claims, 9 unsupported (1 must email_verified missing-claim accepted; client-swap no admin needed; enroll --force moves pin; step6 evidence is aw claude not helper; doctor dir check; group case; macOS cache path; README fail-open scope; removal step). Fix dispatched sdd-implementer-lite
 AC11 fixes 99dc354 (sdd-implementer-lite); AC11 -> VERIFIED. Product gaps now 9 (+ email_verified missing claim accepted); design limit: own Claude Code client. Next: merge gate
+PR #3 opened 2d59186; waiting CI (AC5)
