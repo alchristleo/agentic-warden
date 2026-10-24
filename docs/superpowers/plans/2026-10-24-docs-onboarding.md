@@ -198,3 +198,10 @@ T5b done c8e2190 fix r2 verified by coordinator grep vs bundle.go; merged
 T5a done e467bd7 in review (step6 prompt-first arg order; aw-sync status needs --state-dir; CI needs stub claude)
 T5a review=fix-needed; dismissed: main lacks quickstart.yaml (pre-merge only; recheck AC3 without insteadOf post-merge); fix r1 sent
 T5a done 7e2a7ec merged; link musts dismissed (T5b merged, GIFs = T7); machine id redacted by coordinator
+T6, T7 dispatched base c81e096 (T7 stops before render: ffmpeg/ttyd pending user)
+T7 done e63880b (tapes valid 8/8, not rendered) in review
+T6 done 872749e in review (README 58 lines; no Bring-your-rules link: site URL unknown -> ask user)
+T7 review=fix-needed (must: manual prep writes real ~/.gitconfig); fix r1 sent
+T6 review=fix-needed (signing conditional, fail-open honesty, product.ts "Fails safe" title -> "Keeps working when the server is down" [coordinator wording, surface at merge gate]); fix r1 sent
+T7 done f2caea6 fix verified by coordinator (no global git config; kills; triggers)
+T6 done 5c6d292 (blank-line nit skipped: breaks AC1)
