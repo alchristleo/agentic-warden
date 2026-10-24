@@ -161,3 +161,6 @@ T2 done 0290c9e sdd-implementer review approve (2 nits skipped)
 T4 done 4bcfde8 sdd-implementer-lite fix1 coordinator: boundary label, legend, layout
 T5 done 5096896 sdd-implementer fix2 (round1: 2 unsourced claims; round2: new unsourced line, restored known-gaps bullet)
 MERGE T2 e6d86dd, T4 39cd79c, T5 merged; go test green; check-readme ok
+T1 done 3378f50 sdd-implementer verdict: ble.sh (a); zsh untested (no sudo)
+T3 done 6db2838 sdd-implementer review approve; coordinator 6b0d61e: one ble pin, if-block; 01 re-render ok
+T6 next: owner renders manual/06-claude + manual/hero
