@@ -212,6 +212,7 @@ All T merged aa4c25e; suite green. Step 7 panel dispatched: correctness, design,
 Seats: correctness (AC11: 14 unsupported claims), design, security, browser QA. One fix wave, 3 parallel agents (disjoint files), then one sdd-reviewer-lite re-review.
 
 **W1 docs content** (docs/site/*.md, README.md, web/content/*.ts) · sdd-implementer
+- [user 2026-10-24] threat-model.md + security-model.md: split disclosed gaps into "Design limits" (fail-open default, plain HTTP, TOFU key pin, policy write = fleet code exec, client-side not a boundary), each with the operator mitigation, and "Known issues, fix scheduled" (unauth GET /v1/policy, X-Applied-By audit actor, no rate limit, unchecked Version rollback): impact + workaround, no exploit steps.
 - [user 2026-10-24] web/content/product.ts title -> "Fails open by default, closed when you choose" (replaces T6 retitle); update the e2e title assertion.
 - [must, corr] security-model.md:36-38 "does prevent" list false: aw-trust.pub lives in the state dir, so a state-dir writer swaps key+bundle+sig or deletes the key (inspect.go:261-265). Keep only "impersonated control plane on the fetch path".
 - [must, sec] Key pinned trust-on-first-use at enrollment (aw-sync main.go:234, client.go:89-127): over plain HTTP an in-path attacker can swap/strip it. Say enrollment+sync need TLS or an out-of-band key-id check; threat-model rows :28 :34 :45, security-model :20. No exploit steps.
