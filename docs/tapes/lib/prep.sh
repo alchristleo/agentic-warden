@@ -45,6 +45,11 @@ if [ "$_aw_n" -gt 5 ]; then
   cd payments-api || return 1
 fi
 unset _aw_n
-[ -n "${BLE_DIR:-}" ] && { source "$BLE_DIR/ble.sh" --attach=prompt --norc; bleopt prompt_eol_mark=''; ble-bind -f RET accept-line; ble-bind -f C-m accept-line; }
+if [ -n "${BLE_DIR:-}" ]; then
+  source "$BLE_DIR/ble.sh" --attach=prompt --norc
+  bleopt prompt_eol_mark=''
+  ble-bind -f RET accept-line
+  ble-bind -f C-m accept-line
+fi
 clear
 echo prep done

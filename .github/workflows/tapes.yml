@@ -46,12 +46,8 @@ jobs:
           sudo chmod +x /usr/local/bin/ttyd
           echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
       - name: Install ble.sh
-        # Command highlighting in the recorded shell. Pinned by sha256.
-        run: |
-          curl -fsSL -o ble.tar.xz https://github.com/akinomyoga/ble.sh/releases/download/v0.4.0-devel3/ble-0.4.0-devel3.tar.xz
-          echo "c8612ee612bc6b10dbfd6e85c6cbdfd7caf152a12d1f9de22ea0a9d735b3080c  ble.tar.xz" | sha256sum -c -
-          mkdir -p "$RUNNER_TEMP/ble" && tar xJf ble.tar.xz -C "$RUNNER_TEMP/ble"
-          echo "BLE_DIR=$RUNNER_TEMP/ble/ble-0.4.0-devel3" >> "$GITHUB_ENV"
+        # Command highlighting in the recorded shell. The pin and sha256 live in get-ble.sh.
+        run: echo "BLE_DIR=$(docs/tapes/lib/get-ble.sh)" >> "$GITHUB_ENV"
       - name: Render the tapes
         # docs/tapes/manual needs a logged-in Claude and is rendered by hand.
         # vhs has no no-sandbox option. If this step fails to start Chrome, the likely cause is
