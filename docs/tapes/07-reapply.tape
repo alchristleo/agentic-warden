@@ -2,6 +2,11 @@
 # Run from the repository root: AW_REPO=$PWD vhs docs/tapes/07-reapply.tape
 Output docs/assets/07-reapply.gif
 Set Shell bash
+Set Theme "Catppuccin Mocha"
+Set WindowBar Colorful
+Set BorderRadius 8
+Set Margin 20
+Set MarginFill "#0a0a0a"
 Set FontSize 14
 Set Width 1100
 Set Height 700
@@ -12,6 +17,7 @@ Hide
 Type ". docs/tapes/lib/prep.sh 7"
 Enter
 Wait+Screen@240s /prep done/
+Sleep 3s
 Type "clear"
 Enter
 Sleep 300ms

@@ -25,3 +25,6 @@ console/node_modules
 console/test-results
 console/playwright-report
 console/*.tsbuildinfo
+
+# VHS tape helper (ble.sh download)
+docs/tapes/.ble/
