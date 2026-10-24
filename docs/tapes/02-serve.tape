@@ -16,7 +16,7 @@ Hide
 Type ". docs/tapes/lib/prep.sh 2"
 Enter
 Wait+Screen@240s /prep done/
-Sleep 3s
+Sleep 2s
 Type "clear"
 Enter
 Sleep 300ms
@@ -24,16 +24,16 @@ Show
 
 Type "export AWD_ADDR=127.0.0.1:8080"
 Enter
-Sleep 600ms
+Sleep 400ms
 Type "export AWD_ADMIN_TOKEN=$(openssl rand -hex 16)"
 Enter
-Sleep 600ms
+Sleep 400ms
 Type "awd serve &"
 Enter
 Sleep 1s
 Type "awd_pid=$!"
 Enter
-Sleep 600ms
+Sleep 400ms
 Type "sleep 1"
 Enter
-Sleep 3s
+Sleep 2s

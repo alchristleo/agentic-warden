@@ -16,7 +16,7 @@ Hide
 Type ". docs/tapes/lib/prep.sh 3"
 Enter
 Wait+Screen@240s /prep done/
-Sleep 3s
+Sleep 2s
 Type "clear"
 Enter
 Sleep 300ms
@@ -24,7 +24,7 @@ Show
 
 Type "cat examples/quickstart.yaml"
 Enter
-Sleep 3s
+Sleep 2s
 Type "awd apply examples/quickstart.yaml"
 Enter
-Sleep 3s
+Sleep 2s

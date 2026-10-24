@@ -47,7 +47,10 @@ jobs:
           echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
       - name: Install ble.sh
         # Command highlighting in the recorded shell. The pin and sha256 live in get-ble.sh.
-        run: echo "BLE_DIR=$(docs/tapes/lib/get-ble.sh)" >> "$GITHUB_ENV"
+        run: |
+          dir=$(docs/tapes/lib/get-ble.sh)
+          test -f "$dir/ble.sh"
+          echo "BLE_DIR=$dir" >> "$GITHUB_ENV"
       - name: Render the tapes
         # docs/tapes/manual needs a logged-in Claude and is rendered by hand.
         # vhs has no no-sandbox option. If this step fails to start Chrome, the likely cause is
