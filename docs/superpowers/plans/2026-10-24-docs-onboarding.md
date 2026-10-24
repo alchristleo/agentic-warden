@@ -164,3 +164,15 @@ Acceptance: spec AC5 (tapes ↔ GIFs 1:1); the workflow YAML passes `actionlint`
 _(copied from docs/tapes/t1-findings.md after T1)_
 
 ## Ledger
+T1-T4 dispatched base=553e4d8 (group A, worktrees)
+T2 done 82fee3b sdd-implementer review=approve (2 nits, kept)
+T3 done 399cbd4 sdd-implementer in review (marked dep; sitemap omitted)
+T4 done 43210d8 sdd-implementer-lite in review
+T1 done 5751f68 sdd-implementer step6 not captured (no login in temp HOME); vhs needs ffmpeg+ttyd; doctor errors codex/gemini in step 5
+T4 fix r1 sent: && failure silent (must), process-group kill, prefix-assignment $(...) (should)
+T2 fix r1 sent: doctor checks enrolled agents only (T1 finding 5)
+PENDING USER: run `! sudo apt-get install -y ffmpeg ttyd` (user outside, remind on return); T7 GIF render blocked on it
+T2 fix b03c150 re-review=approve (3 nits)
+T3 review=fix-needed (sitemap, frontmatter quotes/#, extra h1, link rewrite contract change: ./slug.md -> /docs/slug); fix r1 sent
+T3 fix ca289c9 re-review=approve; rule for T5: links outside docs/site must be absolute GitHub URLs
+T4 fix a5d4dbc re-review=approve; tiny follow-up (; false positive) sent
