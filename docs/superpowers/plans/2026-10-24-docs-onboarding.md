@@ -206,3 +206,42 @@ T6 review=fix-needed (signing conditional, fail-open honesty, product.ts "Fails 
 T7 done f2caea6 fix verified by coordinator (no global git config; kills; triggers)
 T6 done 5c6d292 (blank-line nit skipped: breaks AC1)
 All T merged aa4c25e; suite green. Step 7 panel dispatched: correctness, design, security, browser QA
+
+## Milestone panel triage (2026-10-24)
+
+Seats: correctness (AC11: 14 unsupported claims), design, security, browser QA. One fix wave, 3 parallel agents (disjoint files), then one sdd-reviewer-lite re-review.
+
+**W1 docs content** (docs/site/*.md, README.md, web/content/*.ts) · sdd-implementer
+- [must, corr] security-model.md:36-38 "does prevent" list false: aw-trust.pub lives in the state dir, so a state-dir writer swaps key+bundle+sig or deletes the key (inspect.go:261-265). Keep only "impersonated control plane on the fetch path".
+- [must, sec] Key pinned trust-on-first-use at enrollment (aw-sync main.go:234, client.go:89-127): over plain HTTP an in-path attacker can swap/strip it. Say enrollment+sync need TLS or an out-of-band key-id check; threat-model rows :28 :34 :45, security-model :20. No exploit steps.
+- [must, design+corr] Stale README pointers: security-model.md:42,57; threat-model.md:68-70 -> how-it-works/write-first-policy/admin-console; the "no test" rows have tests: TestBundleGroupsIncludeActiveSCIMGroups, TestResolveFlagsACaseMismatch, TestAuthoredGroupsNeverCount.
+- [should, sec] New E row: policy write = code execution on every enrolled machine (managed accepts hooks, env, apiKeyHelper, mcpServers) -> admin token, console admin, signing key are fleet-root.
+- [should, corr] security-model:22 "re-checks every launch" only on a signed deployment; :14 precedence claim needs a source; threat-model:46 "all-or-nothing" -> "nothing written unless every renderer and validation pass".
+- [should, corr] Signing applies only to machines enrolled after the key is set (client.go:199, inspect.go:335): README.md:31, web/content/home.ts:61. README.md:11 hero alt text says .env but hero.tape records curl: fix the alt.
+- [should, corr] removing.md:14,18,27,49: add ../payments-api ../sandbox, per-developer ~/.cache/agent-wrapper/aw-policy/aw-policy.log, /etc/claude-code/aw-policy.json; .aw-revision only beside .json files. reference.md:55-56: .sig and aw-trust.pub are in the state dir.
+- [should, sec] security-model.md:16 AW_SYNC_STATE_DIR "awtest only" applies to aw-policy; aw honors it by design (cmd/aw/main.go:395).
+- [should, sec -> elevated must by coordinator: cheap, high impact] Quickstart: `export AWD_ADDR=127.0.0.1:8080` and `export AWD_ADMIN_TOKEN=$(openssl rand -hex 16)` (export form is allowed by the checker) replacing `try-me`; same in README try-it and enforce-plain-claude.md:30. W2 mirrors it in prep.sh and tapes.
+- [should, design] index.md: drop the clone block and "All pages"; keep pitch, hero, prerequisites, Start, three cards. Drop the "Bring your rules" footers from markdown (W3 renders it once in the docs layout).
+- [should, design] Remove reader-facing links to docs/tapes logs (quickstart.md:160, :293); merge the three step 6 prompts into one block and one sample output; drop "Why" lines.
+- [nit] wording drift: enforce-plain-claude.md:38 doctor still warns "enrolled before bundle signing" when unsigned; quickstart.md:293 "fails safe" -> "keeps working"; how-it-works.md:66 audit is best effort; console needs AWD_CONSOLE_* plus AWD_PUBLIC_URL (product.ts, pricing.ts); index/quickstart duplicate subtitle sentence; quickstart step 2 expected block ends "listening on" (complete or trim).
+
+**W2 scripts, CI, tapes** (scripts/, .github/workflows/, docs/tapes/) · sdd-implementer
+- [must, design+corr] Run scripts/check-links.sh in CI on README.md and docs/site/*.md (needs the GIFs committed before merge; AC5).
+- [should, corr] check-quickstart: fail on a text block that is not directly after a checked sh block or a skip (quickstart.md:112 step 4 was never checked); trap INT TERM EXIT to kill the whole process group.
+- [should, corr] docs.yml paths add README.md; web.yml paths add docs/** (AC6 e2e).
+- [should, design] Split tape rendering into its own job/workflow on workflow_dispatch + docs/tapes/**; keep the quickstart checks on the wide filter. Delete the dead "Build the binaries" step.
+- [should, design] Drop AW_STUB_BIN: prep.sh writes the stub claude itself unless AW_MANUAL=1; remove the workflow stub step and the README recipe.
+- Mirror W1's AWD_ADDR + random token in prep.sh and the tapes. Delete docs/tapes/removal-notes.md and t1-findings.md (duplicates of removing.md and the plan). Keep capture*.log (AC4 evidence). Inline the contract in the check-quickstart.sh header instead of citing the plan.
+
+**W3 web + Go** (web/app, web/lib, web/components, cmd/aw) · sdd-implementer
+- [must, QA] Mobile 390px: wrap docs tables in overflow-x:auto; overflow-wrap:anywhere on inline code.
+- [should, corr] /docs-assets route reads ../docs/assets at request time and is not traced on serverless deploys: make it static (generateStaticParams + force-static) or copy assets into public/ at build; add an e2e that fetches a real asset (logo.svg).
+- [should, QA] copy button overlaps the first line on mobile; mobile header has no Docs link; docs nav collapsible on mobile (details/summary) and aria-current + active style on the current page; render the "Bring your rules" band once in the docs page layout.
+- [nit, sec] escapeHtml escapes `"`; [nit, design] ASSET_TYPES = gif, svg; spacing `|| !assetType`.
+- [nit, corr] cmd/aw/main.go:333 compare filepath.Clean of both paths, with a test.
+
+**Dismissed:** delete exec-room papers and .agents context (user chose to commit both, 2026-10-24); delete capture-step6.log (AC4 evidence); actions pinned by tag not SHA (matches the repo's other workflows; no secrets, contents: read).
+**Backlog (design shoulds, larger):** dedupe security-model vs threat-model (one home per claim); make docs/hosting/trust.md the docs page itself; move how-it-works per-agent detail to Reference.
+**Product security gaps for the user** (out of scope here): unauth GET /v1/policy; aw-policy fails open by default; Version unchecked (rollback); X-Applied-By audit actor; no rate limit; plain HTTP; TOFU key pin; policy write = fleet code execution.
+
+PAUSED at step 7 (panel triaged, fix wave not started), next: dispatch W1, W2, W3 in parallel (worktrees, base = HEAD of docs-onboarding), then sdd-reviewer-lite re-review, render GIFs (user installs ffmpeg ttyd; manual tapes with real login), step 8 spec-converge, merge gate.
