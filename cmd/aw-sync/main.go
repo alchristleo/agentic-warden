@@ -33,6 +33,7 @@ import (
 	"github.com/acme/agent-wrapper/internal/agent/gemini"
 	"github.com/acme/agent-wrapper/internal/sync"
 	"github.com/acme/agent-wrapper/internal/sync/timer"
+	"github.com/acme/agent-wrapper/internal/termcolor"
 )
 
 const usage = `aw-sync keeps this machine's agent configuration in step with the control plane.
@@ -56,13 +57,13 @@ install-timer refuses a binary or state directory anyone but root could replace.
 `
 
 func main() {
-	if err := run(os.Args[1:], os.Stdout); err != nil {
-		fmt.Fprintln(os.Stderr, "aw-sync: "+err.Error())
+	if err := run(os.Args[1:], os.Stdout, termcolor.Enabled(os.Stdout)); err != nil {
+		fmt.Fprintln(os.Stderr, termcolor.Red(termcolor.Enabled(os.Stderr), "aw-sync:")+" "+err.Error())
 		os.Exit(1)
 	}
 }
 
-func run(argv []string, stdout io.Writer) error {
+func run(argv []string, stdout io.Writer, on bool) error {
 	if len(argv) == 0 {
 		fmt.Fprint(stdout, usage)
 		return nil
@@ -72,15 +73,15 @@ func run(argv []string, stdout io.Writer) error {
 		fmt.Fprint(stdout, usage)
 		return nil
 	case "enroll":
-		return helpOr(enroll(argv[1:], stdout), stdout)
+		return helpOr(enroll(argv[1:], stdout, on), stdout)
 	case "once":
-		return helpOr(once(argv[1:], stdout), stdout)
+		return helpOr(once(argv[1:], stdout, on), stdout)
 	case "status":
-		return helpOr(status(argv[1:], stdout), stdout)
+		return helpOr(status(argv[1:], stdout, on), stdout)
 	case "install-timer":
-		return helpOr(installTimer(argv[1:], stdout), stdout)
+		return helpOr(installTimer(argv[1:], stdout, on), stdout)
 	case "uninstall-timer":
-		return helpOr(uninstallTimer(argv[1:], stdout), stdout)
+		return helpOr(uninstallTimer(argv[1:], stdout, on), stdout)
 	default:
 		return fmt.Errorf("unknown command %q; run `aw-sync help`", argv[0])
 	}
@@ -147,7 +148,7 @@ func newFlagSet(name string) (*flag.FlagSet, *string) {
 	return fs, stateDir
 }
 
-func enroll(argv []string, stdout io.Writer) error {
+func enroll(argv []string, stdout io.Writer, on bool) error {
 	fs, stateDir := newFlagSet("enroll")
 	server := fs.String("server", "", "control plane URL")
 	token := fs.String("token", os.Getenv("AW_SYNC_TOKEN"), "enrollment token (or AW_SYNC_TOKEN)")
@@ -242,11 +243,11 @@ func enroll(argv []string, stdout io.Writer) error {
 	if err := sync.SaveState(*stateDir, initial); err != nil {
 		return fmt.Errorf("%w; the enrollment token was consumed; mint a new one", err)
 	}
-	fmt.Fprintf(stdout, "enrolled machine %s for %s; syncing %s into %s\n", e.MachineID, e.User, strings.Join(selected, ", "), *stateDir)
+	fmt.Fprintf(stdout, "%s machine %s for %s; syncing %s into %s\n", termcolor.Green(on, "enrolled"), e.MachineID, e.User, strings.Join(selected, ", "), *stateDir)
 	return nil
 }
 
-func once(argv []string, stdout io.Writer) error {
+func once(argv []string, stdout io.Writer, on bool) error {
 	flags, stateDir := newFlagSet("once")
 	roots := rootFlags{}
 	flags.Var(roots, "root", "agent=DIR override for one agent's system directory")
@@ -261,7 +262,7 @@ func once(argv []string, stdout io.Writer) error {
 	release, err := sync.Lock(*stateDir)
 	switch {
 	case errors.Is(err, sync.ErrLocked):
-		fmt.Fprintln(stdout, "note: another aw-sync cycle is running; skipped")
+		fmt.Fprintln(stdout, termcolor.Dim(on, "note: another aw-sync cycle is running; skipped"))
 		return nil
 	case errors.Is(err, fs.ErrNotExist):
 	case err != nil:
@@ -278,7 +279,7 @@ func once(argv []string, stdout io.Writer) error {
 	defer cancel()
 	res := sync.Run(ctx, sync.Config{StateDir: *stateDir, Roots: roots, Registry: reg})
 	for _, note := range res.Notes {
-		fmt.Fprintln(stdout, "note: "+note)
+		fmt.Fprintln(stdout, termcolor.Dim(on, "note: "+note))
 	}
 	if res.Err != nil {
 		return res.Err
@@ -287,7 +288,7 @@ func once(argv []string, stdout io.Writer) error {
 	case res.Unchanged:
 		fmt.Fprintf(stdout, "unchanged: bundle %s is current\n", orNone(res.Version))
 	default:
-		fmt.Fprintf(stdout, "synced bundle %s: wrote %d files\n", orNone(res.Version), len(res.Written))
+		fmt.Fprintf(stdout, "%s bundle %s: wrote %d files\n", termcolor.Green(on, "synced"), orNone(res.Version), len(res.Written))
 		for _, path := range res.Written {
 			fmt.Fprintln(stdout, "  "+path)
 		}
@@ -295,7 +296,7 @@ func once(argv []string, stdout io.Writer) error {
 	return nil
 }
 
-func status(argv []string, stdout io.Writer) error {
+func status(argv []string, stdout io.Writer, on bool) error {
 	fs, stateDir := newFlagSet("status")
 	asJSON := fs.Bool("json", false, "print the report as JSON")
 	if err := fs.Parse(argv); err != nil {
@@ -321,10 +322,10 @@ func status(argv []string, stdout io.Writer) error {
 	}
 	fmt.Fprintf(stdout, "last sync %s, bundle %s\n", synced, orNone(report.Version))
 	if report.Error != "" {
-		fmt.Fprintf(stdout, "last error: %s\n", report.Error)
+		fmt.Fprintf(stdout, "%s %s\n", termcolor.Red(on, "last error:"), report.Error)
 	}
 	for _, note := range report.Notes {
-		fmt.Fprintln(stdout, "note: "+note)
+		fmt.Fprintln(stdout, termcolor.Dim(on, "note: "+note))
 	}
 	tw := tabwriter.NewWriter(stdout, 0, 4, 2, ' ', 0)
 	for _, f := range report.Files {
@@ -334,7 +335,7 @@ func status(argv []string, stdout io.Writer) error {
 		return err
 	}
 	if report.Drift {
-		fmt.Fprintln(stdout, "drift: the next `aw-sync once` rewrites every file")
+		fmt.Fprintln(stdout, termcolor.Yellow(on, "drift:")+" the next `aw-sync once` rewrites every file")
 	}
 	return nil
 }
@@ -350,7 +351,7 @@ func orNone(version string) string {
 // binary that is running now, so a binary installed somewhere other than
 // /usr/local/bin still syncs, provided only root can replace it (see
 // checkRootOnly); re-running it changes the interval.
-func installTimer(argv []string, stdout io.Writer) error {
+func installTimer(argv []string, stdout io.Writer, on bool) error {
 	flags, stateDir := newFlagSet("install-timer")
 	interval := flags.Duration("interval", timer.DefaultInterval, "how often to run once (1m to 24h, whole minutes)")
 	if err := flags.Parse(argv); err != nil {
@@ -389,7 +390,7 @@ func installTimer(argv []string, stdout io.Writer) error {
 	if err := timer.NewInstaller(runtime.GOOS).Install(ctx, p); err != nil {
 		return privilegeHint(err, "install-timer")
 	}
-	fmt.Fprintf(stdout, "installed the aw-sync timer: %s once, every %s\n", binary, *interval)
+	fmt.Fprintf(stdout, "%s the aw-sync timer: %s once, every %s\n", termcolor.Green(on, "installed"), binary, *interval)
 	units, _ := timer.Render(runtime.GOOS, p)
 	for _, u := range units {
 		if u.Path != "" {
@@ -449,7 +450,7 @@ func underDir(path, dir string) bool {
 
 // uninstallTimer stops future syncs. Enrollment, state and the rendered
 // files are left exactly as they are.
-func uninstallTimer(argv []string, stdout io.Writer) error {
+func uninstallTimer(argv []string, stdout io.Writer, on bool) error {
 	flags, _ := newFlagSet("uninstall-timer")
 	if err := flags.Parse(argv); err != nil {
 		return err
@@ -470,7 +471,7 @@ func uninstallTimer(argv []string, stdout io.Writer) error {
 	case err != nil:
 		return privilegeHint(err, "uninstall-timer")
 	}
-	fmt.Fprintln(stdout, "removed the aw-sync timer; this machine stays enrolled and keeps its files")
+	fmt.Fprintln(stdout, termcolor.Green(on, "removed")+" the aw-sync timer; this machine stays enrolled and keeps its files")
 	return nil
 }
 

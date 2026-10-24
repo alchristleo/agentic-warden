@@ -19,6 +19,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -33,6 +34,7 @@ import (
 	"github.com/acme/agent-wrapper/internal/policyhelper"
 	"github.com/acme/agent-wrapper/internal/repo"
 	"github.com/acme/agent-wrapper/internal/sync"
+	"github.com/acme/agent-wrapper/internal/termcolor"
 )
 
 const usage = `aw launches a coding agent with your organization's configuration applied.
@@ -54,7 +56,7 @@ Everything after the agent name is passed to the agent untouched.
 
 func main() {
 	if err := run(os.Args[1:]); err != nil {
-		fmt.Fprintln(os.Stderr, "aw: "+err.Error())
+		fmt.Fprintln(os.Stderr, termcolor.Red(termcolor.Enabled(os.Stderr), "aw:")+" "+err.Error())
 		os.Exit(1)
 	}
 }
@@ -393,7 +395,7 @@ func doctor(registry *agent.Registry, opts options, args []string) error {
 		encoder.SetIndent("", "  ")
 		return encoder.Encode(out)
 	}
-	printReport(out)
+	printReport(os.Stdout, out, termcolor.Enabled(os.Stdout))
 	return nil
 }
 
@@ -447,58 +449,80 @@ func age(at, now time.Time) string {
 	return d.String() + " ago"
 }
 
-func printReport(r report) {
-	fmt.Printf("wrapper: %s\n", r.Wrapper)
+func printReport(w io.Writer, r report, on bool) {
+	fmt.Fprintf(w, "wrapper: %s\n", r.Wrapper)
 	if r.Evaluation {
-		fmt.Printf("evaluation mode: state dir %s is not the system default; the warnings below are expected for a rootless trial\n", r.SyncStateDir)
+		fmt.Fprintln(w, termcolor.Yellow(on, fmt.Sprintf("evaluation mode: state dir %s is not the system default; the warnings below are expected for a rootless trial", r.SyncStateDir)))
 	}
-	fmt.Printf("policy:  %s\n", r.Policy)
+	fmt.Fprintf(w, "policy:  %s\n", r.Policy)
 	if r.PolicyNote != "" {
-		fmt.Printf("  %s\n", r.PolicyNote)
+		fmt.Fprintf(w, "  %s\n", r.PolicyNote)
 	}
-	fmt.Printf("sync:    %s\n", r.SyncStateDir)
+	fmt.Fprintf(w, "sync:    %s\n", r.SyncStateDir)
 	switch {
 	case r.SyncError != "":
-		fmt.Printf("  error:   %s\n", r.SyncError)
+		fmt.Fprintf(w, "  %s   %s\n", termcolor.Red(on, "error:"), r.SyncError)
 	case !r.Sync.Enrolled:
-		fmt.Println("  not enrolled: aw-sync has not run on this machine")
+		fmt.Fprintln(w, "  not enrolled: aw-sync has not run on this machine")
 	default:
-		fmt.Printf("  machine: %s at %s\n", orNone(r.Sync.MachineID), orNone(r.Sync.Server))
-		fmt.Printf("  synced:  %s, version %s\n", age(r.Sync.SyncedAt, time.Now()), orNone(r.Sync.Version))
+		fmt.Fprintf(w, "  machine: %s at %s\n", orNone(r.Sync.MachineID), orNone(r.Sync.Server))
+		fmt.Fprintf(w, "  %s  %s, version %s\n", termcolor.Green(on, "synced:"), age(r.Sync.SyncedAt, time.Now()), orNone(r.Sync.Version))
 		if r.Sync.Error != "" {
-			fmt.Printf("  error:   %s\n", r.Sync.Error)
+			fmt.Fprintf(w, "  %s   %s\n", termcolor.Red(on, "error:"), r.Sync.Error)
 		}
 		for _, f := range r.Sync.Files {
 			if f.State != "ok" {
-				fmt.Printf("  %-8s %s\n", f.State+":", f.Path)
+				fmt.Fprintf(w, "  %-8s %s\n", f.State+":", f.Path)
 			}
 		}
 	}
 	for _, a := range r.Agents {
-		fmt.Printf("\nagent %s\n", a.Name)
+		fmt.Fprintf(w, "\n%s\n", termcolor.Bold(on, "agent "+a.Name))
 		if a.Binary != "" {
-			fmt.Printf("  binary: %s\n", a.Binary)
+			fmt.Fprintf(w, "  binary: %s\n", a.Binary)
 		}
 		for _, f := range a.Findings {
-			fmt.Printf("  %-5s   %s\n", f.Level+":", f.Message)
+			label := string(f.Level) + ":"
+			fmt.Fprintf(w, "  %s   %s\n", levelColor(on, f.Level, label)+padTo(label, 5), f.Message)
 		}
 		if a.Error != "" {
-			fmt.Printf("  error:  %s\n", a.Error)
+			fmt.Fprintf(w, "  %s  %s\n", termcolor.Red(on, "error:"), a.Error)
 			continue
 		}
 		if a.Launch != nil {
-			fmt.Printf("  args:   %s\n", strings.Join(a.Launch.Args, " "))
+			fmt.Fprintln(w, termcolor.Dim(on, fmt.Sprintf("  args:   %s", strings.Join(a.Launch.Args, " "))))
 			for _, file := range a.Launch.Files {
-				fmt.Printf("  file:   %s\n", file)
+				fmt.Fprintln(w, termcolor.Dim(on, fmt.Sprintf("  file:   %s", file)))
 			}
 			for _, entry := range a.Env {
-				fmt.Printf("  env:    %s\n", entry)
+				fmt.Fprintln(w, termcolor.Dim(on, fmt.Sprintf("  env:    %s", entry)))
 			}
 			for _, note := range a.Launch.Notes {
-				fmt.Printf("  note:   %s\n", note)
+				fmt.Fprintln(w, termcolor.Dim(on, fmt.Sprintf("  note:   %s", note)))
 			}
 		}
 	}
+}
+
+// levelColor colors a finding label by its level; unknown levels stay plain.
+func levelColor(on bool, l agent.Level, label string) string {
+	switch l {
+	case agent.OK:
+		return termcolor.Green(on, label)
+	case agent.Warn:
+		return termcolor.Yellow(on, label)
+	case agent.Error:
+		return termcolor.Red(on, label)
+	}
+	return label
+}
+
+// padTo returns the spaces that bring label up to width columns.
+func padTo(label string, width int) string {
+	if n := width - len(label); n > 0 {
+		return strings.Repeat(" ", n)
+	}
+	return ""
 }
 
 // addedEnv returns the entries in launch that base does not already have

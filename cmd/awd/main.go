@@ -43,6 +43,7 @@ import (
 	"github.com/acme/agent-wrapper/internal/signing"
 	"github.com/acme/agent-wrapper/internal/signing/awskms"
 	"github.com/acme/agent-wrapper/internal/store"
+	"github.com/acme/agent-wrapper/internal/termcolor"
 	"sigs.k8s.io/yaml"
 )
 
@@ -84,7 +85,7 @@ Environment:
 
 func main() {
 	if err := run(os.Args[1:]); err != nil {
-		fmt.Fprintln(os.Stderr, "awd: "+err.Error())
+		fmt.Fprintln(os.Stderr, termcolor.Red(termcolor.Enabled(os.Stderr), "awd:")+" "+err.Error())
 		os.Exit(1)
 	}
 }
@@ -223,7 +224,7 @@ func serve() error {
 	if err != nil {
 		return fmt.Errorf("listening on %s: %w", cfg.Addr, err)
 	}
-	fmt.Printf("listening on %s\n", listener.Addr().String())
+	fmt.Printf("%s on %s\n", termcolor.Green(termcolor.Enabled(os.Stdout), "listening"), listener.Addr().String())
 	os.Stdout.Sync()
 
 	serverError := make(chan error, 1)
@@ -395,7 +396,7 @@ func apply(argv []string) error {
 		return fmt.Errorf("control plane refused revision %q: %s: %s",
 			ruleSet.Version, resp.Status, strings.TrimSpace(string(payload)))
 	}
-	fmt.Printf("applied revision %s (%d rules)\n", ruleSet.Version, len(ruleSet.Rules))
+	fmt.Printf("%s %s (%d rules)\n", termcolor.Green(termcolor.Enabled(os.Stdout), "applied revision"), ruleSet.Version, len(ruleSet.Rules))
 	return nil
 }
 
@@ -635,7 +636,7 @@ func groupsApply(argv []string) error {
 	if err := adminRequest(http.MethodPut, a.url, "/v1/groups", body, &summary); err != nil {
 		return err
 	}
-	fmt.Printf("applied group snapshot from %s: %d users, %d groups\n", orUnknownSource(summary.Source), summary.Users, summary.Groups)
+	fmt.Printf("%s from %s: %d users, %d groups\n", termcolor.Green(termcolor.Enabled(os.Stdout), "applied group snapshot"), orUnknownSource(summary.Source), summary.Users, summary.Groups)
 	return nil
 }
 
@@ -699,8 +700,8 @@ func groupsResolve(argv []string) error {
 	}
 	fmt.Printf("authored: %s\nsnapshot: %s\nscim: %s\neffective: %s\n", list(s.Authored), list(s.Snapshot), list(s.SCIM), list(s.Effective))
 	if s.SCIMNearMatch != nil {
-		fmt.Printf("warning: SCIM has %q, which differs from %q only in case; resolution matches exactly, so its SCIM groups do not apply. Fix the IdP's userName mapping.\n",
-			*s.SCIMNearMatch, a.positional[0])
+		fmt.Printf("%s SCIM has %q, which differs from %q only in case; resolution matches exactly, so its SCIM groups do not apply. Fix the IdP's userName mapping.\n",
+			termcolor.Yellow(termcolor.Enabled(os.Stdout), "warning:"), *s.SCIMNearMatch, a.positional[0])
 	}
 	return nil
 }

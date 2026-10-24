@@ -244,6 +244,54 @@ func TestDoctorSaysNothingAboutTheStateDirWhenItIsNotRedirected(t *testing.T) {
 	}
 }
 
+func colorTestReport() report {
+	return report{
+		Wrapper: "aw",
+		Policy:  "none",
+		Sync:    &sync.Report{Enrolled: true, MachineID: "m1", Server: "http://x", Version: "v1"},
+		Agents: []agentStatus{{
+			Name: "claude",
+			Findings: []agent.Finding{
+				{Level: agent.OK, Message: "fine"},
+				{Level: agent.Warn, Message: "careful"},
+				{Level: agent.Error, Message: "broken"},
+			},
+			Launch: &agent.Launch{Args: []string{"--x"}, Files: []string{"/f"}, Notes: []string{"n"}},
+		}},
+	}
+}
+
+func TestDoctorReportColorOn(t *testing.T) {
+	var out strings.Builder
+	printReport(&out, colorTestReport(), true)
+	got := out.String()
+	for _, want := range []string{
+		"\x1b[32mok:\x1b[0m",
+		"\x1b[33mwarn:\x1b[0m",
+		"\x1b[31merror:\x1b[0m",
+		"\x1b[1magent claude\x1b[0m",
+		"\x1b[2m  args:   --x\x1b[0m",
+		"\x1b[2m  file:   /f\x1b[0m",
+		"\x1b[2m  note:   n\x1b[0m",
+	} {
+		if !strings.Contains(got, want) {
+			t.Errorf("colored report lacks %q:\n%q", want, got)
+		}
+	}
+}
+
+func TestDoctorReportColorOff(t *testing.T) {
+	var out strings.Builder
+	printReport(&out, colorTestReport(), false)
+	if strings.Contains(out.String(), "\x1b") {
+		t.Errorf("report with color off has an escape byte:\n%q", out.String())
+	}
+	want := "agent claude\n  ok:     fine\n  warn:   careful\n  error:   broken\n  args:   --x\n  file:   /f\n  note:   n\n"
+	if !strings.Contains(out.String(), want) {
+		t.Errorf("plain report changed text; want to contain %q, got %q", want, out.String())
+	}
+}
+
 func TestQuickstartPolicyCompiles(t *testing.T) {
 	set, err := policy.LoadRuleSet(filepath.Join("..", "..", "examples", "quickstart.yaml"))
 	if err != nil {
