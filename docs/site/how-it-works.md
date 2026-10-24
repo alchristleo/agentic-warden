@@ -10,8 +10,10 @@ description: How a policy gets from the control plane to an agent, why it still 
 Enforcement rides on `policyHelper`, a managed-only Claude Code setting naming
 an executable that Claude Code runs at startup to compute the session's managed
 settings. Claude Code applies its output as managed settings; how those rank
-against a developer's own settings is Claude Code's behavior (quickstart step 6
-records an organization deny beating a command-line allow).
+against a developer's own settings is Claude Code's behavior (the recorded run in
+quickstart step 6, through `aw claude` and `--settings`, shows an organization deny
+beating a command-line allow; the repository has no recorded run of bare `claude`
+with the helper).
 
 That matters because the helper runs on `claude`, not on `aw claude`. A
 developer who bypasses the wrapper is still governed.

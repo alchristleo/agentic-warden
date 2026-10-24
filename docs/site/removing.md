@@ -39,7 +39,7 @@ These are the Linux paths. macOS and Windows differ.
 | Codex, if enrolled | `/etc/codex/requirements.toml` |
 | Gemini, if enrolled | `/etc/gemini-cli/settings.json` and `/etc/gemini-cli/policies/50-agent-wrapper.toml` |
 | Helper settings, if you created them | `/etc/claude-code/aw-policy.json` (for example `requireBundle`) |
-| Helper audit log, one per developer | `~/.cache/agent-wrapper/aw-policy/aw-policy.log` (the platform's user cache directory elsewhere) |
+| Helper audit log, one per developer | `~/.cache/agent-wrapper/aw-policy/aw-policy.log`; on macOS `~/Library/Caches/agent-wrapper/aw-policy/aw-policy.log` |
 | State | `/var/lib/agent-wrapper/`: `machine.json` (private), `state.json`, `aw-bundle.json`, the audit log, the lock |
 | Timer (`install-timer`) | `/etc/systemd/system/aw-sync.service` and `aw-sync.timer`; on macOS `/Library/LaunchDaemons/com.agent-wrapper.aw-sync.plist` and `/Library/Logs/agent-wrapper` |
 | Binaries | `/usr/local/bin/aw-policy` and `/usr/local/bin/aw-sync` |
@@ -52,7 +52,8 @@ To remove it:
 2. Delete `/etc/claude-code/managed-settings.d/50-agent-wrapper.json`, then `/etc/claude-code/aw-bundle.json`, `/etc/claude-code/aw-policy.json` if you created it, and the other rendered files for each agent you enrolled. `aw-sync` writes an `.aw-revision` file beside each rendered `.json` file; delete those too. Signed deployments also leave `aw-bundle.json.sig` and `aw-trust.pub` in the state directory, which step 3 removes.
 3. Delete `/var/lib/agent-wrapper/`.
 4. Delete `/usr/local/bin/aw-policy` and `/usr/local/bin/aw-sync`.
-5. Optionally, revoke the machine on the control plane with `awd revoke <id>`, so its credential stops working.
+5. On each developer account: `rm -rf ~/.cache/agent-wrapper` (on macOS, `~/Library/Caches/agent-wrapper`).
+6. Optionally, revoke the machine on the control plane with `awd revoke <id>`, so its credential stops working.
 
 Rendered files are never deleted when a sync fails. That is on purpose: a failed sync leaves the last policy in force (`TestRunKeepsFilesAndStateWhenTheServerFails` in `internal/sync/sync_test.go`). It also means stopping `awd` does not remove any rule.
 

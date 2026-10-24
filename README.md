@@ -27,7 +27,7 @@ rules:
 | Managed settings files (MDM) | No             | No               | One format per vendor          |
 | Agentic Warden               | Yes            | Yes              | One policy                     |
 
-- **Works offline.** `aw` compiles from the last synced bundle on local disk, so a stopped control plane changes nothing. A missing or bad bundle fails open to the static files unless you set `requireBundle` ([security model](docs/site/security-model.md)).
+- **Works offline.** `aw` compiles from the last synced bundle on local disk, so a stopped control plane changes nothing. On bare `claude`, a missing or bad bundle fails open to the static files unless you set `requireBundle` ([security model](docs/site/security-model.md)).
 - **Signed bundles.** When you configure a signing key, each machine enrolled after that verifies an Ed25519 or AWS KMS signature before it writes anything. Signing detects tampering and cannot stop a root user ([security model](docs/site/security-model.md)).
 - **Out of the model path.** Your code, prompts and model traffic never reach the control plane ([trust statement](https://github.com/alchristleo/agentic-warden/blob/main/docs/hosting/trust.md)).
 

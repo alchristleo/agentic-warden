@@ -8,8 +8,8 @@ description: Install the policy helper as root on a test machine, so a developer
 # Enforce on plain claude
 
 The quickstart governs `aw claude`. This page governs plain `claude`. Claude Code runs a managed
-setting called `policyHelper` at startup and applies the helper's output as managed settings; in
-[quickstart](./quickstart.md) step 6 an organization deny beats a command-line allow. The helper runs on `claude` itself, so a
+setting called `policyHelper` at startup and applies the helper's output as managed settings. The recorded run in
+[quickstart](./quickstart.md) step 6, through `aw claude` and `--settings`, shows an organization deny beating a command-line allow; the repository has no recorded run of bare `claude` with the helper. The helper runs on `claude` itself, so a
 developer who skips the wrapper is still governed.
 
 Do this on a test VM. It writes under `/etc/claude-code` and `/var/lib/agent-wrapper` and installs

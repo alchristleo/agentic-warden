@@ -64,7 +64,7 @@ export const pricing = {
     },
     {
       q: "Can a developer bypass it by running claude directly?",
-      a: "Not for Claude Code, short of local administrator rights: it runs the policy helper on every launch, wrapper or not. For Codex and Gemini CLI the machine-wide files always apply; repository-specific rules apply when launched through aw codex or aw gemini.",
+      a: "Not for Claude Code outside the copy your organization installs: the policy helper runs on every launch of that copy, wrapper or not. For Codex and Gemini CLI the machine-wide files always apply; repository-specific rules apply when launched through aw codex or aw gemini.",
     },
     {
       q: "Which identity providers work?",
