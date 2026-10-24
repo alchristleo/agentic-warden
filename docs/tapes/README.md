@@ -21,8 +21,8 @@ stub `claude` first on `PATH` (unless `AW_MANUAL=1`).
 
 ## Render locally
 
-You need [vhs](https://github.com/charmbracelet/vhs) (`go install github.com/charmbracelet/vhs@v0.12.1`), ttyd 1.7.2 or newer (distro packages can be older),
-ffmpeg and ttyd. From the repository root, with changes committed (the clone reads your checkout):
+You need [vhs](https://github.com/charmbracelet/vhs) (`go install github.com/charmbracelet/vhs@v0.12.1`),
+ffmpeg and ttyd 1.7.2 or newer (distro packages can be older; the upstream static build works). From the repository root, with changes committed (the clone reads your checkout):
 
 ```sh
 export AW_REPO=$PWD
