@@ -40,7 +40,7 @@ test("sitemap lists every docs page", async ({ request }) => {
 
 test("code blocks have a copy button that copies the code", async ({ page, context }) => {
   await context.grantPermissions(["clipboard-read", "clipboard-write"]);
-  await page.goto("/docs");
+  await page.goto("/docs/quickstart");
   const block = page.locator("main .code-block").first();
   await expect(block).toBeVisible();
   const code = (await block.locator("pre").innerText()).trim();
@@ -64,6 +64,7 @@ test("the current page is marked in the nav and the demo band shows once", async
   await page.goto("/docs/quickstart");
   const nav = page.getByRole("navigation", { name: "Docs" });
   await expect(nav.locator("[aria-current='page']")).toHaveCount(1);
+  await expect(page.locator("main").getByText(/Bring your rules/)).toHaveCount(1);
   const band = page.locator("main aside").filter({ hasText: "Bring your rules." });
   await expect(band).toHaveCount(1);
   await expect(band.getByRole("link", { name: "Request a demo" })).toHaveAttribute("href", "/demo");

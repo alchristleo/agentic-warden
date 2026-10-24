@@ -1,5 +1,5 @@
 export const product = {
-  title: "Fails open by default, closed when you choose",
+  title: "Govern coding agents like the rest of your fleet",
   lede: "Agentic Warden is a control plane, a sync agent and a launch-time helper. Together they turn one policy into the right settings for every developer, repository and agent.",
   features: [
     {
@@ -24,7 +24,7 @@ export const product = {
     },
     {
       id: "fail-safe",
-      title: "Keeps working when the server is down",
+      title: "Fails open by default, closed when you choose",
       body: "The policy helper works offline from the last synced bundle and validates its output against Claude Code's settings schema, so a network outage never blocks a developer. On a missing or bad bundle it fails open and Claude Code falls back to the static managed files, unless you set requireBundle to refuse to start instead.",
     },
     {

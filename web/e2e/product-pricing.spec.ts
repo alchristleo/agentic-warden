@@ -2,13 +2,13 @@ import { expect, test } from "@playwright/test";
 
 test("product lists shipped capabilities and badges the console", async ({ page }) => {
   await page.goto("/product");
-  await expect(page.getByRole("heading", { level: 1, name: "Fails open by default, closed when you choose" })).toBeVisible();
+  await expect(page.getByRole("heading", { level: 1, name: "Govern coding agents like the rest of your fleet" })).toBeVisible();
   for (const name of [
     "Group and repository targeting",
     "Signed bundles",
     "SCIM provisioning",
     "Scheduled sync on every OS",
-    "Keeps working when the server is down",
+    "Fails open by default, closed when you choose",
     "aw doctor",
     "Hosted console",
   ]) {
