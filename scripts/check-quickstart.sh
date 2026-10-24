@@ -5,9 +5,10 @@
 # Contract:
 # - A fenced block tagged sh is run, in order, in one bash session (set -euo pipefail), in a
 #   temp HOME and working dir.
-# - A text block directly after a sh block (a "You should see:" line may sit between) lists the expected output: every non-empty line must
-#   appear as a substring of that block's combined stdout+stderr. A text block that does not
-#   follow a checked sh block or a skipped one is an error.
+# - A text block directly after a sh block (a "You should see:" line may sit between) lists
+#   the expected output: every non-empty line must appear as a substring of that block's
+#   combined stdout+stderr. A text block that does not follow a checked sh block or a skipped
+#   one is an error.
 # - An HTML comment <!-- check: skip (reason) --> on the line before a sh block skips it. Skipped
 #   blocks are printed with their reason, never silently dropped. Use it only for steps that need
 #   a logged-in Claude or root.

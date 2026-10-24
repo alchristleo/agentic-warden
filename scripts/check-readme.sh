@@ -16,7 +16,7 @@ err() { echo "check-readme: $*" >&2; fail=1; }
 if gh auth status >/dev/null 2>&1; then
   html=$(gh api -X POST /markdown -f mode=gfm -f context=alchristleo/agentic-warden -F "text=@$file")
 else
-  : "${GITHUB_TOKEN:?check-readme: gh is not logged in and GITHUB_TOKEN is unset}"
+  : "${GITHUB_TOKEN:?check-readme: gh is unavailable or unauthenticated, and GITHUB_TOKEN is unset}"
   html=$(jq -n --rawfile t "$file" '{text: $t, mode: "gfm", context: "alchristleo/agentic-warden"}' |
     curl -fsS -X POST https://api.github.com/markdown \
       -H "Authorization: Bearer $GITHUB_TOKEN" -H "Accept: application/vnd.github+json" --data @-)

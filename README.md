@@ -51,7 +51,7 @@ In `payments-api`, Claude Code refuses `curl` even when the command allows it, b
 - **One policy for three agents.** One YAML file covers Claude Code, Codex and Gemini CLI ([write your first policy](docs/site/write-first-policy.md)).
 - **Scoped by repository and by group.** Rules match a repository pattern or an identity-provider group, and groups can come from Okta or Entra ID ([rules for a group](docs/site/write-first-policy.md#rules-for-a-group)).
 - **Works offline.** `aw` compiles from the last synced bundle on local disk, so a stopped control plane leaves the policy in force ([quickstart step 7](docs/site/quickstart.md#7-change-the-rule-then-pull-the-plug)).
-- **Signed bundles.** When you configure a signing key, each machine enrolled after that verifies an Ed25519 or AWS KMS signature before it writes anything. Signing detects tampering and cannot stop a root user ([security model](docs/site/security-model.md)).
+- **Signed bundles.** When you configure a signing key, each machine enrolled after that verifies an Ed25519 or AWS KMS signature before it parses the body. Signing detects tampering and cannot stop a root user ([security model](docs/site/security-model.md)).
 
 <table align="center">
   <tr>
@@ -74,12 +74,10 @@ Claude Code already ships managed settings, MDM delivery, server-managed setting
 
 ## Questions your security team will ask
 
-- **Do our code or prompts reach you?** No. The control plane sees who enrolled, from which machine and which policy they were sent, and never prompts, code or model traffic ([trust statement](docs/hosting/trust.md)).
+- **Do our code or prompts reach you?** No. `awd` is not in the path of an agent session, so it never sees prompts, code or model traffic. It sees enrollment and sync requests. In the hosted pilot we store machine records (machine id, enrolled email, key id, last sync) and audit events (who applied what policy, and when) ([security model](docs/site/security-model.md#what-the-control-plane-sees), [trust statement](docs/hosting/trust.md)). With self-hosting, that data stays with you.
 - **What if the server goes down?** A machine keeps the policy it has, with no expiry. A machine that never synced, or holds a bad bundle, falls back to the static files unless you set `requireBundle` ([design limits](docs/site/security-model.md#design-limits)).
 - **Can a developer bypass it?** Partly. Bare `claude` is governed, but a local administrator can edit the managed source or remove the drop-in, the `origin` remote that repository rules key on is the developer's to edit, and a developer's own Claude Code install is outside managed settings ([what it does not stop](docs/site/security-model.md#what-it-does-not-stop)).
-- **What is not covered yet?** `GET /v1/policy` needs no token, `awd` has no rate limit, and the audit actor on the token path is caller-chosen. `aw codex` and `aw gemini` are advisory. Co-signed revisions are planned and not built ([known issues](docs/site/security-model.md#known-issues-fix-scheduled), [threat model](docs/site/threat-model.md)).
 
-You run `awd` yourself and hold the signing key. A hosted design-partner pilot also exists, on the terms in the [trust statement](docs/hosting/trust.md).
 
 ## Try it
 
@@ -149,6 +147,8 @@ synced bundle quickstart.1: wrote 3 files
 ```
 
 Next: [make two repositories and watch Claude refuse `curl` in one](docs/site/quickstart.md#5-make-two-repositories-and-look-at-what-aw-compiled).
+
+When you are done, [remove the trial](docs/site/removing.md#after-the-rootless-trial-quickstart).
 
 ---
 

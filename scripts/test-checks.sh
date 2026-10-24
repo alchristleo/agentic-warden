@@ -45,6 +45,7 @@ if pgrep -f '^sleep 4242$' >/dev/null; then
   fail=1
 fi
 expect "quickstart: a You should see: line may sit between a sh block and its text block" 0 "1 expected lines found" "$qs" "$data/quickstart-you-should-see.md"
+expect "quickstart: You should see: with no sh block before the text block exits 1" 1 "quickstart-label-orphan.md:5" "$qs" "$data/quickstart-label-orphan.md"
 expect "quickstart: skip exits 0 and prints the reason" 0 "needs a logged-in Claude" "$qs" "$data/quickstart-skip.md"
 expect "quickstart: text block not after a sh block exits 1 and names the line" 1 "quickstart-unchecked-text.md:9" "$qs" "$data/quickstart-unchecked-text.md"
 expect "links: passing file exits 0" 0 - "$ln" "$data/quickstart-pass.md"
