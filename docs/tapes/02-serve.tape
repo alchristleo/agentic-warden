@@ -24,13 +24,16 @@ Show
 
 Type "export AWD_ADDR=127.0.0.1:8080"
 Enter
+Sleep 600ms
 Type "export AWD_ADMIN_TOKEN=$(openssl rand -hex 16)"
 Enter
+Sleep 600ms
 Type "awd serve &"
 Enter
 Sleep 1s
 Type "awd_pid=$!"
 Enter
+Sleep 600ms
 Type "sleep 1"
 Enter
 Sleep 3s

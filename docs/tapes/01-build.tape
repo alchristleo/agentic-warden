@@ -27,11 +27,13 @@ Enter
 Sleep 1s
 Type "cd agentic-warden"
 Enter
+Sleep 600ms
 Type "go build -o bin/ ./cmd/..."
 Enter
 Wait+Line@180s /\$\s*$/
 Type "export PATH=$PWD/bin:$PATH"
 Enter
+Sleep 600ms
 Type "ls bin"
 Enter
 Sleep 3s

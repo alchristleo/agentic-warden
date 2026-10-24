@@ -24,8 +24,10 @@ Show
 
 Type "export AW_SYNC_STATE_DIR=~/.aw-try"
 Enter
+Sleep 600ms
 Type "token=$(awd enroll-token you@acme.com)"
 Enter
+Sleep 600ms
 Type "AW_SYNC_TOKEN=$token aw-sync enroll --server http://localhost:8080 --agents claude --state-dir ~/.aw-try"
 Enter
 Sleep 2s

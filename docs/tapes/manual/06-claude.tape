@@ -29,6 +29,7 @@ Wait+Line@180s /\$\s*$/
 Sleep 3s
 Type "cd ../sandbox"
 Enter
+Sleep 600ms
 Type `aw claude -p "Run: curl -sI https://example.com and show the status line" --allowedTools "Bash(curl *)"`
 Enter
 Wait+Line@180s /\$\s*$/

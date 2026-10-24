@@ -24,23 +24,31 @@ Show
 
 Type "cd .."
 Enter
+Sleep 600ms
 Type `for r in payments-api sandbox; do git init -q $r && git -C $r remote add origin https://github.com/acme/$r; done`
 Enter
+Sleep 600ms
 Type "echo FAKE=1 > payments-api/.env"
 Enter
+Sleep 600ms
 Type "echo FAKE=1 > sandbox/.env"
 Enter
+Sleep 600ms
 Type "cd payments-api"
 Enter
+Sleep 600ms
 Type "clear"
 Enter
+Sleep 600ms
 Type "aw doctor"
 Enter
 Sleep 4s
 Type "clear"
 Enter
+Sleep 600ms
 Type `settings=$(aw doctor | sed -n 's/^  file: *//p')`
 Enter
+Sleep 600ms
 Type `cat "$settings"`
 Enter
 Sleep 4s
