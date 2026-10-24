@@ -80,3 +80,29 @@ curl -sI https://example.com | head -1
 # - Exact deny text from Claude Code for .env: "File is in a directory that is denied by your permission settings."
 # - There is no verbatim "denied by org policy" tool message for curl in -p output; Claude only says "Permission ... was denied".
 # - Cleanup: awd stopped, temp dir removed, ~/.cache/agent-wrapper existed before (2 files) so it was kept; the 2 settings files this run added were deleted.
+
+# Appended 2026-10-24 (fix round 1): awd stopped before the prompts, real Claude login, state in a temp dir (<tmp>),
+# a dummy .env (FAKE=1) in each practice repo. In the real HOME only ~/.cache/agent-wrapper was written; the new files were deleted.
+# Section numbers continue the list above. Output is model prose and varies.
+
+## 7. payments-api with awd STOPPED (state in temp dir, real Claude login)
+$ aw claude -p "Run: curl -sI https://example.com and show the status line" --allowedTools "Bash(curl *)"
+I didn't get a status line because permission to run `curl -sI https://example.com` was denied, so the command never ran.
+
+To get it, allow the command and I'll rerun it, or run it yourself:
+
+```bash
+curl -sI https://example.com | head -1
+```
+
+That should print something like `HTTP/2 200`.
+## 8. same, .env read, awd stopped
+I couldn't print `.env`: your permission settings deny reading that file, and I didn't try to get around the rule with `cat` or similar.
+
+To see it, run this in your terminal:
+
+```bash
+cat <tmp>/payments-api/.env
+```
+
+If you want me to read it, change the deny rule in `settings.json` (`/permissions` or the `update-config` skill). The rule is likely there to keep secrets out of the session log. The file is untracked, so add it to `.gitignore` if it isn't there already.
