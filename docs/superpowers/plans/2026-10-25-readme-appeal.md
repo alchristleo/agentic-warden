@@ -164,3 +164,4 @@ MERGE T2 e6d86dd, T4 39cd79c, T5 merged; go test green; check-readme ok
 T1 done 3378f50 sdd-implementer verdict: ble.sh (a); zsh untested (no sudo)
 T3 done 6db2838 sdd-implementer review approve; coordinator 6b0d61e: one ble pin, if-block; 01 re-render ok
 T6 next: owner renders manual/06-claude + manual/hero
+T6 done cb51056 owner-approved coordinator render; frames checked, no leaks; 06 195KB hero 145KB
