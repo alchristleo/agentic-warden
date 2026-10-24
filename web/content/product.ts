@@ -10,7 +10,7 @@ export const product = {
     {
       id: "signed-bundles",
       title: "Signed bundles",
-      body: "When you configure a signing key, the control plane signs each machine's bundle and aw-sync verifies it against the key pinned at enrollment before writing anything, so a tampered bundle never reaches an agent.",
+      body: "When you configure a signing key, the control plane signs each machine's bundle and aw-sync verifies it against the key pinned at enrollment before writing anything, so tampering with a bundle is detected before it reaches an agent. Signing detects tampering; it cannot stop a root user. Details: /docs/security-model.",
     },
     {
       id: "scim",
@@ -37,7 +37,7 @@ export const product = {
     id: "console",
     title: "Hosted console",
     badge: "Coming soon",
-    body: "Manage policy, groups and enrolled machines from a browser, without running the control plane yourself.",
+    body: "Manage policy, groups and enrolled machines from a browser, without running the control plane yourself. Until it launches, self-host awd, whose /console/ is opt-in via AWD_CONSOLE_*.",
     cta: { href: "/demo?plan=team", label: "Join early access" },
   },
 } as const;

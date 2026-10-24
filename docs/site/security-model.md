@@ -39,7 +39,7 @@ Agentic Warden is a client-side control. It is not a security boundary against a
 
 It does not prevent a bundle copied between machines, restored from a backup or served by a stale cache. A v2 signature covers the key id and the body hash (`BundleStatement` in `internal/signing/signer.go`); v1 signs the body bytes directly. The bundle's `Version` field is a label the verifier does not check, and there is no expiry or machine field (`internal/policy/bundle.go`), so a copied or restored bundle still verifies.
 
-This list is from the "Bundle signing" section of the [README](https://github.com/alchristleo/agentic-warden/blob/main/README.md). The fetch-path tests are the ones above.
+This list is from the "Signing and its limits" section of [How it works](./how-it-works.md). The fetch-path tests are the ones above.
 
 **`aw doctor` reports ownership and mode, with one gap.** It warns when the bundle or the trust file is writable by more than its owner (`TestInspectWarnsWhenTheBundleIsWorldWritable`, `TestInspectWarnsWhenTheTrustFileIsWorldWritable` in `internal/agent/claude/inspect_test.go`). On Windows it cannot read the ACL and says so (`TestInspectReportsOwnershipAsUncheckedOnWindows`). Check the ACLs of `C:\ProgramData\agent-wrapper` by hand.
 
