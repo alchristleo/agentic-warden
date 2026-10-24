@@ -5,10 +5,7 @@ test("header links point at every section", async ({ page }) => {
   const header = page.getByRole("banner");
   await expect(header.getByRole("link", { name: "Product" })).toHaveAttribute("href", "/product");
   await expect(header.getByRole("link", { name: "Pricing" })).toHaveAttribute("href", "/pricing");
-  await expect(header.getByRole("link", { name: /Docs/ })).toHaveAttribute(
-    "href",
-    "https://github.com/alchristleo/agentic-warden#readme",
-  );
+  await expect(header.getByRole("link", { name: /Docs/ })).toHaveAttribute("href", "/docs");
   await expect(header.getByRole("link", { name: "Request demo" })).toHaveAttribute("href", "/demo");
   await expect(header.getByRole("link", { name: /log ?in|sign ?in/i })).toHaveCount(0);
 });

@@ -77,6 +77,6 @@ describe("llmsTxt", () => {
     const text = llmsTxt(prod);
     expect(text.startsWith("# Agentic Warden\n")).toBe(true);
     for (const url of sitemapFor(prod).map((e) => e.url)) expect(text).toContain(url);
-    expect(text).toContain("https://github.com/alchristleo/agentic-warden#readme");
+    expect(text).toContain("https://warden.example/docs");
   });
 });

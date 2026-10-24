@@ -12,7 +12,7 @@ export function SiteFooter() {
               {item.label}
             </Link>
           ))}
-          <a href={site.docsUrl} className="hover:text-foreground">Docs</a>
+          <Link href={site.docsUrl} className="hover:text-foreground">Docs</Link>
           <a href={site.githubUrl} className="hover:text-foreground">GitHub</a>
           <a href={site.licenseUrl} className="hover:text-foreground">{site.licenseName}</a>
         </nav>

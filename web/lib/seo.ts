@@ -106,7 +106,7 @@ export function llmsTxt(env: Env = process.env): string {
     "",
     "## Docs",
     "",
-    `- [README](${site.docsUrl}): architecture, installation and policy format`,
+    `- [Docs](${abs(site.docsUrl, env)}): quickstart, how it works and the security model`,
     "",
   ];
   return lines.join("\n");
