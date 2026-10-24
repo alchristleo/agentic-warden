@@ -9,8 +9,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/acme/agent-wrapper/internal/agent"
-	"github.com/acme/agent-wrapper/internal/agent/claude"
+	"github.com/alchristleo/agentic-warden/internal/agent"
+	"github.com/alchristleo/agentic-warden/internal/agent/claude"
 )
 
 // harness builds an adapter whose every input is under the test's control:

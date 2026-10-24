@@ -8,10 +8,10 @@ package sync
 import (
 	"fmt"
 
-	"github.com/acme/agent-wrapper/internal/agent"
-	"github.com/acme/agent-wrapper/internal/agent/claude"
-	"github.com/acme/agent-wrapper/internal/agent/codex"
-	"github.com/acme/agent-wrapper/internal/agent/gemini"
+	"github.com/alchristleo/agentic-warden/internal/agent"
+	"github.com/alchristleo/agentic-warden/internal/agent/claude"
+	"github.com/alchristleo/agentic-warden/internal/agent/codex"
+	"github.com/alchristleo/agentic-warden/internal/agent/gemini"
 )
 
 // StateDir is where aw-sync keeps machine.json and state.json on goos. It is

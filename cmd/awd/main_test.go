@@ -10,7 +10,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/acme/agent-wrapper/internal/config"
+	"github.com/alchristleo/agentic-warden/internal/config"
 )
 
 // TestGroupsDoesNotTreatAnArbitrary500AsNoSnapshot guards against

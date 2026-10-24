@@ -4,7 +4,7 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/acme/agent-wrapper/internal/policy"
+	"github.com/alchristleo/agentic-warden/internal/policy"
 )
 
 func claudeManaged(t *testing.T, doc *policy.Document) map[string]any {

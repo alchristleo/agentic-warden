@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"strings"
 
-	"github.com/acme/agent-wrapper/internal/model"
+	"github.com/alchristleo/agentic-warden/internal/model"
 )
 
 // ParseFilter reads the one filter form the target IdPs send,

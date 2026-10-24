@@ -7,7 +7,7 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/acme/agent-wrapper/internal/model"
+	"github.com/alchristleo/agentic-warden/internal/model"
 )
 
 // maxGroupsBody bounds a membership snapshot. An organization of tens of

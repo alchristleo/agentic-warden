@@ -8,7 +8,7 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/acme/agent-wrapper/internal/model"
+	"github.com/alchristleo/agentic-warden/internal/model"
 )
 
 // patchRequest is a PatchOp body. Go's decoder matches "Operations" and

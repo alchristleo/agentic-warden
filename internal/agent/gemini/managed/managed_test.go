@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/acme/agent-wrapper/internal/agent/gemini/managed"
+	"github.com/alchristleo/agentic-warden/internal/agent/gemini/managed"
 )
 
 func TestADocumentWithKnownSettingsAndAFullRuleValidates(t *testing.T) {

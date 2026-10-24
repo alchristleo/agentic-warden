@@ -5,7 +5,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/acme/agent-wrapper/internal/repo"
+	"github.com/alchristleo/agentic-warden/internal/repo"
 )
 
 func gitDir(t *testing.T, config string) string {

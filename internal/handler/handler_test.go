@@ -10,9 +10,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/acme/agent-wrapper/internal/handler"
-	"github.com/acme/agent-wrapper/internal/policy"
-	"github.com/acme/agent-wrapper/internal/store"
+	"github.com/alchristleo/agentic-warden/internal/handler"
+	"github.com/alchristleo/agentic-warden/internal/policy"
+	"github.com/alchristleo/agentic-warden/internal/store"
 )
 
 // adminToken is what the test server expects on admin routes.

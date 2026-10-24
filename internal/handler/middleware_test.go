@@ -7,7 +7,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/acme/agent-wrapper/internal/handler"
+	"github.com/alchristleo/agentic-warden/internal/handler"
 )
 
 func panickingHandler(http.ResponseWriter, *http.Request) {

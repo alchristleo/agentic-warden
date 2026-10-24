@@ -12,9 +12,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/acme/agent-wrapper/internal/model"
-	"github.com/acme/agent-wrapper/internal/policy"
-	"github.com/acme/agent-wrapper/internal/signing"
+	"github.com/alchristleo/agentic-warden/internal/model"
+	"github.com/alchristleo/agentic-warden/internal/policy"
+	"github.com/alchristleo/agentic-warden/internal/signing"
 )
 
 // maxBundleBytes bounds what is read from the control plane. A bundle is a

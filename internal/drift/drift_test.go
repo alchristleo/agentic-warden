@@ -17,9 +17,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/acme/agent-wrapper/internal/agent/claude/schema"
-	"github.com/acme/agent-wrapper/internal/agent/codex/requirements"
-	"github.com/acme/agent-wrapper/internal/agent/gemini/managed"
+	"github.com/alchristleo/agentic-warden/internal/agent/claude/schema"
+	"github.com/alchristleo/agentic-warden/internal/agent/codex/requirements"
+	"github.com/alchristleo/agentic-warden/internal/agent/gemini/managed"
 )
 
 const (

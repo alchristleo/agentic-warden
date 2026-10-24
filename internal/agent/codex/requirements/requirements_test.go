@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/acme/agent-wrapper/internal/agent/codex/requirements"
+	"github.com/alchristleo/agentic-warden/internal/agent/codex/requirements"
 )
 
 func TestKnownKeysValidate(t *testing.T) {

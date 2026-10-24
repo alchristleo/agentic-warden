@@ -9,9 +9,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/acme/agent-wrapper/internal/agent"
-	"github.com/acme/agent-wrapper/internal/agent/claude"
-	"github.com/acme/agent-wrapper/internal/signing"
+	"github.com/alchristleo/agentic-warden/internal/agent"
+	"github.com/alchristleo/agentic-warden/internal/agent/claude"
+	"github.com/alchristleo/agentic-warden/internal/signing"
 )
 
 // signedBundle is a minimal bundle body: the signature check cares only

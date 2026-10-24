@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/acme/agent-wrapper/internal/agent/claude/schema"
+	"github.com/alchristleo/agentic-warden/internal/agent/claude/schema"
 )
 
 // The install templates under deploy/managed-settings are what an

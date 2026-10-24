@@ -9,8 +9,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/acme/agent-wrapper/internal/agent"
-	"github.com/acme/agent-wrapper/internal/agent/gemini"
+	"github.com/alchristleo/agentic-warden/internal/agent"
+	"github.com/alchristleo/agentic-warden/internal/agent/gemini"
 )
 
 // fakeBinary puts an executable named gemini on a private PATH.

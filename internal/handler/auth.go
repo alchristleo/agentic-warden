@@ -6,8 +6,8 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/acme/agent-wrapper/internal/credential"
-	"github.com/acme/agent-wrapper/internal/model"
+	"github.com/alchristleo/agentic-warden/internal/credential"
+	"github.com/alchristleo/agentic-warden/internal/model"
 )
 
 // bearer returns the token in an Authorization: Bearer header, or "". The

@@ -13,10 +13,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/acme/agent-wrapper/internal/handler"
-	"github.com/acme/agent-wrapper/internal/policy"
-	"github.com/acme/agent-wrapper/internal/signing"
-	"github.com/acme/agent-wrapper/internal/store"
+	"github.com/alchristleo/agentic-warden/internal/handler"
+	"github.com/alchristleo/agentic-warden/internal/policy"
+	"github.com/alchristleo/agentic-warden/internal/signing"
+	"github.com/alchristleo/agentic-warden/internal/store"
 )
 
 const groupedRuleSet = `{

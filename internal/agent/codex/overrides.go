@@ -8,7 +8,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/acme/agent-wrapper/internal/policy"
+	"github.com/alchristleo/agentic-warden/internal/policy"
 )
 
 // overrides turns the launch document into the key=value strings Codex's

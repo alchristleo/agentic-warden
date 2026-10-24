@@ -9,10 +9,10 @@ import (
 	"syscall"
 	"testing"
 
-	"github.com/acme/agent-wrapper/internal/agent"
-	"github.com/acme/agent-wrapper/internal/agent/claude"
-	"github.com/acme/agent-wrapper/internal/agent/gemini"
-	"github.com/acme/agent-wrapper/internal/sync"
+	"github.com/alchristleo/agentic-warden/internal/agent"
+	"github.com/alchristleo/agentic-warden/internal/agent/claude"
+	"github.com/alchristleo/agentic-warden/internal/agent/gemini"
+	"github.com/alchristleo/agentic-warden/internal/sync"
 )
 
 // umask is process-wide; this test must not run with t.Parallel and must

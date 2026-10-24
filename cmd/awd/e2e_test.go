@@ -15,7 +15,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/acme/agent-wrapper/internal/signing"
+	"github.com/alchristleo/agentic-warden/internal/signing"
 )
 
 var built string

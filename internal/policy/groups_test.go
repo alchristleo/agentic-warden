@@ -3,7 +3,7 @@ package policy_test
 import (
 	"testing"
 
-	"github.com/acme/agent-wrapper/internal/policy"
+	"github.com/alchristleo/agentic-warden/internal/policy"
 )
 
 func TestUnionGroupsSortsAndDeduplicates(t *testing.T) {

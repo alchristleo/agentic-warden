@@ -1,4 +1,4 @@
-module github.com/acme/agent-wrapper
+module github.com/alchristleo/agentic-warden
 
 go 1.24
 

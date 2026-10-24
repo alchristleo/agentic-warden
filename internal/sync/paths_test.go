@@ -4,10 +4,10 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/acme/agent-wrapper/internal/agent/claude"
-	"github.com/acme/agent-wrapper/internal/agent/codex"
-	"github.com/acme/agent-wrapper/internal/agent/gemini"
-	"github.com/acme/agent-wrapper/internal/sync"
+	"github.com/alchristleo/agentic-warden/internal/agent/claude"
+	"github.com/alchristleo/agentic-warden/internal/agent/codex"
+	"github.com/alchristleo/agentic-warden/internal/agent/gemini"
+	"github.com/alchristleo/agentic-warden/internal/sync"
 )
 
 func TestStateDirPerOS(t *testing.T) {

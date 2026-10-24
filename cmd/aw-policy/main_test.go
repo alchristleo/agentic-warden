@@ -8,7 +8,7 @@ import (
 	"testing"
 	"unicode/utf8"
 
-	"github.com/acme/agent-wrapper/internal/agent/claude"
+	"github.com/alchristleo/agentic-warden/internal/agent/claude"
 )
 
 // env is a getenv over a fixed map, so the tests control exactly what the

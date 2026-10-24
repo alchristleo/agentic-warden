@@ -36,9 +36,9 @@ import (
 	"strings"
 	"unicode/utf8"
 
-	"github.com/acme/agent-wrapper/internal/agent/claude"
-	"github.com/acme/agent-wrapper/internal/policyhelper"
-	"github.com/acme/agent-wrapper/internal/sync"
+	"github.com/alchristleo/agentic-warden/internal/agent/claude"
+	"github.com/alchristleo/agentic-warden/internal/policyhelper"
+	"github.com/alchristleo/agentic-warden/internal/sync"
 )
 
 // configEnv names the configuration file explicitly. It is honoured only

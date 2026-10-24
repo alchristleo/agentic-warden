@@ -5,8 +5,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/acme/agent-wrapper/internal/sync"
-	"github.com/acme/agent-wrapper/internal/sync/timer"
+	"github.com/alchristleo/agentic-warden/internal/sync"
+	"github.com/alchristleo/agentic-warden/internal/sync/timer"
 )
 
 func render(t *testing.T, goos string, p timer.Params) map[string]string {

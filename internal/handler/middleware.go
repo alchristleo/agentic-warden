@@ -6,7 +6,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/acme/agent-wrapper/internal/scim"
+	"github.com/alchristleo/agentic-warden/internal/scim"
 )
 
 // Logging records one line per request, including the status it produced.

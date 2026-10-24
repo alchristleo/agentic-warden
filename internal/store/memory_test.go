@@ -3,8 +3,8 @@ package store_test
 import (
 	"testing"
 
-	"github.com/acme/agent-wrapper/internal/store"
-	"github.com/acme/agent-wrapper/internal/store/storetest"
+	"github.com/alchristleo/agentic-warden/internal/store"
+	"github.com/alchristleo/agentic-warden/internal/store/storetest"
 )
 
 // TestMemory runs the shared store conformance suite. Every Store

@@ -6,8 +6,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/acme/agent-wrapper/internal/agent/codex"
-	"github.com/acme/agent-wrapper/internal/policy"
+	"github.com/alchristleo/agentic-warden/internal/agent/codex"
+	"github.com/alchristleo/agentic-warden/internal/policy"
 )
 
 func codexRule(name string, repos []string, managed map[string]any) policy.Rule {

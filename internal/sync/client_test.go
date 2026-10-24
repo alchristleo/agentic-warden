@@ -12,11 +12,11 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/acme/agent-wrapper/internal/handler"
-	"github.com/acme/agent-wrapper/internal/model"
-	"github.com/acme/agent-wrapper/internal/signing"
-	"github.com/acme/agent-wrapper/internal/store"
-	"github.com/acme/agent-wrapper/internal/sync"
+	"github.com/alchristleo/agentic-warden/internal/handler"
+	"github.com/alchristleo/agentic-warden/internal/model"
+	"github.com/alchristleo/agentic-warden/internal/signing"
+	"github.com/alchristleo/agentic-warden/internal/store"
+	"github.com/alchristleo/agentic-warden/internal/sync"
 )
 
 func TestEnrollPostsTheTokenAndReturnsTheCredential(t *testing.T) {

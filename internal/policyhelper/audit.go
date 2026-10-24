@@ -6,7 +6,7 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/acme/agent-wrapper/internal/policy"
+	"github.com/alchristleo/agentic-warden/internal/policy"
 )
 
 // auditRotateAt is the log size past which the current log is moved aside.

@@ -19,7 +19,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/kms/types"
 	"github.com/aws/smithy-go"
 
-	"github.com/acme/agent-wrapper/internal/signing"
+	"github.com/alchristleo/agentic-warden/internal/signing"
 )
 
 // MaxMessage is KMS's limit on a RAW message for Ed25519 signing.

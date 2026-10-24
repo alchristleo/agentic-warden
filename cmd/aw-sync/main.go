@@ -27,13 +27,13 @@ import (
 	"text/tabwriter"
 	"time"
 
-	"github.com/acme/agent-wrapper/internal/agent"
-	"github.com/acme/agent-wrapper/internal/agent/claude"
-	"github.com/acme/agent-wrapper/internal/agent/codex"
-	"github.com/acme/agent-wrapper/internal/agent/gemini"
-	"github.com/acme/agent-wrapper/internal/sync"
-	"github.com/acme/agent-wrapper/internal/sync/timer"
-	"github.com/acme/agent-wrapper/internal/termcolor"
+	"github.com/alchristleo/agentic-warden/internal/agent"
+	"github.com/alchristleo/agentic-warden/internal/agent/claude"
+	"github.com/alchristleo/agentic-warden/internal/agent/codex"
+	"github.com/alchristleo/agentic-warden/internal/agent/gemini"
+	"github.com/alchristleo/agentic-warden/internal/sync"
+	"github.com/alchristleo/agentic-warden/internal/sync/timer"
+	"github.com/alchristleo/agentic-warden/internal/termcolor"
 )
 
 const usage = `aw-sync keeps this machine's agent configuration in step with the control plane.

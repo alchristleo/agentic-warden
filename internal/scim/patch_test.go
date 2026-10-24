@@ -5,8 +5,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/acme/agent-wrapper/internal/model"
-	"github.com/acme/agent-wrapper/internal/scim"
+	"github.com/alchristleo/agentic-warden/internal/model"
+	"github.com/alchristleo/agentic-warden/internal/scim"
 )
 
 const patchSchema = `"schemas":["urn:ietf:params:scim:api:messages:2.0:PatchOp"]`

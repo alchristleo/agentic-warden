@@ -5,8 +5,8 @@ import (
 	"errors"
 	"net/http"
 
-	"github.com/acme/agent-wrapper/internal/model"
-	"github.com/acme/agent-wrapper/internal/policy"
+	"github.com/alchristleo/agentic-warden/internal/model"
+	"github.com/alchristleo/agentic-warden/internal/policy"
 )
 
 // groupSources is a user's groups by where each came from. The bundle

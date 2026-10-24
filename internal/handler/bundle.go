@@ -8,9 +8,9 @@ import (
 	"fmt"
 	"net/http"
 
-	"github.com/acme/agent-wrapper/internal/model"
-	"github.com/acme/agent-wrapper/internal/policy"
-	"github.com/acme/agent-wrapper/internal/signing"
+	"github.com/alchristleo/agentic-warden/internal/model"
+	"github.com/alchristleo/agentic-warden/internal/policy"
+	"github.com/alchristleo/agentic-warden/internal/signing"
 )
 
 // getBundle serves the machine's user their slice of the current policy:

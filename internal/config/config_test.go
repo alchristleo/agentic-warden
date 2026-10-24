@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/acme/agent-wrapper/internal/config"
+	"github.com/alchristleo/agentic-warden/internal/config"
 )
 
 func TestFromEnvSuppliesWorkingDefaults(t *testing.T) {

@@ -12,8 +12,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/acme/agent-wrapper/internal/signing"
-	"github.com/acme/agent-wrapper/internal/sync"
+	"github.com/alchristleo/agentic-warden/internal/signing"
+	"github.com/alchristleo/agentic-warden/internal/sync"
 )
 
 // built is the helper as the tests need it: with -tags awtest, so fixtures

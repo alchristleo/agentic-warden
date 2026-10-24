@@ -7,8 +7,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/acme/agent-wrapper/internal/model"
-	"github.com/acme/agent-wrapper/internal/scim"
+	"github.com/alchristleo/agentic-warden/internal/model"
+	"github.com/alchristleo/agentic-warden/internal/scim"
 )
 
 func TestDecodeUserKeepsWhatResolutionNeedsAndDropsTheRest(t *testing.T) {

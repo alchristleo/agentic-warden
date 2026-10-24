@@ -6,9 +6,9 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/acme/agent-wrapper/internal/credential"
-	"github.com/acme/agent-wrapper/internal/model"
-	"github.com/acme/agent-wrapper/internal/signing"
+	"github.com/alchristleo/agentic-warden/internal/credential"
+	"github.com/alchristleo/agentic-warden/internal/model"
+	"github.com/alchristleo/agentic-warden/internal/signing"
 )
 
 // defaultTokenTTL is how long an enrollment token lives unless the request

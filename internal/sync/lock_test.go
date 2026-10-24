@@ -7,7 +7,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/acme/agent-wrapper/internal/sync"
+	"github.com/alchristleo/agentic-warden/internal/sync"
 )
 
 func TestLockIsExclusiveUntilReleased(t *testing.T) {

@@ -17,7 +17,7 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/acme/agent-wrapper/internal/policy"
+	"github.com/alchristleo/agentic-warden/internal/policy"
 )
 
 // ErrNoAdapter is returned by Registry.Lookup for an unregistered name.

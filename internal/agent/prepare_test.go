@@ -5,7 +5,7 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/acme/agent-wrapper/internal/agent"
+	"github.com/alchristleo/agentic-warden/internal/agent"
 )
 
 func TestPrepareReturnsTheLaunchTheAdapterComputed(t *testing.T) {

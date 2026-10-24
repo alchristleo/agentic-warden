@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/acme/agent-wrapper/internal/policy"
+	"github.com/alchristleo/agentic-warden/internal/policy"
 )
 
 func writeDoc(t *testing.T, body string) string {

@@ -16,7 +16,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/acme/agent-wrapper/internal/sync"
+	"github.com/alchristleo/agentic-warden/internal/sync"
 )
 
 var (

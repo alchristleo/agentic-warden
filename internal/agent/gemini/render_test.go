@@ -7,9 +7,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/acme/agent-wrapper/internal/agent"
-	"github.com/acme/agent-wrapper/internal/agent/gemini"
-	"github.com/acme/agent-wrapper/internal/policy"
+	"github.com/alchristleo/agentic-warden/internal/agent"
+	"github.com/alchristleo/agentic-warden/internal/agent/gemini"
+	"github.com/alchristleo/agentic-warden/internal/policy"
 )
 
 func geminiRule(name string, repos []string, managed map[string]any) policy.Rule {

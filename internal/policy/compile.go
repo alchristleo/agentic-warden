@@ -1,8 +1,8 @@
 package policy
 
 import (
-	"github.com/acme/agent-wrapper/internal/glob"
-	"github.com/acme/agent-wrapper/internal/merge"
+	"github.com/alchristleo/agentic-warden/internal/glob"
+	"github.com/alchristleo/agentic-warden/internal/merge"
 )
 
 // Subject is who a policy is being compiled for. It is the whole of what

@@ -11,8 +11,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/acme/agent-wrapper/internal/signing"
-	"github.com/acme/agent-wrapper/internal/sync"
+	"github.com/alchristleo/agentic-warden/internal/signing"
+	"github.com/alchristleo/agentic-warden/internal/sync"
 )
 
 // awBinary builds the CLI once and returns its path.

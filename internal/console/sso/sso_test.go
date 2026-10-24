@@ -11,8 +11,8 @@ import (
 	"sync/atomic"
 	"testing"
 
-	"github.com/acme/agent-wrapper/internal/console/oidctest"
-	"github.com/acme/agent-wrapper/internal/console/sso"
+	"github.com/alchristleo/agentic-warden/internal/console/oidctest"
+	"github.com/alchristleo/agentic-warden/internal/console/sso"
 )
 
 func client(p *oidctest.Provider, claim string) *sso.Client {

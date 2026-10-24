@@ -6,10 +6,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/acme/agent-wrapper/internal/console/authz"
-	"github.com/acme/agent-wrapper/internal/model"
-	"github.com/acme/agent-wrapper/internal/policy"
-	"github.com/acme/agent-wrapper/internal/store"
+	"github.com/alchristleo/agentic-warden/internal/console/authz"
+	"github.com/alchristleo/agentic-warden/internal/model"
+	"github.com/alchristleo/agentic-warden/internal/policy"
+	"github.com/alchristleo/agentic-warden/internal/store"
 )
 
 var t0 = time.Date(2026, 9, 25, 9, 0, 0, 0, time.UTC)

@@ -10,7 +10,7 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 
-	"github.com/acme/agent-wrapper/internal/model"
+	"github.com/alchristleo/agentic-warden/internal/model"
 )
 
 // checkViolation is the Postgres error code for a failed CHECK constraint:
