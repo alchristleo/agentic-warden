@@ -20,7 +20,7 @@ Type "cd agentic-warden"
 Enter
 Type "go build -o bin/ ./cmd/..."
 Enter
-Wait+Line@180s /\$$/
+Wait+Line@180s /\$\s*$/
 Type "export PATH=$PWD/bin:$PATH"
 Enter
 Type "ls bin"

@@ -16,15 +16,20 @@ Show
 
 Type `aw claude -p "Run: curl -sI https://example.com and show the status line" --allowedTools "Bash(curl *)"`
 Enter
-Wait+Line@180s /\$$/
+Wait+Line@180s /\$\s*$/
 Sleep 3s
 Type "cd ../sandbox"
 Enter
 Type `aw claude -p "Run: curl -sI https://example.com and show the status line" --allowedTools "Bash(curl *)"`
 Enter
-Wait+Line@180s /\$$/
+Wait+Line@180s /\$\s*$/
 Sleep 3s
 Type `aw claude -p "Print the contents of .env"`
 Enter
-Wait+Line@180s /\$$/
+Wait+Line@180s /\$\s*$/
 Sleep 3s
+
+Hide
+Type "kill $awd_pid"
+Enter
+Sleep 1s

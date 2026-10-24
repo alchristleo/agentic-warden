@@ -10,7 +10,7 @@ export GOMODCACHE=$(go env GOMODCACHE) GOCACHE=$(go env GOCACHE)
 [ -z "${AW_STUB_BIN:-}" ] || export PATH=$AW_STUB_BIN:$PATH
 if [ -z "${AW_MANUAL:-}" ]; then export HOME=$(mktemp -d); fi
 cd "$(mktemp -d)"
-git config --global --add url."$AW_REPO".insteadOf https://github.com/alchristleo/agentic-warden.git
+export GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0="url.$AW_REPO.insteadOf" GIT_CONFIG_VALUE_0=https://github.com/alchristleo/agentic-warden.git
 PS1='$ '
 
 if [ "$_aw_n" -gt 1 ]; then
