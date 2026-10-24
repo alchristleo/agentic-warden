@@ -53,7 +53,7 @@ installed.
 
 Under the Claude Code directory, `aw-sync` writes `aw-bundle.json` and
 `managed-settings.d/50-agent-wrapper.json`, each with an `.aw-revision` sidecar. Signed deployments
-add `aw-bundle.json.sig` and `aw-trust.pub`. `ProgramData` follows the `ProgramData` environment
+add `aw-bundle.json.sig` and `aw-trust.pub` in the state directory, beside the state copy of the bundle. `ProgramData` follows the `ProgramData` environment
 variable and falls back to `C:\ProgramData`.
 
 `aw-sync install-timer` adds a scheduler entry:
@@ -74,5 +74,3 @@ elsewhere.
 
 With `--state-dir ~/.aw-try` and `--root claude=~/.aw-try/claude`, everything above moves under
 `~/.aw-try`, except the `aw` cache. [Removing Agentic Warden](./removing.md) lists them.
-
-**Bring your rules.** See it against your own policy. [Request a demo](/demo)

@@ -7,7 +7,7 @@ description: Seven steps, no root. Write a rule, watch it stop your own agent, t
 
 # Quickstart
 
-Seven steps, no root. You run a control plane on your laptop, enroll your own machine, and watch
+You run a control plane on your laptop, enroll your own machine, and watch
 a rule you applied stop Claude Code in one repository while the same request runs in another.
 Nothing is written under `/etc`.
 
@@ -35,12 +35,11 @@ awd
 
 ![Cloning the repository and building the four binaries](../assets/01-build.gif)
 
-Why build from source: [what these binaries write, and how to remove them](./removing.md).
-
 ## 2. Start the control plane
 
 ```sh
-export AWD_ADMIN_TOKEN=try-me
+export AWD_ADDR=127.0.0.1:8080
+export AWD_ADMIN_TOKEN=$(openssl rand -hex 16)
 awd serve &
 awd_pid=$!
 sleep 1
@@ -48,15 +47,13 @@ sleep 1
 
 ```text
 AWD_DATABASE_URL is unset; storing policy in memory, which does not survive a restart
-listening on
+listening on 127.0.0.1:8080
 ```
 
 `awd` keeps the policy in memory here, so it is for evaluation only. The warnings it prints are
 expected: it stores policy in memory, does not sign bundles and leaves the admin console off.
 
 ![Starting awd and seeing it listen](../assets/02-serve.gif)
-
-Why a control plane at all: [how policy reaches the agent](./how-it-works.md).
 
 ## 3. Apply a policy
 
@@ -98,8 +95,6 @@ applied revision quickstart.1 (2 rules)
 
 ![Applying the two-rule policy](../assets/03-apply.gif)
 
-Why a bundle can be signed, and what signing does not stop: [security model](./security-model.md).
-
 ## 4. Enroll this machine and sync
 
 ```sh
@@ -120,8 +115,6 @@ synced bundle quickstart.1: wrote 3 files
 what makes this trial rootless. `AW_SYNC_STATE_DIR` tells `aw` where to find the result.
 
 ![Enrolling a machine and syncing the bundle](../assets/04-enroll.gif)
-
-Why enrollment uses a single-use token: [security model](./security-model.md).
 
 ## 5. Make two repositories and look at what `aw` compiled
 
@@ -157,8 +150,6 @@ agent claude
   note:   policy compiled for github.com/acme/payments-api
 ```
 
-The full output is in [capture-doctor.log](https://github.com/alchristleo/agentic-warden/blob/main/docs/tapes/capture-doctor.log).
-
 Now read the settings file `aw` will hand to Claude Code:
 
 ```sh
@@ -175,61 +166,35 @@ The `payments-api` repository gets both denies. `sandbox` would get only the `.e
 
 ![Running aw doctor in payments-api](../assets/05-doctor.gif)
 
-Why `doctor` warns about ownership: [security model](./security-model.md).
-
 ## 6. Ask Claude to run curl in both repositories
 
 Same command in both. In `payments-api` the policy denies `curl` even though the command allows it,
 because an organization deny overrides a developer's allow. In `sandbox` there is no such deny, so
-it runs.
+it runs. The `.env` rule applies in both.
 
 The prompt goes before `--allowedTools`, which takes a list and would otherwise swallow it.
 
 <!-- check: skip (needs a logged-in Claude) -->
 ```sh
 aw claude -p "Run: curl -sI https://example.com and show the status line" --allowedTools "Bash(curl *)"
-```
-
-Claude's wording changes from run to run. This is one real example from `payments-api`. The command
-did not run:
-
-```text
-Command didn't run. Permission to run `curl -sI https://example.com` was denied, so I have no status line to show.
-```
-
-Now `sandbox`:
-
-<!-- check: skip (needs a logged-in Claude) -->
-```sh
+aw claude -p "Print the contents of .env"
 cd ../sandbox
 aw claude -p "Run: curl -sI https://example.com and show the status line" --allowedTools "Bash(curl *)"
 ```
 
-An example of what you get back. The command ran:
+Claude's wording changes from run to run. This is one real example of each, in the order above. In
+`payments-api` the `curl` command did not run. The `.env` line comes from Claude Code and is stable.
+In `sandbox` the command ran:
 
 ```text
+Command didn't run. Permission to run `curl -sI https://example.com` was denied, so I have no status line to show.
+File is in a directory that is denied by your permission settings.
 Status line:
 
 HTTP/2 200
 ```
 
-The `.env` rule applies in both repositories. Claude Code's own text for it is stable, and you can
-look for it:
-
-<!-- check: skip (needs a logged-in Claude) -->
-```sh
-aw claude -p "Print the contents of .env"
-```
-
-```text
-File is in a directory that is denied by your permission settings.
-```
-
-The model puts its own prose around that line. The line itself comes from Claude Code.
-
 ![aw claude refusing curl in payments-api and running it in sandbox](../assets/06-claude.gif)
-
-Why a refusal is not proof against everything: [threat model](./threat-model.md).
 
 ## 7. Change the rule, then pull the plug
 
@@ -289,8 +254,8 @@ aw-sync status --state-dir ~/.aw-try
 last error: sync: reaching the control plane at http://localhost:8080
 ```
 
-Run the step 6 command once more with `awd` stopped. It was recorded that way, and `curl` is still
-refused (see `capture-step6.log`, section 7). The policy is a file you own, and it fails safe.
+Run the step 6 command in `payments-api` once more with `awd` stopped. It was recorded that way,
+and `curl` is still refused. The policy is a file you own, and it keeps working.
 
 <!-- check: skip (needs a logged-in Claude) -->
 ```sh
@@ -299,7 +264,7 @@ aw claude -p "Run: curl -sI https://example.com and show the status line" --allo
 
 ![Editing the rule, syncing, then stopping awd](../assets/07-reapply.gif)
 
-Why a stopped control plane changes nothing: [how it works](./how-it-works.md). To clean up, see
+To clean up, see
 [removing Agentic Warden](./removing.md): for this trial it is `rm -rf ~/.aw-try ~/.cache/agent-wrapper`
 and deleting the clone.
 
@@ -307,5 +272,3 @@ and deleting the clone.
 
 - [Enforce the same rule on plain `claude`](./enforce-plain-claude.md) on a test machine, with sudo.
 - [Write your first policy](./write-first-policy.md).
-
-**Bring your rules.** See it against your own policy. [Request a demo](/demo)

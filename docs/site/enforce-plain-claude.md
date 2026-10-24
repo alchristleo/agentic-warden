@@ -20,8 +20,8 @@ refuse to start. `aw-policy` exits 0 unless the organization sets `requireBundle
 
 ## Install on Linux or macOS
 
-Start from the quickstart's clone, with `awd` running and the policy applied (steps 1 to 3). Use the
-plain binaries from step 1. Never install a helper built with `-tags awtest`.
+Start from the quickstart's clone, with `awd` running and the policy applied (steps 1 to 3), in the
+same shell, so `AWD_ADDR` and `AWD_ADMIN_TOKEN` are still exported. Use the plain binaries from step 1. Never install a helper built with `-tags awtest`.
 
 ```sh
 token=$(awd enroll-token you@acme.com)
@@ -35,7 +35,9 @@ Install `aw-policy` before the first sync. The drop-in that `aw-sync` writes nam
 `/usr/local/bin/aw-policy`, and without that binary every `claude` launch refuses to start.
 
 Check it. Without `AW_SYNC_STATE_DIR`, `aw doctor` reads `/var/lib/agent-wrapper`, and the
-evaluation-mode line and the root warnings are gone:
+evaluation-mode line and the root warnings are gone. The quickstart's `awd` does not sign bundles, so
+`doctor` still warns "enrolled before bundle signing; re-enroll to pin a key". That is expected here:
+the machine pinned no key because the control plane had none.
 
 ```sh
 unset AW_SYNC_STATE_DIR
@@ -78,5 +80,3 @@ files stay. To remove a root setup by hand on Linux, delete:
 
 Then run `awd revoke <machine id>` to revoke the machine's credential on the control plane. The full
 list, with macOS and Windows paths, is on [Removing Agentic Warden](./removing.md).
-
-**Bring your rules.** See it against your own policy. [Request a demo](/demo)

@@ -11,6 +11,25 @@ We walked STRIDE over each component: Spoofing, Tampering, Repudiation, Informat
 
 The attacker we design against is a developer without root on their own machine, plus anyone on the network between the machine and the control plane. Root on the endpoint is out of scope; see [Security model and limits](./security-model.md). Paths are relative to the [repository](https://github.com/alchristleo/agentic-warden).
 
+## Design limits and known issues
+
+Gaps we know about fall in two groups. The full text, with evidence, is in [Security model and limits](./security-model.md).
+
+**Design limits.** These are how the product works today, and the operator closes them.
+
+- Fails open by default. Set `requireBundle` to fail closed.
+- `awd` speaks plain HTTP. Terminate TLS in front of it.
+- The signing key is pinned on first use. Enroll and sync over TLS, or compare the key id out of band.
+- Writing policy is running code on every enrolled machine. Treat the admin token, console admin rights and the signing key as fleet-root credentials.
+- It is a client-side control, not a boundary against a local administrator.
+
+**Known issues, fix scheduled.** Each has a workaround until the fix ships.
+
+- `GET /v1/policy` needs no token. Keep `awd` behind your network controls.
+- The audit actor on the token path is the caller's `X-Applied-By` label. Use console admin sessions where attribution matters.
+- `awd` has no rate limit. Put a limiter in front of it.
+- A signed bundle's `Version` is not checked, so an older signed bundle can be restored by a state-directory writer. Keep the state directory root-owned.
+
 ## awd, the control plane
 
 | STRIDE | Threat | Mitigation | Residual risk |
@@ -25,14 +44,15 @@ The attacker we design against is a developer without root on their own machine,
 | D | Large or malformed requests | Request bodies are size-capped on policy, enrollment, groups and SCIM routes (`internal/handler/handler.go`, `enroll.go`, `groups.go`, `scim.go`; `TestSCIMBodyOverTheCapIs413`) | We found no rate limiting in `awd`. Put a limiter in front of it. |
 | D | `awd` is down | `aw-policy` is offline, and `aw-sync` leaves files as they were (`TestRunKeepsFilesWhenTheServerIsUnreachable`) | Policy changes stop reaching machines until `awd` returns. |
 | E | A non-admin gets console admin | OIDC sign-in, an admin group that must come from the IdP, `email_verified` required, re-check of group membership on each request, state and origin checks (`TestConsoleNonAdminIs403AtLogin`, `TestConsoleUnverifiedEmailIs403`, `TestConsoleAdminRemovedMidSessionIs403AndSessionsDeleted`, `TestConsoleCallbackStateMismatchIs400`, `TestConsoleWriteNeedsOrigin` in `console_test.go`; cookie flags in `console_auth.go`) | The console is only as good as your IdP and its group data. Matching is exact; no case folding (`TestConsoleLoginCaseMismatchIsDenied`). |
-| – | Traffic is read or altered in transit | `awd` listens on plain HTTP (`cmd/awd/main.go`). TLS is expected from whatever sits in front of it. The hosted cell terminates TLS at the load balancer and requires TLS to its database (`database_url_requires_tls` in `deploy/aws/cell/tests/cell.tftest.hcl`) | A self-hosted `awd` without TLS exposes credentials and tokens. Signed bundles still detect a changed body, but a stolen credential works. |
+| E | A policy author runs code on enrolled machines | Policy writes need the admin token or a console admin session, and each write is audited (see the tampering row above). The managed settings a rule can set include `hooks`, `env` and `apiKeyHelper`, which the vendored schema accepts (`internal/agent/claude/schema/claude-code-settings.json`) | Not prevented. Whoever can write policy can run commands on every enrolled machine, so the admin token, console admin rights and the signing key are fleet-root credentials. Guard them like root. |
+| – | Traffic is read or altered in transit | `awd` listens on plain HTTP (`cmd/awd/main.go`). TLS is expected from whatever sits in front of it. The hosted cell terminates TLS at the load balancer and requires TLS to its database (`database_url_requires_tls` in `deploy/aws/cell/tests/cell.tftest.hcl`) | A self-hosted `awd` without TLS exposes credentials and tokens. Signed bundles still detect a changed body, but a stolen credential works. The signing key is pinned from the enrollment response, so over plain HTTP an in-path attacker can swap or strip it at enrollment. Enroll and sync over TLS, or compare the key id out of band (`aw doctor` prints it). |
 
 ## The bundle
 
 | STRIDE | Threat | Mitigation | Residual risk |
 |---|---|---|---|
-| S | A forged bundle is served to a machine | Ed25519 signature, key pinned at enrollment, checked before the body is parsed; a missing signature is refused once a key is pinned (`internal/signing`, `internal/sync/client.go`; `TestFetchRejectsATamperedBody`, `TestFetchRequiresASignatureWhenAKeyIsPinned`) | Signing is optional. With `AWD_SIGNING_KEY` unset, bundles are unsigned and a machine has nothing to check (`TestUnsignedServerSendsNoSignatureHeaders`, `TestFetchWithNoPinnedKeySkipsVerification`). |
-| T | The file on disk is edited after sync | `aw-policy` verifies bundle, signature and trust file at every launch; `aw` refuses to launch on a failed check (`TestResolvePolicyRefusesATamperedBundle` in `cmd/aw/doctor_test.go`; `TestRunRefusesATamperedBundle`); `aw doctor` warns on loose permissions (`TestInspectWarnsWhenTheBundleIsWorldWritable`) | Root can replace the bundle, the trust file and the checker together. Detection, not prevention. |
+| S | A forged bundle is served to a machine | Ed25519 signature, key pinned at enrollment, checked before the body is parsed; a missing signature is refused once a key is pinned (`internal/signing`, `internal/sync/client.go`; `TestFetchRejectsATamperedBody`, `TestFetchRequiresASignatureWhenAKeyIsPinned`) | Signing is optional. With `AWD_SIGNING_KEY` unset, bundles are unsigned and a machine has nothing to check (`TestUnsignedServerSendsNoSignatureHeaders`, `TestFetchWithNoPinnedKeySkipsVerification`). Only machines enrolled after the key is set pin it. The key is pinned on first use (`Enroll` in `internal/sync/client.go`), so enrollment needs TLS or an out-of-band key-id check. |
+| T | The file on disk is edited after sync | on a signed deployment `aw-policy` verifies bundle, signature and trust file at every launch; `aw` refuses to launch on a failed check (`TestResolvePolicyRefusesATamperedBundle` in `cmd/aw/doctor_test.go`; `TestRunRefusesATamperedBundle`); `aw doctor` warns on loose permissions (`TestInspectWarnsWhenTheBundleIsWorldWritable`) | Root can replace the bundle, the trust file and the checker together. Detection, not prevention. |
 | T | A key rollover is forged | Only a statement signed by the currently pinned key moves the pin (`TestFetchRejectsAForgedRollover`, `TestRunRepinsOnARollover`) | Whoever holds the current signing key can hand the fleet to a new one. |
 | T | An old signed bundle is replayed | None found. The bundle's `Version` is signed but the verifier never checks it, and there is no expiry (`internal/policy/bundle.go`; `BundleStatement` in `internal/signing/signer.go`) | A writer of the state directory, or a stale cache, can restore an older signed policy. Root-owned directories limit who can. |
 | I | The bundle is read by a developer | By design. It is mode 0644 so the developer's `aw-policy` can read it (`deploy/managed-settings/README.md`) | The bundle holds the organization's rules, not secrets. Do not put secrets in rules. |
@@ -42,8 +62,8 @@ The attacker we design against is a developer without root on their own machine,
 
 | STRIDE | Threat | Mitigation | Residual risk |
 |---|---|---|---|
-| S | A fake control plane at the enrolled address | The pinned signing key (see the bundle) | Unsigned deployments have no defense here beyond TLS to the real host. |
-| T | A half-written or mixed set of governance files | All-or-nothing writes; nothing is written when any renderer or validation fails (`TestRunWritesNothingForAnyAgentWhenOneRendererFails`, `TestRunWritesNothingWhenTheBundleFailsValidation`) | If a later write fails after earlier ones landed, state records what was written (`TestRunRecordsWhatItWroteWhenALaterWriteFails`); the files can be mixed until the next good cycle. |
+| S | A fake control plane at the enrolled address | The pinned signing key (see the bundle) | The pin is trust on first use: a machine enrolled over plain HTTP may have been given the wrong key. Unsigned deployments have no defense here beyond TLS to the real host. |
+| T | A half-written or mixed set of governance files | Nothing is written unless every renderer and validation pass (`TestRunWritesNothingForAnyAgentWhenOneRendererFails`, `TestRunWritesNothingWhenTheBundleFailsValidation`) | If a later write fails after earlier ones landed, state records what was written (`TestRunRecordsWhatItWroteWhenALaterWriteFails`); the files can be mixed until the next good cycle. |
 | T | A user swaps the files a root timer uses | The timer refuses state directories and binaries that a non-root user could replace (`cmd/aw-sync/rootonly_unix.go`; `TestRootOnlyRefusesAUserOwnedPath`, `TestRootOnlyRefusesAWritableParent`) | On Windows this only warns. Check ACLs by hand. |
 | T | Drift: someone edits a rendered file | The next cycle rewrites it, even if the ETag matches (`TestRunRepairsDriftEvenWhenTheETagStillMatches`) | Between cycles the edit is in force. |
 | E | The sync runs as root | Writes only the paths its renderers name; a renderer path outside its root is rejected (`TestRunRejectsAnUnsafeRendererPath`) | It is a root process fed by network input. Keep it updated and keep the signing on. |
@@ -65,9 +85,9 @@ The attacker we design against is a developer without root on their own machine,
 | STRIDE | Threat | Mitigation | Residual risk |
 |---|---|---|---|
 | S | Someone posts groups or SCIM data as the IdP | SCIM is off without `AWD_SCIM_TOKEN` and uses a constant-time bearer check (`internal/handler/scim.go`; `TestSCIMIsDisabledWithoutAToken`, `TestSCIMRefusesAWrongToken`); the snapshot route needs the admin token | The SCIM token is a shared secret. A holder can add any user to any group, including the console admin group, if that group comes from SCIM. |
-| T | A user keeps group access after leaving | Deactivating a user drops their SCIM groups on the next sync (README, SCIM section) | It does not revoke their machines. Run `awd revoke` too. This is documented behavior; we have no test for it. |
-| T | Group names that differ only by case | Matching is exact on the enrolled email (`TestConsoleLoginCaseMismatchIsDenied`); `awd groups resolve` warns on a SCIM case mismatch (README) | A mismatched case means the user gets fewer groups than expected, not more. |
-| E | Console admin from a policy-authored group | The admin group must come from the IdP, not the authored `groups` map (README, "Admin console") | We have no test that names this rule. |
+| T | A user keeps group access after leaving | An inactive user's SCIM groups drop out of the next bundle (`TestBundleGroupsIncludeActiveSCIMGroups` in `internal/handler/resolve_test.go`; [Write your first policy](./write-first-policy.md)) | It does not revoke their machines. Run `awd revoke` too. |
+| T | Group names that differ only by case | Matching is exact on the enrolled email (`TestConsoleLoginCaseMismatchIsDenied`); `awd groups resolve` warns on a SCIM case mismatch (`TestResolveFlagsACaseMismatch` in `internal/handler/resolve_test.go`; [Write your first policy](./write-first-policy.md)) | A mismatched case means the user gets fewer groups than expected, not more. |
+| E | Console admin from a policy-authored group | The admin group must come from the IdP, not the authored `groups` map (`TestAuthoredGroupsNeverCount` in `internal/console/authz/authz_test.go`; [Admin console](./admin-console.md)) | The console is still only as good as the IdP's group data. |
 
 ## Hosted cells
 

@@ -2,7 +2,7 @@ import { expect, test } from "@playwright/test";
 
 test("product lists shipped capabilities and badges the console", async ({ page }) => {
   await page.goto("/product");
-  await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
+  await expect(page.getByRole("heading", { level: 1, name: "Fails open by default, closed when you choose" })).toBeVisible();
   for (const name of [
     "Group and repository targeting",
     "Signed bundles",

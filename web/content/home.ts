@@ -58,7 +58,7 @@ export const home = {
       {
         command: "aw-sync",
         title: "Deliver it to every machine",
-        body: "A root-owned timer fetches the machine's signed bundle and writes each agent's managed settings in the agent's own format.",
+        body: "A root-owned timer fetches the machine's bundle, signed on machines enrolled after you set a signing key, and writes each agent's managed settings in the agent's own format.",
       },
       {
         command: "policyHelper",

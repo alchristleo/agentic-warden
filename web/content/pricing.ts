@@ -72,7 +72,7 @@ export const pricing = {
     },
     {
       q: "Is the hosted console available?",
-      a: "Not yet. Self-host awd today; its /console/ is opt-in via AWD_CONSOLE_*. Choose Team or pick hosted on the demo form and we will contact you when early access opens.",
+      a: "Not yet. Self-host awd today; its /console/ is opt-in via AWD_PUBLIC_URL and AWD_CONSOLE_*. Choose Team or pick hosted on the demo form and we will contact you when early access opens.",
     },
     {
       q: "How much does it cost?",
