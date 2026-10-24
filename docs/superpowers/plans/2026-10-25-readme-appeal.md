@@ -154,6 +154,8 @@ Install lines (pin the tarball by sha256, v0.4.0-devel3 tarball sha256
 - Docs backlog from the last milestone (dedupe security-model vs threat-model; trust.md as a docs
   page; how-it-works detail to Reference; mobile tables breaking env var names).
 
+- Design nits from scoped CDO re-run: hero policy comment dim (~3:1) and typed lines wrap mid-word; 07 shows mktemp `/tmp/tmp.*` paths and wraps; ble paints `$(` and `s` red in 05/07; light diagram edge-label pills off-white on tinted region, 9px subtitles.
+
 ## Ledger
 
 PLAN a1bf091 written; group A next
@@ -169,3 +171,4 @@ PANEL correctness fix-needed (AC3: 2 must, 3 should claims; win color; BLE_DIR m
 FIX WAVE F1 README/quickstart, F2 diagram, F3 tapes, F4 Go
 FIX WAVE merged: F4 f31fb45, F1 de8ece9, F2 4c3d3f4, F3 445bb50; manual GIFs re-rendered (hero 27s, 06 33s; Claude latency keeps hero >15s). Next: scoped re-run of correctness (AC3) + CDO (AC11), budget tier; then spec-converge.
 PAUSED at step 7 (after fix wave, 5h usage 94%), next: scoped re-run panel-correctness (AC3 claims, model sonnet) + panel-design CDO (AC11) on branch 04b9407, then spec-converge, PR. Note AC6 test TestEnrollTokenNoColor deleted by F4 (no color path) -> update AC6 check text.
+RESUME scoped re-run: correctness approve (8/8 fixed, AC3 all claims sourced; nit: tapes README `|| exit` fixed 1edd7c3; nit: re-add enroll-token test skipped, AC6 check now greps the no-color path f6f6adc). CDO approve, 0 must (AC11); should: What you get bullet 1 advisory caveat fixed 0cb7b40; 4 nits -> Backlog; dismissed again: 05 lacks doctor output (bare aw doctor at 05-doctor.tape:43). Next: spec-converge.
