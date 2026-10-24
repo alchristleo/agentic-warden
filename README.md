@@ -1,16 +1,26 @@
-<p align="center"><img src="docs/assets/logo.svg" width="64" alt=""></p>
-# Agentic Warden
-**One policy for every coding agent.**
+<div align="center">
 
-[![License](https://img.shields.io/github/license/alchristleo/agentic-warden)](https://github.com/alchristleo/agentic-warden/blob/main/LICENSE) [![web](https://github.com/alchristleo/agentic-warden/actions/workflows/web.yml/badge.svg)](https://github.com/alchristleo/agentic-warden/actions/workflows/web.yml)
+<img src="docs/assets/logo.svg" width="64" alt="">
 
-Write your rules once. Agentic Warden delivers them to Claude Code, Codex and Gemini CLI on every
-developer machine, scoped by identity-provider group and by repository. Claude Code applies them at
-launch, and [on plain `claude`](docs/site/enforce-plain-claude.md) too once the managed files are installed.
+<h1>Agentic Warden</h1>
 
-![aw claude refuses curl in payments-api and runs it in sandbox](docs/assets/hero.gif)
+<h3>One policy for Claude Code, Codex and Gemini CLI, scoped by repository and group.</h3>
 
-Status: early. Self-host `awd` today. Hosted console: coming soon.
+<img src="docs/assets/hero.gif" width="900" alt="aw claude refuses curl in payments-api and runs it in sandbox">
+
+<a href="docs/site/quickstart.md">Quickstart</a> · <a href="docs/site/how-it-works.md">How it works</a> · <a href="docs/site/security-model.md">Security model</a> · <a href="docs/site/index.md">Docs</a>
+
+</div>
+
+## The problem
+
+Claude Code, Codex and Gemini CLI each read their own settings, in their own format.
+Vendor consoles and managed settings files cannot scope a rule to one repository.
+Nothing carries a single policy across all three ([how it works](docs/site/how-it-works.md#compared-with-what-you-have-today)).
+
+## See it in 30 seconds
+
+This is a policy. The first rule applies everywhere. The second applies only to repositories under `github.com/acme/payments`.
 
 ```yaml
 rules:
@@ -21,39 +31,125 @@ rules:
     agents: {claude: {managed: {permissions: {deny: ["Bash(curl *)"]}}}}
 ```
 
-| As of October 2026           | Per repository | Per IdP group    | Claude Code, Codex, Gemini CLI |
-|------------------------------|----------------|------------------|--------------------------------|
-| Vendor admin console         | No             | Varies by vendor | One vendor each                |
-| Managed settings files (MDM) | No             | No               | One format per vendor          |
-| Agentic Warden               | Yes            | Yes              | One policy                     |
+In `payments-api`, Claude Code refuses `curl` even when the command allows it, because an organization deny overrides a developer's allow. In `sandbox`, the same command runs. The recording above is that run ([quickstart step 6](docs/site/quickstart.md#6-ask-claude-to-run-curl-in-both-repositories)).
 
-- **Works offline.** `aw` compiles from the last synced bundle on local disk, so a stopped control plane changes nothing. On bare `claude`, a missing or bad bundle fails open to the static files unless you set `requireBundle` ([security model](docs/site/security-model.md)).
+## How it works
+
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/assets/architecture-dark.svg">
+    <img src="docs/assets/architecture-light.svg" width="900" alt="A policy file goes to awd, aw-sync carries it to each laptop, and Claude Code, Codex and Gemini CLI read it there. Model traffic goes straight to the vendor, not through awd.">
+  </picture>
+</p>
+
+- **`awd` holds the policy.** `aw-sync` fetches each enrolled user's bundle from it on a timer and writes it to disk.
+- **The agents read it on the laptop.** Claude Code runs the `aw-policy` helper at startup, so a developer who skips the `aw` wrapper is still governed. `aw codex` and `aw gemini` apply the rules for the repository you are in at launch.
+- **Model traffic bypasses `awd`.** The control plane serves policy and is never in the path of an agent session.
+
+## Why teams pick it
+
+- **One policy for three agents.** One YAML file covers Claude Code, Codex and Gemini CLI ([write your first policy](docs/site/write-first-policy.md)).
+- **Scoped by repository and by group.** Rules match a repository pattern or an identity-provider group, and groups can come from Okta or Entra ID ([rules for a group](docs/site/write-first-policy.md#rules-for-a-group)).
+- **Works offline.** `aw` compiles from the last synced bundle on local disk, so a stopped control plane leaves the policy in force ([quickstart step 7](docs/site/quickstart.md#7-change-the-rule-then-pull-the-plug)).
 - **Signed bundles.** When you configure a signing key, each machine enrolled after that verifies an Ed25519 or AWS KMS signature before it writes anything. Signing detects tampering and cannot stop a root user ([security model](docs/site/security-model.md)).
-- **Out of the model path.** Your code, prompts and model traffic never reach the control plane ([trust statement](https://github.com/alchristleo/agentic-warden/blob/main/docs/hosting/trust.md)).
+
+<table align="center">
+  <tr>
+    <td align="center"><img src="docs/assets/05-doctor.gif" width="440" alt="Running aw doctor in payments-api"><br><sub><code>aw doctor</code> shows what <code>aw</code> compiled for this repository</sub></td>
+    <td align="center"><img src="docs/assets/07-reapply.gif" width="440" alt="Applying a changed policy, then syncing with the control plane stopped"><br><sub>A revision reaches the machine; the policy stays after <code>awd</code> stops</sub></td>
+  </tr>
+</table>
+
+## How it compares
+
+As of October 2026. This compares mechanisms only.
+
+| As of October 2026           | Per repository | Per IdP group    | Claude Code, Codex, Gemini CLI |
+|------------------------------|:--------------:|:----------------:|:------------------------------:|
+| Vendor admin console         | ❌             | ➖ varies by vendor | ❌ one vendor each          |
+| Managed settings files (MDM) | ❌             | ❌               | ❌ one format per vendor       |
+| Agentic Warden               | ✅             | ✅               | ✅ one policy                  |
+
+Claude Code already ships managed settings, MDM delivery, server-managed settings, sandboxing and OpenTelemetry. What remains uncovered is per-repository rules, per-group policy for Claude Code on claude.ai seats, and one policy across the three agents ([details](docs/site/how-it-works.md#compared-with-what-you-have-today)).
+
+## Questions your security team will ask
+
+- **Do our code or prompts reach you?** No. The control plane sees who enrolled, from which machine and which policy they were sent, and never prompts, code or model traffic ([trust statement](docs/hosting/trust.md)).
+- **What if the server goes down?** A machine keeps the policy it has, with no expiry. A machine that never synced, or holds a bad bundle, falls back to the static files unless you set `requireBundle` ([design limits](docs/site/security-model.md#design-limits)).
+- **Can a developer bypass it?** Partly. Bare `claude` is governed, but a local administrator can edit the managed source or remove the drop-in, the `origin` remote that repository rules key on is the developer's to edit, and a developer's own Claude Code install is outside managed settings ([what it does not stop](docs/site/security-model.md#what-it-does-not-stop)).
+- **What is not covered yet?** `GET /v1/policy` needs no token, `awd` has no rate limit, and the audit actor on the token path is caller-chosen. `aw codex` and `aw gemini` are advisory. Co-signed revisions are planned and not built ([known issues](docs/site/security-model.md#known-issues-fix-scheduled), [threat model](docs/site/threat-model.md)).
+
+You run `awd` yourself and hold the signing key. A hosted design-partner pilot also exists, on the terms in the [trust statement](docs/hosting/trust.md).
 
 ## Try it
 
-The quickstart is seven steps, no root. These commands get you a running control plane with the policy applied:
+These are the first 4 of the 7 [quickstart](docs/site/quickstart.md) steps. They need Go 1.24 or newer and git, and write nothing under `/etc`. Steps 5 to 7 add the refusal you saw above.
+
+**1. Build the four binaries**
 
 ```sh
 git clone https://github.com/alchristleo/agentic-warden.git
 cd agentic-warden
 go build -o bin/ ./cmd/...
 export PATH=$PWD/bin:$PATH
+ls bin
 ```
+
+You should see:
+
+```text
+aw
+aw-policy
+aw-sync
+awd
+```
+
+**2. Start the control plane**
 
 ```sh
 export AWD_ADDR=127.0.0.1:8080
 export AWD_ADMIN_TOKEN=$(openssl rand -hex 16)
 awd serve &
+awd_pid=$!
 sleep 1
+```
+
+You should see:
+
+```text
+listening on 127.0.0.1:8080
+```
+
+**3. Apply the two-rule policy above**
+
+```sh
 awd apply examples/quickstart.yaml
 ```
+
+You should see:
 
 ```text
 applied revision quickstart.1 (2 rules)
 ```
 
-The [full quickstart](docs/site/quickstart.md) enrolls your machine, then shows Claude refusing `curl` in one repository and running it in another.
+**4. Enroll this machine and sync**
 
-[Quickstart](docs/site/quickstart.md) · [How it works](docs/site/how-it-works.md) · [Security model](docs/site/security-model.md) · [Admin console](docs/site/admin-console.md) · [Contributing](https://github.com/alchristleo/agentic-warden/blob/main/docs/contributing/README.md) · Apache-2.0
+```sh
+export AW_SYNC_STATE_DIR=~/.aw-try
+token=$(awd enroll-token you@acme.com)
+AW_SYNC_TOKEN=$token aw-sync enroll --server http://localhost:8080 --agents claude --state-dir ~/.aw-try
+aw-sync once --state-dir ~/.aw-try --root claude=$HOME/.aw-try/claude
+```
+
+You should see:
+
+```text
+enrolled machine
+synced bundle quickstart.1: wrote 3 files
+```
+
+Next: [make two repositories and watch Claude refuse `curl` in one](docs/site/quickstart.md#5-make-two-repositories-and-look-at-what-aw-compiled).
+
+---
+
+<p align="center"><a href="docs/site/index.md">Docs</a> · <a href="docs/contributing/README.md">Contributing</a> · Apache-2.0</p>

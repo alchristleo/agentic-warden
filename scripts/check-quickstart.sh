@@ -5,7 +5,7 @@
 # Contract:
 # - A fenced block tagged sh is run, in order, in one bash session (set -euo pipefail), in a
 #   temp HOME and working dir.
-# - A text block directly after a sh block lists the expected output: every non-empty line must
+# - A text block directly after a sh block (a "You should see:" line may sit between) lists the expected output: every non-empty line must
 #   appear as a substring of that block's combined stdout+stderr. A text block that does not
 #   follow a checked sh block or a skipped one is an error.
 # - An HTML comment <!-- check: skip (reason) --> on the line before a sh block skips it. Skipped
@@ -89,7 +89,7 @@ while IFS= read -r line || [[ -n $line ]]; do
         printf 'n=%s\nw=%q\n{\n' "$n" "$file:$line_no" >> "$session"
       fi
     fi
-  elif [[ -n ${line//[[:space:]]/} ]]; then
+  elif [[ -n ${line//[[:space:]]/} && $line != "You should see:" ]]; then
     after=0
   fi
   prev=$line
