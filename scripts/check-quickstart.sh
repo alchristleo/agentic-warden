@@ -2,12 +2,29 @@
 # Runs the sh blocks of a quickstart markdown file, in order, in one bash session with a
 # temp HOME and working dir, and checks each text block after a sh block as expected output.
 # A sh block preceded by <!-- check: skip (reason) --> is printed and not run.
-# Contract: docs/superpowers/plans/2026-10-24-docs-onboarding.md (Shared contracts).
+# Contract:
+# - A fenced block tagged sh is run, in order, in one bash session (set -euo pipefail), in a
+#   temp HOME and working dir.
+# - A text block directly after a sh block lists the expected output: every non-empty line must
+#   appear as a substring of that block's combined stdout+stderr. A text block that does not
+#   follow a checked sh block or a skipped one is an error.
+# - An HTML comment <!-- check: skip (reason) --> on the line before a sh block skips it. Skipped
+#   blocks are printed with their reason, never silently dropped. Use it only for steps that need
+#   a logged-in Claude or root.
+# - Background processes started in a block (awd serve &) are killed when the script exits.
 set -euo pipefail
 
 file=${1:?usage: check-quickstart.sh <file.md>}
 tmp=$(mktemp -d "${TMPDIR:-/tmp}/check-quickstart.XXXXXX")
-trap 'rm -rf "$tmp"' EXIT
+pid=
+cleanup() {
+  trap - INT TERM EXIT
+  [[ -z $pid ]] || kill -- -"$pid" 2>/dev/null || true
+  rm -rf "$tmp"
+}
+trap cleanup EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM
 mkdir -p "$tmp/home" "$tmp/work" "$tmp/out"
 session=$tmp/session.sh
 checks=$tmp/checks.tsv
@@ -52,13 +69,20 @@ while IFS= read -r line || [[ -n $line ]]; do
     tag=${line:3}
     tag=${tag//[[:space:]]/}
     run=0 want=0
-    if [[ $tag == text ]]; then want=$after; fi
+    if [[ $tag == text ]]; then
+      if [[ $after -eq 0 ]]; then
+        echo "check-quickstart: $file:$line_no: text block does not directly follow a checked sh block or a skip" >&2
+        exit 1
+      fi
+      want=$after
+    fi
     after=0
     if [[ $tag == sh ]]; then
       n=$((n + 1)) sh_line=$line_no
       if [[ $prev =~ $skip_re ]]; then
         echo "skip: $file:$line_no (block $n): ${BASH_REMATCH[1]}"
         skipped=$((skipped + 1))
+        after=-1
       else
         run=1
         ran=$((ran + 1))
@@ -77,6 +101,7 @@ pid=$!
 status=0
 wait "$pid" || status=$?
 kill -- -"$pid" 2>/dev/null || true
+pid=
 [[ $status -eq 0 ]] || exit 1
 
 fail=0 checked=0

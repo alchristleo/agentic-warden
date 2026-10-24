@@ -1,14 +1,17 @@
 # Sourced by the tapes inside the recording shell, before Show. Usage: . docs/tapes/lib/prep.sh N
 # Runs quickstart steps 1 to N-1 quietly, so tape N starts where a reader is at step N.
-# Needs AW_REPO (the checkout the clone in step 1 is taken from). AW_STUB_BIN (a directory with a
-# stub `claude`) is put on PATH when set. AW_MANUAL=1 keeps your real HOME (for the tapes that need
-# a logged-in Claude); otherwise HOME is a fresh temp dir.
+# Needs AW_REPO (the checkout the clone in step 1 is taken from). AW_MANUAL=1 keeps your real HOME
+# and your real claude (for the tapes that need a logged-in Claude); otherwise HOME is a fresh temp
+# dir and a stub claude is put first on PATH. Repo config is set through GIT_CONFIG_COUNT env only.
 _aw_n=${1:?step number}
 _aw_r() { "$@" >/dev/null 2>&1 || { echo "prep failed: $*"; return 1; }; }
 
 export GOMODCACHE=$(go env GOMODCACHE) GOCACHE=$(go env GOCACHE)
-[ -z "${AW_STUB_BIN:-}" ] || export PATH=$AW_STUB_BIN:$PATH
-if [ -z "${AW_MANUAL:-}" ]; then export HOME=$(mktemp -d); fi
+if [ -z "${AW_MANUAL:-}" ]; then
+  export HOME=$(mktemp -d)
+  mkdir "$HOME/stub" && printf '#!/bin/sh\nexit 0\n' > "$HOME/stub/claude" && chmod +x "$HOME/stub/claude"
+  export PATH=$HOME/stub:$PATH
+fi
 cd "$(mktemp -d)"
 export GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0="url.$AW_REPO.insteadOf" GIT_CONFIG_VALUE_0=https://github.com/alchristleo/agentic-warden.git
 PS1='$ '
@@ -20,7 +23,8 @@ if [ "$_aw_n" -gt 1 ]; then
   export PATH=$PWD/bin:$PATH || return 1
 fi
 if [ "$_aw_n" -gt 2 ]; then
-  export AWD_ADMIN_TOKEN=try-me
+  export AWD_ADDR=127.0.0.1:8080
+  export AWD_ADMIN_TOKEN=$(openssl rand -hex 16)
   awd serve >/dev/null 2>&1 &
   awd_pid=$!
   sleep 1
