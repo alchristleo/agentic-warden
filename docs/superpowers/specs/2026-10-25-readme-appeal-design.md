@@ -198,7 +198,7 @@ not installed.
 
 ## Status (converged 2026-10-25)
 
-Checked on `692ea5c` against `main`. Counts: 10 VERIFIED, 2 INCONCLUSIVE, 1 NOT VERIFIED (AC3, AC11 updated by coordinator from the scoped re-run reports).
+Checked on `692ea5c` against `main`. Counts: 11 VERIFIED, 2 INCONCLUSIVE (AC7 frames, AC12 leaks: owner check at the merge gate) (AC3, AC11 updated by coordinator from the scoped re-run reports).
 
 | # | criterion (short) | verdict | evidence (command + key output line) |
 |---|---|---|---|
@@ -208,13 +208,13 @@ Checked on `692ea5c` against `main`. Counts: 10 VERIFIED, 2 INCONCLUSIVE, 1 NOT 
 | 4 | Try it labeled and works | VERIFIED | `scripts/check-quickstart.sh README.md` → `README.md ok (4 run, 0 skipped, 8 expected lines found)`; all 4 `sh` blocks have a bold label line and all 4 output blocks follow "You should see:" (README Try it section) |
 | 5 | Color on terminal, none elsewhere | VERIFIED | `go test -count=1 -v ./internal/termcolor/ ./cmd/aw/` → PASS, incl. `TestDoctorReportColorOn` asserting `\x1b[32mok:\x1b[0m`, yellow `warn:`, red `error:`. `go run ./cmd/aw doctor \| grep -c $'\x1b'` → `0` (piped, repo cwd; not a fresh quickstart state) |
 | 6 | Scripts unaffected | VERIFIED | `sed -n '/^func enrollToken/,/^}/p' cmd/awd/main.go \| grep -c termcolor` → `0`; `git diff --stat main -- cmd/aw-policy` empty; `go test -count=1 ./...` 0 FAIL lines; runtime: `script -qfc "awd enroll-token --url http://127.0.0.1:18080 you@acme.com" …` with stderr on a pty → stdout 44 bytes, 0 `\x1b` bytes |
-| 7 | Tapes look colored | INCONCLUSIVE | `vhs validate docs/tapes/*.tape docs/tapes/manual/*.tape` → exit 0; `Theme "Catppuccin Mocha"` in all 8 tapes. Frame sheets viewed for 01, 05, 06, hero (colored prompt and CLI output). Not viewed: 02, 03, 04, 07. Tapes CI run 40139002431 on HEAD still `in_progress` |
+| 7 | Tapes look colored | INCONCLUSIVE | `vhs validate docs/tapes/*.tape docs/tapes/manual/*.tape` → exit 0; `Theme "Catppuccin Mocha"` in all 8 tapes. Frame sheets viewed for 01, 05, 06, hero (colored prompt and CLI output). Not viewed: 02, 03, 04, 07. Tapes CI run 40139002431 success and PR #4 tapes job pass. Owner reviews frames at the gate |
 | 8 | Command highlighting | VERIFIED | Mid frame of `01-build.gif` (`/tmp/claude-1000/frames/01-build-mid.png`): `git` in green, `clone` and the URL in a different color. ble.sh path in `docs/tapes/lib/prep.sh:48` |
 | 9 | GIF weight | VERIFIED | `find docs/assets -name '*.gif' -size +1024k` → no output; largest `07-reapply.gif` 333,602 B; README-referenced image total 901,609 B (≤ 3 MB) |
 | 10 | Diagram in both themes | VERIFIED | `architecture-light.svg` 19,360 B, `architecture-dark.svg` 19,628 B; `architecture.json` tracked (`git ls-files`); README `<picture>` with `prefers-color-scheme` (line 53); check-readme image paths pass |
 | 11 | Design review 0 must | VERIFIED | Scoped CDO `panel-design` re-run on fix diff (2026-10-25): 0 must, 1 should, 4 nits; ledger RESUME line. Later commits only apply that should (`0cb7b40`, one README bullet) or touch non-design text (`1edd7c3` tapes README, `f6f6adc` spec) |
 | 12 | No leaks in manual GIFs | INCONCLUSIVE | Owner eyeball is the check. Sampled frames of hero and 06 show no token or email at contact-sheet resolution; `05-doctor` shows `/tmp/…` paths (temp HOME). Full-resolution owner check of hero and 06 still needed |
-| 13 | Nothing regressed, PR CI green | NOT VERIFIED | Passing: `go test -count=1 ./...` (0 FAIL); in `web/`: `npm run lint` exit 0, `npm run typecheck` exit 0, `npm test` 81 passed, `npm run test:e2e` 47 passed; `scripts/check-links.sh README.md` exit 0; `scripts/check-quickstart.sh` on README and `docs/site/quickstart.md` ok. Missing: no PR exists for `readme-appeal` (`gh pr view` finds none), and tapes CI on HEAD is still running |
+| 13 | Nothing regressed, PR CI green | VERIFIED | Passing: `go test -count=1 ./...` (0 FAIL); in `web/`: `npm run lint` exit 0, `npm run typecheck` exit 0, `npm test` 81 passed, `npm run test:e2e` 47 passed; `scripts/check-links.sh README.md` exit 0; `scripts/check-quickstart.sh` on README and `docs/site/quickstart.md` ok. PR #4 CI: docs, docs, tapes, test, test all pass |
 
 ### Deviations
 
