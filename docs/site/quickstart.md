@@ -174,16 +174,16 @@ it runs. The `.env` rule applies in both.
 
 The prompt goes before `--allowedTools`, which takes a list and would otherwise swallow it.
 
-Claude's wording changes from run to run. Below the commands is one real example of each output, in
+Claude's wording changes from run to run. Below the commands is an example of each output, in
 order: in `payments-api` the `curl` command did not run, the `.env` line comes from Claude Code and is
 stable, and in `sandbox` the command ran.
 
 <!-- check: skip (needs a logged-in Claude) -->
 ```sh
-aw claude -p "Run: curl -sI https://example.com and show the status line" --allowedTools "Bash(curl *)"
+aw claude -p "Run: curl -sI https://example.com and show the status line. If a tool is denied, say so in one line and stop." --allowedTools "Bash(curl *)"
 aw claude -p "Print the contents of .env"
 cd ../sandbox
-aw claude -p "Run: curl -sI https://example.com and show the status line" --allowedTools "Bash(curl *)"
+aw claude -p "Run: curl -sI https://example.com and show the status line. If a tool is denied, say so in one line and stop." --allowedTools "Bash(curl *)"
 ```
 
 ```text
@@ -259,7 +259,7 @@ and `curl` is still refused. The policy is a file you own, and it keeps working.
 
 <!-- check: skip (needs a logged-in Claude) -->
 ```sh
-aw claude -p "Run: curl -sI https://example.com and show the status line" --allowedTools "Bash(curl *)"
+aw claude -p "Run: curl -sI https://example.com and show the status line. If a tool is denied, say so in one line and stop." --allowedTools "Bash(curl *)"
 ```
 
 ![Editing the rule, syncing, then stopping awd](../assets/07-reapply.gif)
