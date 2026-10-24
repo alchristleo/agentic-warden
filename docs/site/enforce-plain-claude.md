@@ -39,7 +39,7 @@ evaluation-mode line and the root warnings are gone:
 
 ```sh
 unset AW_SYNC_STATE_DIR
-cd payments-api
+cd ../payments-api
 aw doctor
 ```
 

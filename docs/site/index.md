@@ -2,12 +2,12 @@
 title: Agentic Warden docs
 section: get-started
 order: 1
-description: Write one policy, deliver it to Claude Code, Codex and Gemini CLI, and watch it stop your own agent. Seven commands, no root.
+description: Write one policy, deliver it to Claude Code, Codex and Gemini CLI, and watch it stop your own agent. Seven steps, no root.
 ---
 
 # Agentic Warden docs
 
-See your own rule stop your own agent. Seven commands, no root. Then read what it enforces, where
+See your own rule stop your own agent. Seven steps, no root. Then read what it enforces, where
 it stops, and how to roll it out.
 
 ![aw claude refuses curl in payments-api and runs it in sandbox](../assets/hero.gif)
@@ -31,8 +31,8 @@ go build -o bin/ ./cmd/...
   [the same rule enforced on plain `claude`](./enforce-plain-claude.md) on a test VM.
 - **[Security review](./security-model.md).** What it enforces, what it does not stop, who holds the
   keys, and [how to remove it](./removing.md).
-- **[Roll out](./write-first-policy.md).** Machines on Linux, macOS and Windows, groups from Okta or
-  Entra ID, keys in AWS KMS.
+- **[Write policy](./write-first-policy.md).** Rules per repository and per group, groups from Okta or
+  Entra ID, and the self-hosted [admin console](./admin-console.md).
 
 ## All pages
 

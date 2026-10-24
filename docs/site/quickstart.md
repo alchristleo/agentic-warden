@@ -2,12 +2,12 @@
 title: Quickstart
 section: get-started
 order: 2
-description: Seven commands, no root. Write a rule, watch it stop your own agent, then edit it and unplug the control plane.
+description: Seven steps, no root. Write a rule, watch it stop your own agent, then edit it and unplug the control plane.
 ---
 
 # Quickstart
 
-Seven commands, no root. You run a control plane on your laptop, enroll your own machine, and watch
+Seven steps, no root. You run a control plane on your laptop, enroll your own machine, and watch
 a rule you applied stop Claude Code in one repository while the same request runs in another.
 Nothing is written under `/etc`.
 
@@ -128,6 +128,8 @@ Why enrollment uses a single-use token: [security model](./security-model.md).
 ```sh
 cd ..
 for r in payments-api sandbox; do git init -q $r && git -C $r remote add origin https://github.com/acme/$r; done
+echo FAKE=1 > payments-api/.env
+echo FAKE=1 > sandbox/.env
 cd payments-api
 aw doctor
 ```
@@ -141,32 +143,21 @@ policy compiled for github.com/acme/payments-api
 
 `aw doctor` prints what `aw` would run, without running the agent. It opens with an
 `evaluation mode` line, because a rootless trial leaves the machine-wide files empty and `doctor`
-says so. It checks only the agents you enrolled. This is the real output on Linux, with paths
-shortened (`~` is your home directory, `<node-bin>` the folder that holds `claude`). The `warn:`
+says so. It checks only the agents you enrolled. Abridged from a real run on Linux, with paths shortened (`~` is your home directory). The `warn:`
 lines are the rootless trial talking, not a fault.
 
 ```console
 wrapper: aw
 evaluation mode: state dir ~/.aw-try is not the system default; the warnings below are expected for a rootless trial
 policy:  ~/.aw-try/aw-bundle.json (bundle quickstart.1, repo github.com/acme/payments-api)
-sync:    ~/.aw-try
-  machine: 14a6d33c76d4908e3ffb7e9cb46030e9 at http://localhost:8080
-  synced:  0s ago, version quickstart.1
-
+[...]
 agent claude
-  binary: <node-bin>/claude
   warn:   no policyHelper in /etc/claude-code: organization policy is not enforced on bare `claude`
-  warn:   no bundle at /etc/claude-code/aw-bundle.json: aw-policy emits no settings until aw-sync has run
-  ok:     bundle signature: unsigned deployment
-  warn:   enrolled before bundle signing; re-enroll to pin a key
-  warn:   ~/.aw-try/aw-bundle.json is owned by uid 1000, not root: its owner can replace the file and the key it is checked against together, and the check would still report verified
-  warn:   AW_SYNC_STATE_DIR points this report at ~/.aw-try: the bundle-signature finding above describes that directory, not /var/lib/agent-wrapper, which is where aw-policy reads the bundle it enforces at session start
-  args:   --settings ~/.cache/agent-wrapper/claude/settings-c487d96dc708.json
-  file:   ~/.cache/agent-wrapper/claude/settings-c487d96dc708.json
-  note:   settings layers (low to high): managed (org, locked)
-  note:   merged settings written to ~/.cache/agent-wrapper/claude/settings-c487d96dc708.json
+[...]
   note:   policy compiled for github.com/acme/payments-api
 ```
+
+The full output is in [capture-doctor.log](https://github.com/alchristleo/agentic-warden/blob/main/docs/tapes/capture-doctor.log).
 
 Now read the settings file `aw` will hand to Claude Code:
 
@@ -298,8 +289,8 @@ aw-sync status --state-dir ~/.aw-try
 last error: sync: reaching the control plane at http://localhost:8080
 ```
 
-Run the step 6 command once more with `awd` stopped. You get the same refusal. The policy is a file
-you own, and it fails safe.
+Run the step 6 command once more with `awd` stopped. It was recorded that way, and `curl` is still
+refused (see `capture-step6.log`, section 7). The policy is a file you own, and it fails safe.
 
 <!-- check: skip (needs a logged-in Claude) -->
 ```sh
