@@ -1,5 +1,6 @@
 # Sourced by the tapes inside the recording shell, before Show. Usage: . docs/tapes/lib/prep.sh N
 # Runs quickstart steps 1 to N-1 quietly, so tape N starts where a reader is at step N.
+# Optional BLE_DIR (see docs/tapes/README.md) turns on ble.sh command highlighting.
 # Needs AW_REPO (the checkout the clone in step 1 is taken from). AW_MANUAL=1 keeps your real HOME
 # and your real claude (for the tapes that need a logged-in Claude); otherwise HOME is a fresh temp
 # dir and a stub claude is put first on PATH. Repo config is set through GIT_CONFIG_COUNT env only.
@@ -14,7 +15,7 @@ if [ -z "${AW_MANUAL:-}" ]; then
 fi
 cd "$(mktemp -d)" && mkdir demo && cd demo
 export GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0="url.$AW_REPO.insteadOf" GIT_CONFIG_VALUE_0=https://github.com/alchristleo/agentic-warden.git
-PS1='\W \$ '
+PS1='\[\e[34m\]\W\[\e[0m\] \[\e[32m\]\$\[\e[0m\] '
 
 if [ "$_aw_n" -gt 1 ]; then
   _aw_r git clone https://github.com/alchristleo/agentic-warden.git &&
@@ -44,5 +45,13 @@ if [ "$_aw_n" -gt 5 ]; then
   cd payments-api || return 1
 fi
 unset _aw_n
+if [ -n "${BLE_DIR:-}" ]; then
+  source "$BLE_DIR/ble.sh" --attach=prompt --norc
+  bleopt prompt_eol_mark=''
+  for _aw_f in syntax_varname varname_array varname_empty varname_export varname_expr varname_hash varname_number varname_readonly varname_transform varname_unset; do ble-face "$_aw_f=fg=blue"; done
+  unset _aw_f
+  ble-bind -f RET accept-line
+  ble-bind -f C-m accept-line
+fi
 clear
 echo prep done
