@@ -1,5 +1,12 @@
 import { readFile } from "node:fs/promises";
-import { assetPath, assetType } from "@/lib/docs";
+import { assetFiles, assetPath, assetType } from "@/lib/docs";
+
+export const dynamic = "force-static";
+export const dynamicParams = false;
+
+export function generateStaticParams() {
+  return assetFiles().map((file) => ({ file }));
+}
 
 export async function GET(_req: Request, { params }: { params: Promise<{ file: string }> }) {
   const { file } = await params;

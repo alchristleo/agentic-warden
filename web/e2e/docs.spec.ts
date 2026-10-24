@@ -53,3 +53,34 @@ test("unknown docs page and unknown or traversing asset are 404", async ({ reque
   expect((await request.get("/docs-assets/no-such.gif")).status()).toBe(404);
   expect((await request.get("/docs-assets/..%2Fsite%2Findex.md")).status()).toBe(404);
 });
+
+test("a docs asset is served", async ({ request }) => {
+  const res = await request.get("/docs-assets/logo.svg");
+  expect(res.status()).toBe(200);
+  expect(res.headers()["content-type"]).toContain("image/svg+xml");
+});
+
+test("the current page is marked in the nav and the demo band shows once", async ({ page }) => {
+  await page.goto("/docs/quickstart");
+  const nav = page.getByRole("navigation", { name: "Docs" });
+  await expect(nav.locator("[aria-current='page']")).toHaveCount(1);
+  const band = page.locator("main aside").filter({ hasText: "Bring your rules." });
+  await expect(band).toHaveCount(1);
+  await expect(band.getByRole("link", { name: "Request a demo" })).toHaveAttribute("href", "/demo");
+});
+
+test.describe("mobile", () => {
+  test.use({ viewport: { width: 390, height: 844 } });
+
+  test("no horizontal overflow, Docs link in header, nav collapses", async ({ page }) => {
+    await page.goto("/docs/quickstart");
+    expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);
+    await expect(page.getByRole("banner").getByRole("link", { name: "Docs" })).toBeVisible();
+    const menu = page.getByText("Docs menu");
+    await expect(menu).toBeVisible();
+    const first = page.getByRole("navigation", { name: "Docs" }).getByRole("link").first();
+    await expect(first).toBeHidden();
+    await menu.click();
+    await expect(first).toBeVisible();
+  });
+});

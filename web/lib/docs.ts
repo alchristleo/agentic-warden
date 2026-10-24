@@ -67,11 +67,7 @@ export function navSections(docs: Doc[]) {
 }
 
 const ASSET_TYPES: Record<string, string> = {
-  png: "image/png",
   gif: "image/gif",
-  jpg: "image/jpeg",
-  jpeg: "image/jpeg",
-  webp: "image/webp",
   svg: "image/svg+xml",
 };
 
@@ -79,11 +75,14 @@ export const assetType = (file: string): string | undefined => ASSET_TYPES[file.
 
 /** Absolute path of an image in docs/assets, or null for anything that is not a plain image file name. */
 export function assetPath(file: string): string | null {
-  if (basename(file) !== file || file.startsWith(".") ||!assetType(file)) return null;
+  if (basename(file) !== file || file.startsWith(".") || !assetType(file)) return null;
   return join(ASSETS_DIR, file);
 }
 
-const escapeHtml = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+/** File names of every servable image in docs/assets. */
+export const assetFiles = (): string[] => readdirSync(ASSETS_DIR).filter((f) => assetPath(f) !== null);
+
+const escapeHtml = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 
 /** Pages link the GitHub way (./slug.md, ../assets/x.gif); the site serves them at /docs/slug and /docs-assets/x.gif. */
 function rewriteHref(href: string): string {
