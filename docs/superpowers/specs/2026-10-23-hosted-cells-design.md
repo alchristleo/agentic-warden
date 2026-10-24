@@ -150,7 +150,7 @@ Branch `hosted-cells` at `3ede3c8`, compared with base `7ba02b2`. Environment: O
 | 10 | full suite green on go.mod floor and on current Go | VERIFIED | Go 1.24.0: `go vet ./... && go test ./...` exit 0, last `ok` lines include `internal/store`. `GOTOOLCHAIN=go1.27.3 go vet ./... && go test ./... -count=1`: exit 0, 30 `ok` packages. Both runs without `AWD_TEST_DATABASE_URL`, so the Postgres tests were skipped there (row 5 covers them) |
 | 11 | manual first apply: `/readyz` 200 and `aw doctor` verified | INCONCLUSIVE | Manual step by the user on a real AWS account; not run (no account). By design |
 
-Result: 9 of 11 criteria VERIFIED, 2 INCONCLUSIVE (7 and 11). No criterion NOT VERIFIED. No timing criteria in this spec, so no base-versus-branch timing was measured.
+Result: 10 of 11 criteria VERIFIED, 1 INCONCLUSIVE (11; criterion 7 verified on PR #2 CI). No criterion NOT VERIFIED. No timing criteria in this spec, so no base-versus-branch timing was measured.
 
 ### Deviations and follow-ups
 
@@ -158,6 +158,6 @@ Result: 9 of 11 criteria VERIFIED, 2 INCONCLUSIVE (7 and 11). No criterion NOT V
 - Row 4: the red-before-lock run was not repeated; only the green run is recorded.
 - Row 7: the workflow itself has not run on GitHub.
 - Row 10: the `GOTOOLCHAIN` and floor runs did not set `AWD_TEST_DATABASE_URL`.
-- `docs/hosting/runbook.md` §10 says "the plan in step 5 updates the database URL secret", but §10 has no step 5. Not fixed here; the runbook is out of scope for this commit.
+- `docs/hosting/runbook.md` §10 says "the plan in step 5 updates the database URL secret", but §10 has no step 5. Fixed in cc3f759 (step numbers dropped).
 - The ECS `depends_on` ordering has no automated test (user decision, see Changes after review).
 - Row 11 remains the user's manual first apply.
