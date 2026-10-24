@@ -1,0 +1,18 @@
+# Step 6 was NOT run live. Claude Code cannot authenticate under a temp HOME:
+
+$ HOME=<temp> claude -p "say ok"        (cwd: payments-api, temp HOME with no ~/.claude)
+Not logged in · Please run /login
+
+The only credentials are the real ~/.claude ones, and the task forbids copying them or touching the
+real HOME. No Claude prompt was spent. The hand-recording script is docs/tapes/README.md,
+section "Recording the Claude clips".
+
+# Indirect evidence for step 6 (from capture.log): the settings `aw claude` passes via --settings.
+# payments-api (curl denied; .env denied):
+{ "allowManagedPermissionRulesOnly": true, "permissions": { "deny": [ "Read(./.env)", "Bash(curl *)" ] } }
+# sandbox (only .env denied):
+{ "allowManagedPermissionRulesOnly": true, "permissions": { "deny": [ "Read(./.env)" ] } }
+
+# `aw` passes args through ("Everything after the agent name is passed to the agent untouched",
+# cmd/aw/main.go usage), so `aw claude -p "run curl -sI https://example.com"` is the non-interactive form.
+# What Claude prints on refusal is UNMEASURED.
