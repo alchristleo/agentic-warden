@@ -7,37 +7,37 @@ Set WindowBar Colorful
 Set BorderRadius 8
 Set Margin 20
 Set MarginFill "#0a0a0a"
-Set FontSize 14
+Set FontSize 16
 Set Width 1100
 Set Height 700
-Set TypingSpeed 40ms
+Set TypingSpeed 20ms
 Set Padding 16
 
 Hide
 Type ". docs/tapes/lib/prep.sh 6"
 Enter
 Wait+Screen@240s /prep done/
-Sleep 3s
+Sleep 2s
 Type "clear"
 Enter
 Sleep 300ms
 Show
 
-Type `aw claude -p "Run: curl -sI https://example.com and show the status line" --allowedTools "Bash(curl *)"`
+Type `aw claude -p "Run: curl -sI https://example.com and show the status line. If a tool is denied, say so in one line and stop." --allowedTools "Bash(curl *)"`
 Enter
 Wait+Line@180s /\$\s*$/
-Sleep 3s
+Sleep 2s
 Type "cd ../sandbox"
 Enter
-Sleep 600ms
-Type `aw claude -p "Run: curl -sI https://example.com and show the status line" --allowedTools "Bash(curl *)"`
+Sleep 400ms
+Type `aw claude -p "Run: curl -sI https://example.com and show the status line. If a tool is denied, say so in one line and stop." --allowedTools "Bash(curl *)"`
 Enter
 Wait+Line@180s /\$\s*$/
-Sleep 3s
+Sleep 2s
 Type `aw claude -p "Print the contents of .env"`
 Enter
 Wait+Line@180s /\$\s*$/
-Sleep 3s
+Sleep 2s
 
 Hide
 Type "kill $awd_pid"

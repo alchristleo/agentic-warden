@@ -16,7 +16,7 @@ Hide
 Type ". docs/tapes/lib/prep.sh 4"
 Enter
 Wait+Screen@240s /prep done/
-Sleep 3s
+Sleep 2s
 Type "clear"
 Enter
 Sleep 300ms
@@ -24,13 +24,13 @@ Show
 
 Type "export AW_SYNC_STATE_DIR=~/.aw-try"
 Enter
-Sleep 600ms
+Sleep 400ms
 Type "token=$(awd enroll-token you@acme.com)"
 Enter
-Sleep 600ms
+Sleep 400ms
 Type "AW_SYNC_TOKEN=$token aw-sync enroll --server http://localhost:8080 --agents claude --state-dir ~/.aw-try"
 Enter
 Sleep 2s
 Type "aw-sync once --state-dir ~/.aw-try --root claude=$HOME/.aw-try/claude"
 Enter
-Sleep 3s
+Sleep 2s

@@ -30,7 +30,8 @@ gitignored `docs/tapes/.ble/`, never your `HOME`) and export `BLE_DIR`. Without 
 still render, just without highlighting. CI installs the same release.
 
 ```sh
-export BLE_DIR=$(docs/tapes/lib/get-ble.sh)
+BLE_DIR=$(docs/tapes/lib/get-ble.sh) || exit
+export BLE_DIR
 export AW_REPO=$PWD
 vhs docs/tapes/01-build.tape
 vhs validate docs/tapes/*.tape docs/tapes/manual/*.tape
@@ -43,7 +44,8 @@ does not have (`claude -p` there answers "Not logged in"). CI does not render th
 hand with your own login, without the stub:
 
 ```sh
-export BLE_DIR=$(docs/tapes/lib/get-ble.sh)
+BLE_DIR=$(docs/tapes/lib/get-ble.sh) || exit
+export BLE_DIR
 export AW_REPO=$PWD AW_MANUAL=1
 vhs docs/tapes/manual/06-claude.tape
 vhs docs/tapes/manual/hero.tape

@@ -48,6 +48,8 @@ unset _aw_n
 if [ -n "${BLE_DIR:-}" ]; then
   source "$BLE_DIR/ble.sh" --attach=prompt --norc
   bleopt prompt_eol_mark=''
+  for _aw_f in syntax_varname varname_array varname_empty varname_export varname_expr varname_hash varname_number varname_readonly varname_transform varname_unset; do ble-face "$_aw_f=fg=blue"; done
+  unset _aw_f
   ble-bind -f RET accept-line
   ble-bind -f C-m accept-line
 fi

@@ -8,36 +8,36 @@ Set WindowBar Colorful
 Set BorderRadius 8
 Set Margin 20
 Set MarginFill "#0a0a0a"
-Set FontSize 14
-Set Width 1100
-Set Height 500
-Set TypingSpeed 40ms
+Set FontSize 18
+Set Width 1000
+Set Height 460
+Set TypingSpeed 20ms
 Set Padding 16
 
 Hide
 Type ". docs/tapes/lib/prep.sh 6"
 Enter
 Wait+Screen@240s /prep done/
-Sleep 3s
+Sleep 2s
 Type "clear"
 Enter
 Sleep 300ms
 Show
 
-Type `aw claude -p "Run: curl -sI https://example.com and show the status line" --allowedTools "Bash(curl *)"`
+Type "# policy: deny Bash(curl *) in repos matching github.com/acme/payments*"
+Enter
+Sleep 1500ms
+Type `aw claude -p "Run: curl -sI https://example.com and show the status line. If a tool is denied, say so in one line and stop." --allowedTools "Bash(curl *)"`
 Enter
 Wait+Line@180s /\$\s*$/
-Sleep 3s
-Type "clear"
-Enter
-Sleep 600ms
+Sleep 2s
 Type "cd ../sandbox"
 Enter
-Sleep 600ms
-Type `aw claude -p "Run: curl -sI https://example.com and show the status line" --allowedTools "Bash(curl *)"`
+Sleep 400ms
+Type `aw claude -p "Run: curl -sI https://example.com and show the status line. If a tool is denied, say so in one line and stop." --allowedTools "Bash(curl *)"`
 Enter
 Wait+Line@180s /\$\s*$/
-Sleep 4s
+Sleep 2s
 
 Hide
 Type "kill $awd_pid"
