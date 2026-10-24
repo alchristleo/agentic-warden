@@ -167,3 +167,4 @@ T6 next: owner renders manual/06-claude + manual/hero
 T6 done cb51056 owner-approved coordinator render; frames checked, no leaks; 06 195KB hero 145KB
 PANEL correctness fix-needed (AC3: 2 must, 3 should claims; win color; BLE_DIR masked failure); CDO fix-first (hero lacks policy, Claude coaching bypass, Codex/Gemini advisory mismatch [2 seats -> must], small GIFs, diagram contrast). Dismissed: CDO "05 never shows colored doctor" (bare aw doctor at 05-doctor.tape:43, frame verified); rename var in 05 (commands must match quickstart). Owner: demo prompt gets one-line rule.
 FIX WAVE F1 README/quickstart, F2 diagram, F3 tapes, F4 Go
+FIX WAVE merged: F4 f31fb45, F1 de8ece9, F2 4c3d3f4, F3 445bb50; manual GIFs re-rendered (hero 27s, 06 33s; Claude latency keeps hero >15s). Next: scoped re-run of correctness (AC3) + CDO (AC11), budget tier; then spec-converge.
