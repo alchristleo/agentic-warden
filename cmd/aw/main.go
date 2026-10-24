@@ -224,6 +224,12 @@ func stateDirFor() string {
 	return sync.StateDir(runtime.GOOS)
 }
 
+// isEvaluationDir reports whether dir is not the default state dir, ignoring
+// trailing slashes and other spelling differences.
+func isEvaluationDir(dir string) bool {
+	return filepath.Clean(dir) != filepath.Clean(sync.StateDir(runtime.GOOS))
+}
+
 // compiledFor is the note every launch carries about its policy.
 func compiledFor(src policySource) string {
 	if src.Kind != "bundle" {
@@ -330,7 +336,7 @@ func doctor(registry *agent.Registry, opts options, args []string) error {
 
 	stateDir := stateDirFor()
 	out := report{Wrapper: "aw", Policy: src.String(), PolicyNote: src.Note, SyncStateDir: stateDir}
-	out.Evaluation = stateDir != sync.StateDir(runtime.GOOS)
+	out.Evaluation = isEvaluationDir(stateDir)
 	out.Sync, out.SyncError = syncSection(stateDir)
 	names := registry.Names()
 	if out.Sync != nil && out.Sync.Enrolled && len(out.Sync.Agents) > 0 {

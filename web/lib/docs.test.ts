@@ -2,7 +2,7 @@ import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { assetPath, docSlug, loadDocs, navSections, parseDoc, renderMarkdown } from "./docs";
+import { assetFiles, assetPath, docSlug, loadDocs, navSections, parseDoc, renderMarkdown } from "./docs";
 
 const page = (fm: string, body = "Body.") => `---\n${fm}\n---\n${body}\n`;
 
@@ -98,5 +98,16 @@ describe("assetPath", () => {
     expect(assetPath("notes.md")).toBeNull();
     expect(assetPath("../x.png")).toBeNull();
     expect(assetPath(".hidden.png")).toBeNull();
+    expect(assetPath("x.png")).toBeNull();
+  });
+
+  it("lists the servable images", () => {
+    expect(assetFiles()).toContain("logo.svg");
+  });
+});
+
+describe("renderMarkdown escaping", () => {
+  it("escapes double quotes in the fence language", () => {
+    expect(renderMarkdown('```a"b\nx\n```')).toContain('class="language-a&quot;b"');
   });
 });

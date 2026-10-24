@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -261,5 +262,15 @@ func TestQuickstartPolicyCompiles(t *testing.T) {
 		if got := perms["deny"]; !reflect.DeepEqual(got, c.want) {
 			t.Errorf("%s: deny = %v, want %v", c.repo, got, c.want)
 		}
+	}
+}
+
+func TestIsEvaluationDirComparesCleanPaths(t *testing.T) {
+	def := sync.StateDir(runtime.GOOS)
+	if isEvaluationDir(def + "/") {
+		t.Fatalf("default dir with a trailing slash is not an evaluation dir")
+	}
+	if !isEvaluationDir(t.TempDir()) {
+		t.Fatalf("a temp dir is an evaluation dir")
 	}
 }

@@ -22,6 +22,9 @@ export function SiteHeader() {
           </Link>
         </nav>
         <div className="ml-auto flex items-center gap-2">
+          <Link href={site.docsUrl} className="px-2 text-sm text-muted-foreground hover:text-foreground sm:hidden">
+            Docs
+          </Link>
           <ThemeToggle />
           <Link href="/demo" className={cn(buttonVariants({ size: "sm" }))}>
             Request demo
