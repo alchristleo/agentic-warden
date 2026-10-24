@@ -257,3 +257,4 @@ GIFs rendered 8b67b5e: 6 CI + 06-claude + hero (real login, ~/.aw-try removed, n
 AC11 recheck: ~230 claims, 9 unsupported (1 must email_verified missing-claim accepted; client-swap no admin needed; enroll --force moves pin; step6 evidence is aw claude not helper; doctor dir check; group case; macOS cache path; README fail-open scope; removal step). Fix dispatched sdd-implementer-lite
 AC11 fixes 99dc354 (sdd-implementer-lite); AC11 -> VERIFIED. Product gaps now 9 (+ email_verified missing claim accepted); design limit: own Claude Code client. Next: merge gate
 PR #3 opened 2d59186; waiting CI (AC5)
+PR #3 CI all green (docs x2, tapes, test x2); AC5 VERIFIED. Next: user merges PR, then AC3/AC13 unredirected recheck, retro
