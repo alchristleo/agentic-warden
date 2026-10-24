@@ -62,7 +62,7 @@ In `payments-api`, Claude Code refuses `curl` even when the command allows it, b
 
 ## What you get
 
-- **One policy for three agents.** One YAML file covers Claude Code, Codex and Gemini CLI ([write your first policy](docs/site/write-first-policy.md)).
+- **One policy for three agents.** One YAML file covers Claude Code (enforced) and Codex and Gemini CLI (advisory). See [write your first policy](docs/site/write-first-policy.md).
 - **Scoped by repository and by group.** Rules match a repository pattern or an identity-provider group, and groups can come from Okta or Entra ID ([rules for a group](docs/site/write-first-policy.md#rules-for-a-group)).
 - **Works offline.** `aw` compiles from the last synced bundle on local disk, so a stopped control plane leaves the policy in force ([quickstart step 7](docs/site/quickstart.md#7-change-the-rule-then-pull-the-plug)).
 - **Signed bundles.** When you configure a signing key, each machine enrolled after that pins the key it is given at enrollment (trust on first use, so enroll over TLS) and verifies an Ed25519 or AWS KMS signature before it parses the body. Signing detects tampering and cannot stop a root user ([security model](docs/site/security-model.md)).
