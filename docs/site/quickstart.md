@@ -289,7 +289,7 @@ compiles from the bundle on local disk:
 ```sh
 settings=$(aw doctor | sed -n 's/^  file: *//p')
 cat "$settings"
-aw-sync status
+aw-sync status --state-dir ~/.aw-try
 ```
 
 ```text
