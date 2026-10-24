@@ -35,6 +35,7 @@ import (
 	"github.com/alchristleo/agentic-warden/internal/repo"
 	"github.com/alchristleo/agentic-warden/internal/sync"
 	"github.com/alchristleo/agentic-warden/internal/termcolor"
+	"github.com/alchristleo/agentic-warden/internal/version"
 )
 
 const usage = `aw launches a coding agent with your organization's configuration applied.
@@ -43,6 +44,7 @@ Usage:
   aw [flags] <agent> [agent args...]   run an agent
   aw [flags] agents                    list the agents this binary can launch
   aw [flags] doctor [--json]           report what would run, without running it
+  aw version
   aw help
 
 Flags:
@@ -91,6 +93,9 @@ func run(argv []string) error {
 	switch command {
 	case "help", "-h", "--help":
 		fmt.Print(usage)
+		return nil
+	case "version":
+		fmt.Println(version.String())
 		return nil
 	case "agents":
 		for _, name := range registry.Names() {
