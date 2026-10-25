@@ -43,6 +43,7 @@ import (
 	"github.com/alchristleo/agentic-warden/internal/signing"
 	"github.com/alchristleo/agentic-warden/internal/signing/awskms"
 	"github.com/alchristleo/agentic-warden/internal/store"
+	"github.com/alchristleo/agentic-warden/internal/sync"
 	"github.com/alchristleo/agentic-warden/internal/termcolor"
 	"github.com/alchristleo/agentic-warden/internal/version"
 	"sigs.k8s.io/yaml"
@@ -363,6 +364,9 @@ func apply(argv []string) error {
 	if url == "" {
 		url = envOr("AWD_URL", "http://localhost:8080")
 	}
+	if err := sync.CheckTransport(url); err != nil {
+		return err
+	}
 
 	// Validating locally first means an author sees the problem with their
 	// file rather than a status code from a server.
@@ -478,6 +482,9 @@ func parseAdminArgs(argv []string) (adminArgs, error) {
 // adminRequest sends one authenticated request and returns the decoded
 // JSON body, or an error naming the status and the server's message.
 func adminRequest(method, url, path string, body any, out any) error {
+	if err := sync.CheckTransport(url); err != nil {
+		return err
+	}
 	var reader io.Reader
 	if body != nil {
 		encoded, err := json.Marshal(body)

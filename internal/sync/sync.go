@@ -107,6 +107,13 @@ func Run(ctx context.Context, cfg Config) Result {
 		cfg.audit(State{}, res)
 		return res
 	}
+	// An enrollment made over plain http to a remote host stops syncing
+	// rather than send its credential in the clear.
+	if err := CheckTransport(machine.Server); err != nil {
+		res := Result{Written: make([]string, 0), Err: err}
+		cfg.audit(State{}, res)
+		return res
+	}
 	state, err := LoadState(cfg.StateDir)
 	var notes []string
 	if err != nil {
