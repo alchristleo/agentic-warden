@@ -90,7 +90,7 @@ T4 review approve 2f1ac86 sdd-reviewer-lite fix round 1 pass
 T7 done da93f26 sdd-implementer docs+upgrading.md+inspect.go; also edited security-model, how-it-works, enforce-plain-claude; CONCERN Entra has no email_verified (uses xms_edov) — owner question
 T5b done bd00d7a sdd-implementer email check only for user claim email; xms_edov accepted (owner decision)
 T7+T5b review approve 551977e sdd-reviewer nits: doctor ignores explicit requireBundle; xms_edov-with-email source (in MS ref); threat-model path
-PANEL design skipped: 144 non-test Go lines (<300)
+PANEL design skipped 144 non-test Go lines (<300)
 PANEL security 32a14c3 must=1 should=1 nit=1
 SEAT panel-security pass 32a14c3 AC12
 SEAT panel-security pass 32a14c3 AC14
@@ -110,3 +110,14 @@ PANEL security 1569a22 must=0 should=0 nit=3 (re-run on fix diff 32a14c3..1569a2
 SEAT panel-security pass 1569a22 AC12
 SEAT panel-security pass 1569a22 AC14
 CONVERGE a5b1db4 spec-converge: AC1-12,14 VERIFIED; AC13 INCONCLUSIVE (owner approved wording; nav via front matter, not browser-run)
+PR #9 https://github.com/alchristleo/agentic-warden/pull/9 checks green (docs, test, dry-run)
+MERGED PR #9 3c71fe7; main..origin/security-hardening empty
+USAGE end 4 (second window; first window 61->93, paused at 95 guard)
+
+## Retro
+
+- **Numbers:** tasks=8 fix_rounds=1 coord=1 blocked=0 seats pass/fail=4/2 panel(must/should/nit)=[security 1/1/1; correctness 1/1/2; security re-run 0/0/3] triage=[fixed=4 dismissed=0 backlog=1] 5h=61%->93% (pause) + 0%->4%.
+- **Worked:** two seats independently caught the same must (key id trusted from server) and should (redirect bypass); per-task reviews missed both. Pre-mortem swapped store Seq for revisedAt before build.
+- **Waste:** AC13 ended INCONCLUSIVE only because the owner's yes was logged as `OWNER approve`, not the `SEAT owner pass` format spec-converge reads. `PANEL design skipped` is off-format for sdd-metrics.sh.
+- **Missed early:** Entra sends no `email_verified`; found in T7 docs, cost a spec revision (T5b). IdP-specific claims need a vendor-doc check at spec time.
+- **Applied (owner yes):** `SEAT owner pass` format for owner ACs; `PANEL <seat> skipped` format + lint; pre-mortem checks assumed vendor fields; asd-ste100 in implementer agents (eval: baseline 1 hard lint hit, with rule 0; Go error-style clause added). Logged in lean-sdd CHANGELOG.
