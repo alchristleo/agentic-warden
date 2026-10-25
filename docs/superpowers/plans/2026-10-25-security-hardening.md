@@ -61,6 +61,8 @@ Branch: `security-hardening`. Constraint for every task: no new env var or CLI f
 - Anti-RE integrity package → paid-skills milestone (short-lived signed skill bundles, per-buyer watermark).
 - Native TLS in awd.
 - Same-revision group-membership replay detection.
+- Repin before the revisedAt check, so a refused bundle carrying a rollover still moves the pin (panel-correctness nit; documented meanwhile).
+- Doctor `emptyEffect` should read explicit `requireBundle` (T7 review nit).
 
 ## Ledger
 
@@ -84,3 +86,11 @@ T4 review approve 2f1ac86 sdd-reviewer-lite fix round 1 pass
 T7 done da93f26 sdd-implementer docs+upgrading.md+inspect.go; also edited security-model, how-it-works, enforce-plain-claude; CONCERN Entra has no email_verified (uses xms_edov) — owner question
 T5b done bd00d7a sdd-implementer email check only for user claim email; xms_edov accepted (owner decision)
 T7+T5b review approve 551977e sdd-reviewer nits: doctor ignores explicit requireBundle; xms_edov-with-email source (in MS ref); threat-model path
+PANEL design skipped: 144 non-test Go lines (<300)
+PANEL security 32a14c3 must=1 should=1 nit=1
+SEAT panel-security pass 32a14c3 AC12
+SEAT panel-security pass 32a14c3 AC14
+PANEL correctness 32a14c3 must=1 should=1 nit=2
+SEAT panel-correctness fail 32a14c3 AC3
+SEAT panel-correctness fail 32a14c3 AC4
+TRIAGE fixed=4 dismissed=0 backlog=1
