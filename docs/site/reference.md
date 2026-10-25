@@ -17,7 +17,7 @@ On Linux or macOS, amd64 or arm64, this installs `aw`, `aw-policy`, `aw-sync` an
 curl -fsSL https://github.com/alchristleo/agentic-warden/releases/latest/download/install.sh | sh
 ```
 
-`install.sh` needs `curl`, `tar`, and `sha256sum` or `shasum`. It downloads the archive for your system and `checksums.txt` from the same release, checks the archive against its line in `checksums.txt`, and only then copies the four binaries. It never uses `sudo`. It writes nothing to `AW_BIN_DIR` unless the archive verified and all four binaries were staged. Only the final four renames can fail midway, which can leave a mix of old and new binaries.
+`install.sh` needs `curl`, `tar`, `sha256sum` or `shasum`, and standard POSIX tools. It downloads the archive for your system and `checksums.txt` from the same release, checks the archive against its line in `checksums.txt`, and only then copies the four binaries. It never uses `sudo`. It changes nothing in `AW_BIN_DIR` (beyond creating it) unless the archive verified and all four binaries were staged. Only the final four renames can fail midway, which can leave a mix of old and new binaries.
 
 | Variable | Purpose |
 |---|---|
@@ -36,10 +36,11 @@ curl -fsSL https://github.com/alchristleo/agentic-warden/releases/download/v0.1.
 Save the archive and `checksums.txt` from the same release in one directory, then run:
 
 ```sh
-sha256sum --ignore-missing -c checksums.txt
+sha256sum --ignore-missing -c checksums.txt   # Linux
+shasum -a 256 --ignore-missing -c checksums.txt   # macOS
 ```
 
-This proves the archive matches the checksum published in its release. It catches corruption and tampering in transit. It does not prove who built the archive, because whoever can replace the release can replace its checksums too.
+This proves the archive matches the checksum published in its release. It catches a corrupted download. It does not prove who built the archive, because whoever can replace the release can replace its checksums too.
 
 ```sh
 gh attestation verify agentic-warden_v0.1.0_linux_amd64.tar.gz -R alchristleo/agentic-warden
