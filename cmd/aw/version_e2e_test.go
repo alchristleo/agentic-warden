@@ -13,7 +13,7 @@ const versionVar = "github.com/alchristleo/agentic-warden/internal/version.Versi
 func buildVersioned(t *testing.T, ldflags string) string {
 	t.Helper()
 	bin := filepath.Join(t.TempDir(), "aw")
-	args := []string{"build", "-buildvcs=false", "-o", bin}
+	args := []string{"build", "-o", bin}
 	if ldflags != "" {
 		args = append(args, "-ldflags", ldflags)
 	}
