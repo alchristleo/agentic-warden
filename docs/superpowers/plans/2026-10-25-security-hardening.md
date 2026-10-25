@@ -75,3 +75,5 @@ T5 review approve c55226f sdd-reviewer 5 mutations caught
 T1 review approve 83034ea sdd-reviewer should: runbook:143 + README:91 → T7; nit bundle.go:20 rewrap
 T6 review approve 49c1d9c sdd-reviewer should: managed-settings README + README:89 → T7; inspect.go → T7 (T7 re-tiered to sdd-implementer)
 T3 review approve 108a0ca sdd-reviewer nits: redact URL userinfo in error (coord), groups case optional
+MERGE group1 ffd6daa go test ./... all ok
+T3 coord 0b91724 coordinator redact userinfo in CheckTransport error (+test)
