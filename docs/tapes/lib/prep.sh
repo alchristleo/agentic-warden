@@ -27,7 +27,7 @@ if [ "$_aw_n" -eq 1 ]; then
   # The installed version is v0.0.0-ci, which has no tag: the tape's clone comes from a tagged copy,
   # so that the visible "git checkout" succeeds.
   _aw_r git clone --bare "$AW_REPO" "$HOME/clone.git" && _aw_r git -C "$HOME/clone.git" tag v0.0.0-ci HEAD || return 1
-  export GIT_CONFIG_VALUE_0=$HOME/clone.git
+  export GIT_CONFIG_KEY_0="url.$HOME/clone.git.insteadOf"
   _aw_w=$HOME/web
   mkdir -p "$_aw_w/download/v0.0.0-ci" "$_aw_w/latest/download"
   for _aw_d in download/v0.0.0-ci latest/download; do cp "$HOME"/dist/* "$AW_REPO/install.sh" "$_aw_w/$_aw_d/"; done
