@@ -1132,8 +1132,7 @@ func (f *revisedFixture) twoRevisions(t *testing.T) *httptest.ResponseRecorder {
 func TestRunRefusesAnOlderRevision(t *testing.T) {
 	f := newRevisedFixture(t)
 	old := f.twoRevisions(t)
-	bundlePath := filepath.Join(f.cfg.StateDir, sync.BundleFile)
-	before := mustRead(t, bundlePath)
+	before := f.snapshot(t)
 
 	f.replay = old
 	res := sync.Run(context.Background(), f.cfg)
@@ -1141,11 +1140,70 @@ func TestRunRefusesAnOlderRevision(t *testing.T) {
 	if res.Err == nil || !strings.Contains(res.Err.Error(), "policy revision time 2026-09-20T12:00:00Z is older than last rendered 2026-09-20T12:01:00Z; apply the policy again on the control plane") {
 		t.Fatalf("err = %v, want the older-revision refusal", res.Err)
 	}
-	if got := mustRead(t, bundlePath); !bytes.Equal(got, before) {
-		t.Errorf("the bundle on disk changed:\n%s", got)
+	after := f.snapshot(t)
+	for path, content := range before {
+		if got, ok := after[path]; !ok || got != content {
+			t.Errorf("%s changed or vanished after the refusal", path)
+		}
+	}
+	for path := range after {
+		if _, ok := before[path]; !ok {
+			t.Errorf("%s appeared after the refusal", path)
+		}
 	}
 	if got := f.revisedAt(t); got != revisedT2 {
 		t.Errorf("state.RevisedAt = %d, want it unchanged at %d", got, revisedT2)
+	}
+}
+
+// snapshot reads every file under the state directory and the rendered root.
+// state.json and the audit log are left out: a refused cycle records its
+// error in them by design.
+func (f *revisedFixture) snapshot(t *testing.T) map[string]string {
+	t.Helper()
+	out := map[string]string{}
+	for _, dir := range []string{f.cfg.StateDir, f.cfg.Roots["claude"]} {
+		err := filepath.WalkDir(dir, func(path string, d os.DirEntry, err error) error {
+			if err != nil || d.IsDir() || d.Name() == sync.StateFile || d.Name() == sync.AuditFile {
+				return err
+			}
+			raw, err := os.ReadFile(path)
+			out[path] = string(raw)
+			return err
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	return out
+}
+
+// An unpinned machine has no signature to trust, so the revision time is not
+// checked: an older bundle is rendered. The stored value is still max(), so
+// it stays at the higher time it already held.
+func TestRunDoesNotCheckRevisedAtWithoutAPinnedKey(t *testing.T) {
+	f := newRevisedFixture(t)
+	old := f.twoRevisions(t)
+	machine, err := sync.LoadMachine(f.cfg.StateDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	machine.PublicKey, machine.KeyID = "", ""
+	if err := sync.SaveMachine(f.cfg.StateDir, machine); err != nil {
+		t.Fatal(err)
+	}
+
+	f.replay = old
+	res := sync.Run(context.Background(), f.cfg)
+
+	if res.Err != nil {
+		t.Fatalf("an unpinned machine refused an older revision: %v", res.Err)
+	}
+	if res.Version != "v1" {
+		t.Errorf("version = %q, want the older v1 rendered", res.Version)
+	}
+	if got := f.revisedAt(t); got != revisedT2 {
+		t.Errorf("state.RevisedAt = %d, want max() to keep %d", got, revisedT2)
 	}
 }
 
@@ -1157,11 +1215,8 @@ func TestRunAcceptsSameOrNewerRevision(t *testing.T) {
 	}
 	same := f.last
 
-	// The same revision served again, with a changed etag so the cycle renders.
+	// The same revision served again; the replayed 200 is rendered as is.
 	f.replay = same
-	if err := os.Remove(filepath.Join(f.cfg.StateDir, sync.BundleFile)); err != nil {
-		t.Fatal(err)
-	}
 	if res := sync.Run(context.Background(), f.cfg); res.Err != nil {
 		t.Fatalf("an equal revision time was refused: %v", res.Err)
 	}
