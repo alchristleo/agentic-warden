@@ -209,6 +209,15 @@ func TestConsoleSessionCanUseAdminAPIAndIsTheActor(t *testing.T) {
 	}
 }
 
+func TestConsoleSessionCanReadThePolicyPreview(t *testing.T) {
+	e := newConsole(t, admins)
+	e.login(t, "alice@example.com")
+	resp, err := e.browser.Get(e.srv.URL + "/v1/policy")
+	if err != nil || resp.StatusCode != http.StatusOK {
+		t.Fatalf("GET policy as console = %v %v", resp.StatusCode, err)
+	}
+}
+
 // TestConsoleIdPDownAtLoginIs503ThenRecovers proves retry-after-failure on
 // the same *sso.Client wired into a running console: discovery answers 503
 // once, via a proxy in front of the fake IdP, then succeeds. The same

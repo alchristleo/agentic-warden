@@ -193,7 +193,12 @@ func TestApplyingAPolicyThenFetchingItReturnsTheCompiledDocument(t *testing.T) {
 		t.Fatalf("apply exited %d: %s", code, out)
 	}
 
-	resp, err := http.Get(s.url + "/v1/policy?group=platform")
+	req, err := http.NewRequest(http.MethodGet, s.url+"/v1/policy?group=platform", nil)
+	if err != nil {
+		t.Fatalf("new request: %v", err)
+	}
+	req.Header.Set("Authorization", "Bearer "+e2eAdminToken)
+	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		t.Fatalf("GET policy: %v", err)
 	}

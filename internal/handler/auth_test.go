@@ -70,13 +70,14 @@ func TestBearerSchemeIsCaseInsensitive(t *testing.T) {
 	}
 }
 
-func TestReadingPolicyNeedsNoToken(t *testing.T) {
+func TestReadingPolicyNeedsAdmin(t *testing.T) {
 	srv := newServer(t)
 	applyBaseline(t, srv)
 
-	resp := get(t, srv, "/v1/policy", nil)
-
-	if resp.StatusCode != http.StatusOK {
-		t.Errorf("status = %d, want 200: the preview route stays open", resp.StatusCode)
+	if resp := get(t, srv, "/v1/policy", nil); resp.StatusCode != http.StatusUnauthorized {
+		t.Errorf("anonymous status = %d, want 401", resp.StatusCode)
+	}
+	if resp := getAdmin(t, srv, "/v1/policy", nil); resp.StatusCode != http.StatusOK {
+		t.Errorf("admin token status = %d, want 200", resp.StatusCode)
 	}
 }

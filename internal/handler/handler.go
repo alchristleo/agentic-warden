@@ -89,7 +89,7 @@ func (h *Handler) Routes() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /healthz", h.healthz)
 	mux.HandleFunc("GET /readyz", h.readyz)
-	mux.HandleFunc("GET /v1/policy", h.getPolicy)
+	mux.HandleFunc("GET /v1/policy", h.requireAdmin(h.getPolicy))
 	mux.HandleFunc("GET /v1/bundle", h.requireMachine(h.getBundle))
 	mux.HandleFunc("POST /v1/policy/revisions", h.requireAdmin(h.postRevision))
 	mux.HandleFunc("GET /v1/policy/revisions", h.requireAdmin(h.getRevisions))
