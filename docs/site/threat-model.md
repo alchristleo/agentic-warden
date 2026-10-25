@@ -100,6 +100,6 @@ Design-partner pilot. The trust statement, linked from [Trust statement](./trust
 
 ## Not covered here
 
-- The Claude Code, Codex and Gemini binaries themselves, and the model providers.
+- The Claude Code, Codex, Gemini and agy binaries themselves, and the model providers.
 - Prompt injection and what an agent does inside the rules it is allowed.
 - Root or administrator on the developer machine.

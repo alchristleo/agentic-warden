@@ -31,7 +31,7 @@ rules:
 
 - `name` identifies the rule.
 - `match` narrows who the rule applies to. A rule with no `match` block applies to everyone.
-- `agents` holds one block per agent: `claude`, `codex`, `gemini` or `agy`.
+- `agents` holds one block per agent: `claude`, `codex`, `gemini` (end of life) or `agy`.
 - `managed` is the machine-wide layer. For Claude it is the managed settings; for Codex it is
   `requirements.toml`; for Gemini it is the system settings and the admin policy; for agy it is the
   admin settings file.
@@ -103,9 +103,11 @@ rules:
 
 The model IDs are examples. Use the models your gateway serves, which `agy models` lists.
 
+agy renders only on machines enrolled with agy (`--agents ...,agy`). See the [aw-sync deploy guide](../../deploy/aw-sync/README.md).
+
 `managed` for agy is the admin settings file, so it applies to every developer on the machine.
 `awd apply` refuses a `launch` block for agy. Set `AGY_LLM_GATEWAY_API_KEY` on each developer machine, not in
-`env`. [How it works](./how-it-works.md) lists what agy does not enforce.
+`env`. aw does not distribute this key: issue it per developer at your gateway and set it through your usual secret or shell-profile channel. [How it works](./how-it-works.md) lists what agy does not enforce.
 
 ## How rules combine
 

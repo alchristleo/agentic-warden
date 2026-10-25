@@ -63,8 +63,10 @@ Its file is `/etc/antigravity/admin_settings.json`
 (`/Library/Application Support/Antigravity/admin_settings.json` on macOS,
 `%ProgramData%\Antigravity\admin_settings.json` on Windows). aw-sync owns the whole file. Each cycle
 overwrites it, including a file that Google's installer or MDM put there. Enroll `agy` only on a
-machine where aw-sync should own that file. A machine enrolled before this change keeps its stored
+machine where aw-sync should own that file. A machine enrolled before agy support keeps its stored
 agent list.
+
+> **Warning:** Re-enrolling without agy leaves `/etc/antigravity/admin_settings.json` in place. aw-sync stops updating it, and agy keeps reading it. Remove the file by hand. See [removing](../../docs/site/removing.md).
 
 `aw-sync` refuses an `http://` server unless the host is `localhost`, `127.0.0.0/8` or `::1`. Use an `https://` address. A token from a signing `awd` ends in the key id; `enroll` refuses a server that presents a different key. If it does, mint a new token from the server you mean to trust.
 

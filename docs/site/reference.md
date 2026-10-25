@@ -135,7 +135,7 @@ installed.
 | aw-sync state (`machine.json`, `state.json`, `aw-bundle.json`, audit log, lock) | `/var/lib/agent-wrapper` | `/Library/Application Support/agent-wrapper` | `%ProgramData%\agent-wrapper` |
 | Claude Code bundle and drop-in | `/etc/claude-code` | `/Library/Application Support/ClaudeCode` | `C:\Program Files\ClaudeCode` |
 | Codex `requirements.toml` | `/etc/codex` | `/etc/codex` | `%ProgramData%\OpenAI\Codex` |
-| Gemini `settings.json` and `policies/50-agent-wrapper.toml` | `/etc/gemini-cli` | `/Library/Application Support/GeminiCli` | `%ProgramData%\gemini-cli` |
+| Gemini CLI (end of life) `settings.json` and `policies/50-agent-wrapper.toml` | `/etc/gemini-cli` | `/Library/Application Support/GeminiCli` | `%ProgramData%\gemini-cli` |
 | agy `admin_settings.json`, opt-in | `/etc/antigravity` | `/Library/Application Support/Antigravity` | `%ProgramData%\Antigravity` |
 | Helper and sync binaries | `/usr/local/bin` | `/usr/local/bin` | `C:\Program Files\AgentWrapper` |
 
