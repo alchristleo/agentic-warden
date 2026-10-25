@@ -407,6 +407,17 @@ func TestConsoleUnverifiedEmailIs403(t *testing.T) {
 	}
 }
 
+func TestConsoleMissingEmailVerifiedIs403(t *testing.T) {
+	e := newConsole(t, admins)
+	e.idp.Set(func(p *oidctest.Provider) { p.Claims = map[string]any{"email_verified": nil} })
+	if cb := e.login(t, "alice@example.com"); cb.StatusCode != http.StatusForbidden {
+		t.Fatalf("status %d", cb.StatusCode)
+	}
+	if ev := e.auditActions(t); ev[0].Action != model.AuditLoginDenied || ev[0].Actor != "anonymous" {
+		t.Fatalf("audit = %+v", ev[0])
+	}
+}
+
 func TestConsoleMissingUserClaimIs403(t *testing.T) {
 	e := newConsole(t, admins)
 	e.idp.Set(func(p *oidctest.Provider) { p.Claims = map[string]any{"email": nil} })

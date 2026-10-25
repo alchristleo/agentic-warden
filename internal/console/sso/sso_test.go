@@ -3,6 +3,7 @@ package sso_test
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"io"
 	"net/http"
@@ -78,11 +79,37 @@ func TestLoginRejectsBadTokens(t *testing.T) {
 	}
 }
 
-func TestMissingEmailVerifiedIsAccepted(t *testing.T) {
-	p := oidctest.Serve(t)
-	p.Set(func(p *oidctest.Provider) { p.User = "a@x"; p.Claims = map[string]any{"email_verified": nil} })
-	if _, err := login(t, p, client(p, "")); err != nil {
-		t.Fatalf("err = %v", err)
+func TestEmailVerifiedParsingIsStrict(t *testing.T) {
+	cases := []struct {
+		name  string
+		value any // nil means the claim is omitted
+		ok    bool
+	}{
+		{"true", true, true},
+		{"string true", "true", true},
+		{"string TRUE", "TRUE", true},
+		{"false", false, false},
+		{"string false", "false", false},
+		{"null", json.RawMessage("null"), false},
+		{"number 1", 1, false},
+		{"string yes", "yes", false},
+		{"missing", nil, false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			p := oidctest.Serve(t)
+			p.Set(func(p *oidctest.Provider) {
+				p.User = "a@x"
+				p.Claims = map[string]any{"email_verified": tc.value}
+			})
+			_, err := login(t, p, client(p, ""))
+			if tc.ok && err != nil {
+				t.Fatalf("err = %v", err)
+			}
+			if !tc.ok && !errors.Is(err, sso.ErrUnverified) {
+				t.Fatalf("err = %v, want ErrUnverified", err)
+			}
+		})
 	}
 }
 
