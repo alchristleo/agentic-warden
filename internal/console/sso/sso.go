@@ -144,7 +144,9 @@ func (c *Client) Finish(ctx context.Context, a Attempt, code string) (string, er
 	if err := idt.Claims(&claims); err != nil {
 		return "", fmt.Errorf("%w: %v", ErrInvalidToken, err)
 	}
-	if !truthy(claims["email_verified"]) {
+	// The verification claims attest the email only. Entra ID cannot send
+	// email_verified; its equivalent is the optional claim xms_edov.
+	if c.cfg.UserClaim == "email" && !truthy(claims["email_verified"]) && !truthy(claims["xms_edov"]) {
 		return "", ErrUnverified
 	}
 	user, _ := claims[c.cfg.UserClaim].(string)

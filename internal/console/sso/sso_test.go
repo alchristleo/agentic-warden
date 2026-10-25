@@ -198,3 +198,41 @@ func TestAttemptRoundTrip(t *testing.T) {
 		}
 	}
 }
+
+func TestXmsEdovCountsAsVerified(t *testing.T) {
+	cases := []struct {
+		name string
+		set  map[string]any
+		ok   bool
+	}{
+		{"xms_edov true", map[string]any{"email_verified": nil, "xms_edov": true}, true},
+		{"xms_edov string true", map[string]any{"email_verified": nil, "xms_edov": "true"}, true},
+		{"xms_edov false", map[string]any{"email_verified": nil, "xms_edov": false}, false},
+		{"xms_edov number 1", map[string]any{"email_verified": nil, "xms_edov": 1}, false},
+		{"neither claim", map[string]any{"email_verified": nil}, false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			p := oidctest.Serve(t)
+			p.Set(func(p *oidctest.Provider) { p.User = "a@x"; p.Claims = tc.set })
+			_, err := login(t, p, client(p, "email"))
+			if tc.ok && err != nil {
+				t.Fatalf("err = %v", err)
+			}
+			if !tc.ok && !errors.Is(err, sso.ErrUnverified) {
+				t.Fatalf("err = %v, want ErrUnverified", err)
+			}
+		})
+	}
+}
+
+func TestNonEmailUserClaimSkipsEmailVerified(t *testing.T) {
+	p := oidctest.Serve(t)
+	p.Set(func(p *oidctest.Provider) {
+		p.User = "alice@example.com"
+		p.Claims = map[string]any{"email_verified": nil, "preferred_username": "alice@corp"}
+	})
+	if user, err := login(t, p, client(p, "preferred_username")); err != nil || user != "alice@corp" {
+		t.Fatalf("preferred_username without email_verified → %q, %v", user, err)
+	}
+}

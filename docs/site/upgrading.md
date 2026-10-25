@@ -25,15 +25,18 @@ Fix: apply the policy once on the control plane (`awd apply`). A new apply gets 
 
 Evidence: `TestBundleCarriesRevisedAt`, `TestRollbackApplyMovesRevisedAtForward` in `internal/handler/bundle_test.go`; `TestRunRefusesAnOlderRevision`, `TestRunRefusesMissingRevisedAtOnceStored` in `internal/sync/sync_test.go`; `TestForceReenrollResetsRevisedAt` in `cmd/aw-sync/e2e_test.go`.
 
-## 3. SSO needs an `email_verified` claim
+## 3. SSO checks that the email is verified
 
-The console sign-in now refuses an ID token with no `email_verified` claim (403). Only JSON `true` or the string `"true"` counts as verified. Microsoft Entra ID does not send the claim by default, so Entra admins are locked out of the console until you add it.
+When `AWD_CONSOLE_USER_CLAIM` is `email` (the default), the console sign-in refuses an ID token unless `email_verified` or `xms_edov` is JSON `true` or the string `"true"` (403). Other user claims are not checked, because the IdP controls them.
 
-Fix for Entra: in the app registration, open Token configuration, choose Add optional claim, pick the ID token type and add `email_verified`. Add the claim before you upgrade.
+Microsoft Entra ID cannot send `email_verified`. Its equivalent is the optional claim `xms_edov`, which Entra only sends together with `email`.
+
+- Entra with `AWD_CONSOLE_USER_CLAIM=preferred_username` (the documented setup): no change.
+- Entra with `email`: in the app registration, open Token configuration, choose Add optional claim, pick the ID token type and add `xms_edov` (and `email`). The portal may flag `xms_edov` as unrecognized; that is expected. Add the claim before you upgrade, or switch to `preferred_username`.
 
 Workaround if you are locked out: the admin token still works. Use it to run `awd` commands and the API while you fix the IdP.
 
-Evidence: `TestConsoleMissingEmailVerifiedIs403`, `TestConsoleUnverifiedEmailIs403` in `internal/handler/console_test.go`; `TestEmailVerifiedParsingIsStrict` in `internal/console/sso/sso_test.go`.
+Evidence: `TestXmsEdovCountsAsVerified`, `TestNonEmailUserClaimSkipsEmailVerified` in `internal/console/sso/sso_test.go`; `TestConsoleMissingEmailVerifiedIs403`, `TestConsoleUnverifiedEmailIs403` in `internal/handler/console_test.go`; `TestEmailVerifiedParsingIsStrict` in `internal/console/sso/sso_test.go`.
 
 ## 4. `aw-policy` fails closed when a key is pinned
 
