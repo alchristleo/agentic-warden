@@ -2,12 +2,16 @@
 # Usage: release-build.sh <version> <outdir>
 # Builds aw, aw-policy, aw-sync and awd for linux/darwin x amd64/arm64 (static, version-stamped),
 # packs one agentic-warden_<version>_<os>_<arch>.tar.gz per target and writes checksums.txt
-# (sha256sum format) in <outdir>. Refuses a version not matching ^v[0-9] and a non-empty outdir.
+# (sha256sum format) in <outdir>. Refuses a version not matching ^v[0-9][0-9A-Za-z._+-]*$ and a non-empty outdir.
 set -euo pipefail
 
 version=${1:?usage: release-build.sh <version> <outdir>}
 outdir=${2:?usage: release-build.sh <version> <outdir>}
-[[ $version =~ ^v[0-9] ]] || { echo "release-build: version must match ^v[0-9], got '$version'" >&2; exit 1; }
+[[ $version =~ ^v[0-9][0-9A-Za-z._+-]*$ ]] || { echo "release-build: version must match ^v[0-9][0-9A-Za-z._+-]*\$, got '$version'" >&2; exit 1; }
+if [[ -e $outdir && ! -d $outdir ]]; then
+  echo "release-build: outdir '$outdir' is not a directory" >&2
+  exit 1
+fi
 if [[ -d $outdir && -n $(ls -A "$outdir") ]]; then
   echo "release-build: outdir '$outdir' is not empty" >&2
   exit 1

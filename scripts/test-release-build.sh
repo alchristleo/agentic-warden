@@ -41,6 +41,16 @@ grep -qx 'env-overrides=off' <<<"$bi" || fail "build-info lacks env-overrides=of
 grep -qx "version $ver" <<<"$bi" || fail "build-info lacks 'version $ver': $bi"
 [[ $("$tmp/x/linux_amd64/aw" version) == "$ver" ]] || fail "aw version is not $ver"
 
-if "$here/release-build.sh" 0.1.0 "$tmp/bad" 2>/dev/null; then fail "version 0.1.0 accepted"; fi
+mkdir "$tmp/rtmp"
+for v in 0.1.0 'v1 x' 'v1/../x' 'v1 -X a.b=c' 'v1
+x'; do
+  if TMPDIR=$tmp/rtmp "$here/release-build.sh" "$v" "$tmp/bad" 2>/dev/null; then fail "version '$v' accepted"; fi
+  [[ ! -e $tmp/bad ]] || fail "outdir left behind after rejecting '$v'"
+  [[ -z $(ls -A "$tmp/rtmp") ]] || fail "temp dir left behind after rejecting '$v'"
+done
+
+: >"$tmp/afile"
+err=$("$here/release-build.sh" v1.0.0 "$tmp/afile" 2>&1) && fail "outdir that is a file accepted"
+[[ $err == *"not a directory"* ]] || fail "outdir-is-file error unclear: $err"
 
 echo "ok: release build"
