@@ -1,13 +1,14 @@
 // Package managed validates the document aw-sync renders for agy: the
 // admin_settings.json object itself, {gateway, caCertPath, models}. The
-// checks are a dated allowlist of keys at every level, no secret in the
-// policy, and the value rules agy would otherwise fail on at startup.
+// checks are a dated, typo-catching allowlist of keys at every level, no
+// secret in the policy, and per-field value rules.
 package managed
 
 import (
 	"fmt"
 	"net/url"
 	"regexp"
+	"slices"
 	"sort"
 	"strings"
 )
@@ -17,8 +18,13 @@ import (
 // header innocently, and the docs say so.
 var secretHeader = regexp.MustCompile(`(?i)auth|key|token|secret|cookie|password`)
 
+// secretValuePrefixes start a customHeaders value that is a credential: an
+// auth scheme or a Google API key.
+var secretValuePrefixes = []string{"Bearer ", "Basic ", "AIza"}
+
 // Validate reports whether doc can be rendered as agy's admin_settings.json.
-// A nil or empty document is valid and renders to {}.
+// A nil or empty document is valid and renders to {}. Every check looks at one
+// field alone, so rules that are valid one at a time stay valid once merged.
 func Validate(doc map[string]any) error {
 	if err := checkKeys(doc, topKeys, "document"); err != nil {
 		return err
@@ -52,7 +58,7 @@ func Validate(doc map[string]any) error {
 // rules aimed at agy and ignores every other agent, whose format it does not
 // know.
 func ForAgent(agentName string, doc map[string]any) error {
-	if agentName != "agy" || doc == nil {
+	if agentName != "agy" {
 		return nil
 	}
 	return Validate(doc)
@@ -70,21 +76,20 @@ func validateGateway(g map[string]any) error {
 			return fmt.Errorf("managed: gateway.enabled must be true or false, not %T", raw)
 		}
 	}
-	rawURL, hasURL := g["url"]
-	if hasURL {
+	if rawURL, ok := g["url"]; ok {
 		s, isStr := rawURL.(string)
 		u, err := url.Parse(s)
 		if !isStr || err != nil || u.Scheme != "https" || u.Host == "" {
 			return fmt.Errorf("managed: gateway.url must be an https URL, not %v", rawURL)
 		}
-	}
-	if enabled, _ := g["enabled"].(bool); enabled && !hasURL {
-		return fmt.Errorf("managed: gateway.enabled is true but gateway.url is missing")
+		if u.User != nil || u.RawQuery != "" || u.Fragment != "" {
+			return fmt.Errorf("managed: gateway.url must not carry userinfo, a query or a fragment: they hold secrets")
+		}
 	}
 	if raw, ok := g["wireProtocol"]; ok {
 		s, _ := raw.(string)
-		if i := sort.SearchStrings(WireProtocols, s); i == len(WireProtocols) || WireProtocols[i] != s {
-			return fmt.Errorf("managed: gateway.wireProtocol must be one of %s, not %v", strings.Join(WireProtocols, ", "), raw)
+		if !slices.Contains(wireProtocols, s) {
+			return fmt.Errorf("managed: gateway.wireProtocol must be one of %s, not %v", strings.Join(wireProtocols, ", "), raw)
 		}
 	}
 	if raw, ok := g["customHeaders"]; ok {
@@ -96,8 +101,14 @@ func validateGateway(g map[string]any) error {
 			if secretHeader.MatchString(name) {
 				return fmt.Errorf("managed: gateway.customHeaders %q looks like a credential and does not belong in policy; set AGY_LLM_GATEWAY_API_KEY in each developer's environment", name)
 			}
-			if _, isStr := v.(string); !isStr {
+			val, isStr := v.(string)
+			if !isStr {
 				return fmt.Errorf("managed: gateway.customHeaders %q must be a string, not %T", name, v)
+			}
+			for _, prefix := range secretValuePrefixes {
+				if len(val) >= len(prefix) && strings.EqualFold(val[:len(prefix)], prefix) {
+					return fmt.Errorf("managed: gateway.customHeaders %q value looks like a credential and does not belong in policy; set AGY_LLM_GATEWAY_API_KEY in each developer's environment", name)
+				}
 			}
 		}
 	}
@@ -108,14 +119,14 @@ func validateModels(m map[string]any) error {
 	if err := checkKeys(m, modelsKeys, "models"); err != nil {
 		return err
 	}
-	ids := map[string]bool{}
-	hasList := false
 	if raw, ok := m["list"]; ok {
 		list, isList := raw.([]any)
 		if !isList {
 			return fmt.Errorf("managed: models.list must be a list, not %T", raw)
 		}
-		hasList = true
+		if len(list) == 0 {
+			return fmt.Errorf("managed: models.list must not be empty")
+		}
 		for i, entry := range list {
 			where := fmt.Sprintf("models.list[%d]", i)
 			e, isObj := entry.(map[string]any)
@@ -125,11 +136,9 @@ func validateModels(m map[string]any) error {
 			if err := checkKeys(e, modelKeys, where); err != nil {
 				return err
 			}
-			id, _ := e["modelId"].(string)
-			if id == "" {
+			if id, _ := e["modelId"].(string); id == "" {
 				return fmt.Errorf("managed: %s.modelId must be a non-empty string", where)
 			}
-			ids[id] = true
 		}
 	}
 	if raw, ok := m["defaultModelId"]; ok {
@@ -137,19 +146,16 @@ func validateModels(m map[string]any) error {
 		if id == "" {
 			return fmt.Errorf("managed: models.defaultModelId must be a non-empty string")
 		}
-		if hasList && !ids[id] {
-			return fmt.Errorf("managed: models.defaultModelId %q is not in models.list", id)
-		}
 	}
 	return nil
 }
 
-// checkKeys rejects every key of obj that is not in allowed (sorted). where
+// checkKeys rejects every key of obj that is not in allowed. where
 // names the object in the error.
 func checkKeys(obj map[string]any, allowed []string, where string) error {
 	var unknown []string
 	for key := range obj {
-		if i := sort.SearchStrings(allowed, key); i == len(allowed) || allowed[i] != key {
+		if !slices.Contains(allowed, key) {
 			unknown = append(unknown, key)
 		}
 	}
@@ -161,7 +167,7 @@ func checkKeys(obj map[string]any, allowed []string, where string) error {
 	for i, k := range unknown {
 		q[i] = fmt.Sprintf("%q", k)
 	}
-	return fmt.Errorf("managed: unknown key(s) %s in %s; the allowlist is from Google's reference as of %s", strings.Join(q, ", "), where, KeysAsOf)
+	return fmt.Errorf("managed: unknown key(s) %s in %s; aw rejects unknown keys to catch typos (agy would ignore them silently), and the allowlist is from Google's reference as of %s", strings.Join(q, ", "), where, KeysAsOf)
 }
 
 // isWindowsAbs accepts a drive-letter path, which the Windows admin file

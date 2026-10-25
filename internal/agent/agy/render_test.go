@@ -108,3 +108,16 @@ func TestRenderRejectsAnInvalidDocument(t *testing.T) {
 		t.Errorf("err = %v, want one naming bogus", err)
 	}
 }
+
+func TestRenderSucceedsWhenMergedRulesBreakACrossFieldPair(t *testing.T) {
+	a := agyRule("a", nil, map[string]any{"models": map[string]any{
+		"defaultModelId": "a",
+		"list":           []any{map[string]any{"modelId": "a"}, map[string]any{"modelId": "b"}},
+	}})
+	b := agyRule("b", nil, map[string]any{"models": map[string]any{
+		"list": []any{map[string]any{"modelId": "b"}},
+	}})
+	if _, err := agy.New().Render(&policy.Bundle{Version: "v1", Rules: []policy.Rule{a, b}}); err != nil {
+		t.Fatalf("Render = %v, want nil", err)
+	}
+}

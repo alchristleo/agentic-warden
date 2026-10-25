@@ -8,8 +8,9 @@ package managed
 const KeysAsOf = "2026-10-26"
 
 // Documented keys of admin_settings.json, by object. Only these are valid at
-// each level: agy reads the file with unknown fields refused, so a typo
-// would otherwise fail on every developer machine instead of at apply time.
+// each level. The allowlist catches typos and is stricter than agy: agy
+// silently ignores unknown keys (spec T1), so a typo such as "gatway" would
+// drop the control on every machine with no error.
 var (
 	topKeys     = []string{"caCertPath", "gateway", "models"}
 	gatewayKeys = []string{"apiKey", "customHeaders", "enabled", "url", "wireProtocol"}
@@ -17,5 +18,5 @@ var (
 	modelKeys   = []string{"modelId"}
 )
 
-// WireProtocols are the documented values of gateway.wireProtocol.
-var WireProtocols = []string{"genai", "openai"}
+// wireProtocols are the documented values of gateway.wireProtocol.
+var wireProtocols = []string{"genai", "openai"}

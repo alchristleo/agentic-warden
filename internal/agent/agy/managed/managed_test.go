@@ -76,9 +76,14 @@ func TestValidateRejects(t *testing.T) {
 		{"Cookie header", `{"gateway": {"customHeaders": {"Cookie": "x"}}}`, "Cookie"},
 		{"wireProtocol grpc", `{"gateway": {"wireProtocol": "grpc"}}`, "wireProtocol"},
 		{"http url", `{"gateway": {"url": "http://gw.example.com"}}`, "https"},
-		{"enabled without url", `{"gateway": {"enabled": true}}`, "url"},
+		{"url with userinfo", `{"gateway": {"url": "https://u:p@gw.example.com"}}`, "gateway.url"},
+		{"url with query", `{"gateway": {"url": "https://gw.example.com/?k=v"}}`, "gateway.url"},
+		{"url with fragment", `{"gateway": {"url": "https://gw.example.com/#f"}}`, "gateway.url"},
+		{"Bearer header value", `{"gateway": {"customHeaders": {"X-A": "bearer abc"}}}`, "X-A"},
+		{"Basic header value", `{"gateway": {"customHeaders": {"X-A": "Basic abc"}}}`, "X-A"},
+		{"AIza header value", `{"gateway": {"customHeaders": {"X-A": "AIzaSyX"}}}`, "X-A"},
+		{"empty model list", `{"models": {"list": []}}`, "models.list"},
 		{"relative caCertPath", `{"caCertPath": "ca.pem"}`, "caCertPath"},
-		{"default not in list", `{"models": {"defaultModelId": "c", "list": [{"modelId": "a"}]}}`, "defaultModelId"},
 		{"empty modelId", `{"models": {"list": [{"modelId": ""}]}}`, "modelId"},
 		{"list not array", `{"models": {"list": "a"}}`, "list"},
 		{"header value not string", `{"gateway": {"customHeaders": {"X-A": 1}}}`, "X-A"},
@@ -93,6 +98,17 @@ func TestValidateRejects(t *testing.T) {
 				t.Errorf("err = %v, want it to contain %q", err, tt.want)
 			}
 		})
+	}
+}
+
+func TestValidateChecksEachFieldAlone(t *testing.T) {
+	for _, raw := range []string{
+		`{"gateway": {"enabled": true}}`,
+		`{"models": {"defaultModelId": "c", "list": [{"modelId": "a"}]}}`,
+	} {
+		if err := managed.Validate(decode(t, raw)); err != nil {
+			t.Errorf("%s: %v", raw, err)
+		}
 	}
 }
 

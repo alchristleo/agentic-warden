@@ -23,7 +23,6 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
-	"slices"
 	"strings"
 	"text/tabwriter"
 	"time"
@@ -117,10 +116,6 @@ func newRegistry() (*agent.Registry, error) {
 	return reg, nil
 }
 
-// optIn lists the renderable adapters a default enroll leaves out. agy owns
-// the whole admin file once synced, so a machine asks for it with --agents.
-var optIn = []string{agy.Name}
-
 // renderable lists the registered adapters that render files.
 func renderable(reg *agent.Registry) []string {
 	out := make([]string, 0)
@@ -182,7 +177,14 @@ func enroll(argv []string, stdout io.Writer, on bool) error {
 	if err != nil {
 		return err
 	}
-	selected := defaultAgents(reg)
+	// agy owns the whole admin file once synced, so a machine asks for it
+	// with --agents and a default enroll leaves it out.
+	var selected []string
+	for _, name := range renderable(reg) {
+		if name != agy.Name {
+			selected = append(selected, name)
+		}
+	}
 	if *agents != "" {
 		selected = strings.Split(*agents, ",")
 		for i, a := range selected {
@@ -514,15 +516,4 @@ func privilegeHint(err error, command string) error {
 		return fmt.Errorf("%w (run as root: sudo aw-sync %s)", err, command)
 	}
 	return err
-}
-
-// defaultAgents is the renderable adapters minus the opt-in set.
-func defaultAgents(reg *agent.Registry) []string {
-	out := make([]string, 0)
-	for _, name := range renderable(reg) {
-		if !slices.Contains(optIn, name) {
-			out = append(out, name)
-		}
-	}
-	return out
 }

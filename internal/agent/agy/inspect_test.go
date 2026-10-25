@@ -51,12 +51,15 @@ func TestInspectErrorsOnUnparseableJSON(t *testing.T) {
 	}
 }
 
-func TestInspectErrorsWhenValidateFails(t *testing.T) {
+func TestInspectWarnsWhenValidateFails(t *testing.T) {
 	a := inspected(t)
 	write(t, filepath.Join(a.SystemDir, agy.AdminFile), `{"bogus":1}`)
 	f := a.Inspect([]string{quiet})
-	if !findingsWith(f, agent.Error, "bogus") {
+	if !findingsWith(f, agent.Warn, "does not pass aw's policy checks (agy may still accept it)") || !findingsWith(f, agent.Warn, "bogus") {
 		t.Errorf("findings %v", f)
+	}
+	if findingsWith(f, agent.Error, "") {
+		t.Errorf("findings %v hold an error for a parseable file", f)
 	}
 }
 
@@ -99,17 +102,5 @@ func TestInspectWarnsWhenTheGatewayIsOnWithoutAnAPIKey(t *testing.T) {
 	f = gatewayOn(t).Inspect([]string{quiet, "AGY_LLM_GATEWAY_API_KEY=k"})
 	if findingsWith(f, agent.Warn, "no API key") {
 		t.Errorf("findings %v warn despite a key", f)
-	}
-}
-
-func TestInspectNotesThatTheAdminFileOutranksGatewayEnv(t *testing.T) {
-	f := gatewayOn(t).Inspect([]string{quiet, "AGY_LLM_GATEWAY_PROXY_URL=http://p"})
-	if !findingsWith(f, agent.OK, "AGY_LLM_GATEWAY_PROXY_URL is set: the admin file outranks it") {
-		t.Errorf("findings %v", f)
-	}
-	// The API key variable is the developer's own credential, not an override.
-	f = gatewayOn(t).Inspect([]string{quiet, "AGY_LLM_GATEWAY_API_KEY=k"})
-	if findingsWith(f, agent.OK, "outranks") {
-		t.Errorf("findings %v note the API key as overridden", f)
 	}
 }

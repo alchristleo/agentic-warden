@@ -117,11 +117,12 @@ func (a *Adapter) Inspect(env []string) []agent.Finding {
 		return []agent.Finding{{Level: agent.Error,
 			Message: fmt.Sprintf("%s is not valid JSON, so agy ignores it: %v", path, err)}}
 	}
+	var findings []agent.Finding
 	if err := managed.Validate(doc); err != nil {
-		return []agent.Finding{{Level: agent.Error, Message: fmt.Sprintf("%s is invalid: %v", path, err)}}
+		findings = append(findings, agent.Finding{Level: agent.Warn,
+			Message: fmt.Sprintf("%s does not pass aw's policy checks (agy may still accept it): %v", path, err)})
 	}
 
-	var findings []agent.Finding
 	revision, revErr := os.ReadFile(path + ".aw-revision")
 	if revErr != nil {
 		findings = append(findings, agent.Finding{Level: agent.Warn,
@@ -135,13 +136,6 @@ func (a *Adapter) Inspect(env []string) []agent.Finding {
 		if enabled, _ := g["enabled"].(bool); enabled && envValue(env, gatewayKeyEnv) == "" {
 			findings = append(findings, agent.Finding{Level: agent.Warn,
 				Message: gatewayKeyEnv + " is not set: agy sends gateway requests with no API key"})
-		}
-	}
-	for _, e := range env {
-		name, _, _ := strings.Cut(e, "=")
-		if strings.HasPrefix(name, "AGY_LLM_GATEWAY_") && name != gatewayKeyEnv {
-			findings = append(findings, agent.Finding{Level: agent.OK,
-				Message: name + " is set: the admin file outranks it"})
 		}
 	}
 	return findings
