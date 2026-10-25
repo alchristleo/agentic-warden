@@ -59,3 +59,4 @@ T2 coord fb40e5d test rows Windows caCertPath (mutation-checked) + defaultModelI
 T1 done 945c96c sdd-implementer probe 10 cases; {} ok (D5 settled); bad JSON ignored silently; unknown keys ignored; no-key = no auth header, not error (D7 reword)
 COORD review approve fb40e5d sdd-reviewer-lite T2 test rows; nits lowercase drive, len guard
 T1 review approve 945c96c sdd-reviewer re-ran golden probe; should D7 reword; nit ad-hoc cases not saved
+T1 coord 30f1fd6 spec D5 settled, D7 no-key warn wording + unparseable note
