@@ -79,3 +79,6 @@ MERGE group1 ffd6daa go test ./... all ok
 T3 coord 0b91724 coordinator redact userinfo in CheckTransport error (+test)
 T4 done 3d445ec sdd-implementer revisedAt; old aw-policy/aw-sync tolerate field (plain Unmarshal; strict only on aw-policy config, checked by coordinator)
 T4 review approve 3d445ec sdd-reviewer should: no unpinned-skip test; nits: snapshot all files, stale comment → fix round 1
+T4 fix 2f1ac86 sdd-implementer unpinned-skip test + full snapshot + comment
+T4 review approve 2f1ac86 sdd-reviewer-lite fix round 1 pass
+T7 done da93f26 sdd-implementer docs+upgrading.md+inspect.go; also edited security-model, how-it-works, enforce-plain-claude; CONCERN Entra has no email_verified (uses xms_edov) — owner question
