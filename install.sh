@@ -38,7 +38,11 @@ else
 fi
 
 tmp=$(mktemp -d "${TMPDIR:-/tmp}/aw-install.XXXXXX")
-trap 'rm -rf "$tmp"' EXIT INT TERM
+cleanup() {
+  rm -rf "$tmp"
+  for c in aw aw-policy aw-sync awd; do rm -f "$bindir/.$c.new.$$"; done
+}
+trap cleanup EXIT INT TERM
 
 fetch() { curl -fsSL -o "$2" "$1" || die "download failed: $1"; }
 
@@ -61,7 +65,6 @@ done
 mkdir -p "$bindir" || die "cannot create $bindir"
 for b in aw aw-policy aw-sync awd; do
   if ! { cp "$tmp/x/$b" "$bindir/.$b.new.$$" && chmod 755 "$bindir/.$b.new.$$"; }; then
-    for c in aw aw-policy aw-sync awd; do rm -f "$bindir/.$c.new.$$"; done
     die "cannot stage $bindir/$b; nothing was installed"
   fi
 done
