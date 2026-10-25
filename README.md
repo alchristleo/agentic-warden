@@ -94,16 +94,19 @@ You run `awd` yourself and hold the signing key. A hosted design-partner pilot a
 
 ## Try it
 
-These are the first 4 of the 7 [quickstart](docs/site/quickstart.md) steps. They need Linux or macOS, Go 1.24 or newer, and git, and write nothing under `/etc`. Steps 5 to 7 add the refusal you saw above and need the `claude` CLI installed and logged in.
+These are the first 4 of the 7 [quickstart](docs/site/quickstart.md) steps. They need Linux or macOS, git and curl, and write nothing under `/etc`. Steps 5 to 7 add the refusal you saw above and need the `claude` CLI installed and logged in.
 
-**1. Build the four binaries**
+**1. Install the four binaries**
 
 ```sh
 git clone https://github.com/alchristleo/agentic-warden.git
 cd agentic-warden
-go build -o bin/ ./cmd/...
-export PATH=$PWD/bin:$PATH
-ls bin
+REL=https://github.com/alchristleo/agentic-warden/releases
+curl -fsSL $REL/latest/download/install.sh \
+  | sh
+export PATH="$HOME/.local/bin:$PATH"
+aw version
+ls ~/.local/bin
 ```
 
 You should see:
