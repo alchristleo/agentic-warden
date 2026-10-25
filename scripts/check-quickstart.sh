@@ -123,8 +123,12 @@ if [[ -n ${AW_QS_DIST:-} ]]; then
   done
   [[ -n $port ]] || { echo "check-quickstart: http server did not start" >&2; exit 1; }
   base=http://127.0.0.1:$port
-  sed -i "s#https://github.com/alchristleo/agentic-warden/releases#$base#g" "$session"
-  sed -i "2i export AW_BASE_URL=$base" "$session"
+  {
+    sed -n 1p "$session"
+    echo "export AW_BASE_URL=$base"
+    sed 1d "$session" | sed "s#https://github.com/alchristleo/agentic-warden/releases#$base#g"
+  } > "$session.new"
+  mv "$session.new" "$session"
 fi
 
 set -m
