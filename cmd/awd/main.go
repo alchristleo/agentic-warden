@@ -393,7 +393,9 @@ func apply(argv []string) error {
 		req.Header.Set("X-Applied-By", who)
 	}
 
-	client := &http.Client{Timeout: 30 * time.Second}
+	client := &http.Client{Timeout: 30 * time.Second, CheckRedirect: func(r *http.Request, _ []*http.Request) error {
+		return sync.CheckTransport(r.URL.String())
+	}}
 	resp, err := client.Do(req)
 	if err != nil {
 		return fmt.Errorf("reaching the control plane at %s: %w", url, err)
@@ -504,7 +506,9 @@ func adminRequest(method, url, path string, body any, out any) error {
 	if who := appliedBy(); who != "" {
 		req.Header.Set("X-Applied-By", who)
 	}
-	client := &http.Client{Timeout: 30 * time.Second}
+	client := &http.Client{Timeout: 30 * time.Second, CheckRedirect: func(r *http.Request, _ []*http.Request) error {
+		return sync.CheckTransport(r.URL.String())
+	}}
 	resp, err := client.Do(req)
 	if err != nil {
 		return fmt.Errorf("reaching the control plane at %s: %w", url, err)

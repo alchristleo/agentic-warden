@@ -3,8 +3,10 @@ package main_test
 import (
 	"bufio"
 	"bytes"
+	"crypto/ed25519"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -17,6 +19,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/alchristleo/agentic-warden/internal/signing"
 	"github.com/alchristleo/agentic-warden/internal/sync"
 )
 
@@ -653,9 +656,14 @@ func TestEnrollChecksEnrollmentUnderTheLock(t *testing.T) {
 // token naming a different key than the server presents is refused and the
 // existing enrollment is left intact.
 func TestForceReenrollChecksKeyID(t *testing.T) {
+	priv, err := signing.Generate()
+	if err != nil {
+		t.Fatal(err)
+	}
+	pub := priv.Public().(ed25519.PublicKey)
 	stub := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusCreated)
-		_, _ = w.Write([]byte(`{"machineId":"m2","credential":"c2","user":"u","publicKey":"pk","keyId":"bbbb"}`))
+		fmt.Fprintf(w, `{"machineId":"m2","credential":"c2","user":"u","publicKey":%q,"keyId":%q}`, signing.FormatPublic(pub), signing.KeyID(pub))
 	}))
 	t.Cleanup(stub.Close)
 	stateDir := t.TempDir()
