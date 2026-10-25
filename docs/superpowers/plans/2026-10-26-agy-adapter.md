@@ -48,6 +48,10 @@ Copy the shape of `internal/agent/gemini` (renderer, managed/, Inspect) and its 
 - aw-sync: skip-with-note for a foreign admin file instead of opt-in (needs per-agent skip in the Renderer contract).
 - Per-agent isolation of a failed write in aw-sync.
 - macOS/Windows real-agy verification.
+- One shared `agent.DroppedRepoRules` helper (codex, gemini, agy copies) (panel-design).
+- aw-sync removes files of agents no longer enrolled (panel-correctness).
+- README: say `aw agy` is a thin launcher (panel-design nit).
+- awd apply validates merged docs per subject for every agent, not just per rule (agy fixed by dropping cross-field checks).
 
 ## Ledger
 
@@ -74,3 +78,13 @@ T4 coord ebbea68 rename doctor e2e TestDoctorListsAgyFindings (wiring only) + AC
 T5 fix 2b3f9bf sdd-reviewer-lite fix-needed how-it-works:98,112 still 3 agents
 T5 coord e3bafe4 how-it-works compare table + bullet list four agents
 USAGE end 66
+COORD review approve e3bafe4 sdd-reviewer-lite ebbea68 + e3bafe4; nits wiring-only test, plan cites old test name
+PANEL cdo e4f5b69 must=0 should=7 nit=2
+SEAT panel-cdo pass e4f5b69 AC10 markdown only, no browser run
+PANEL design e4f5b69 must=0 should=3 nit=7
+PANEL correctness e4f5b69 must=1 should=4 nit=3
+SEAT panel-correctness pass e4f5b69 AC9 caCertPath trust confounded (not claimed)
+PANEL security e4f5b69 must=0 should=2 nit=1
+DISMISSED design type-checks drop (owner: keep, merge-safe per-field, loud at apply)
+DISMISSED design probe delete (owner: keep, label one-off)
+TRIAGE fixed=20 dismissed=2 backlog=3
