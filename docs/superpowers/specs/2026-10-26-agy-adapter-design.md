@@ -46,13 +46,15 @@ place, `aw agy` launches agy with the policy's env, and the docs say plainly wha
   (`gatewayURL`, `models`) translated on render (rejected: a second vocabulary to learn and to keep
   in step with Google).
 - D3 Validation (`awd apply` and Render, one function `managed.Validate` in `internal/agent/agy/managed`): dated allowlist from F2
-  (stale by design, as Gemini's: a new Google key needs an aw release; typos fail loudly instead of being ignored);
+  (stale by design, as Gemini's: a new Google key needs an aw release). The allowlist catches typos and is stricter than agy: agy silently ignores unknown keys (T1), so a typo would drop the control with no error;
   unknown key at any level → reject; `gateway.apiKey` → reject with a message naming
   `AGY_LLM_GATEWAY_API_KEY` (owner); `customHeaders` name matching `(?i)auth|key|token|secret|cookie|password`
-  → reject, same reason (best effort, documented as such); `wireProtocol` ∈ {genai, openai}; `gateway.url` https only (Google documents an HTTPS endpoint);
-  `gateway.enabled: true` requires `url`; keys and model IDs match case-sensitively;
-  `caCertPath` absolute; `models.list[].modelId` non-empty string; `defaultModelId`, if set with a
-  list, is in the list. `launch` on agy → reject (as Gemini).
+  → reject, same reason (best effort, documented as such); `wireProtocol` ∈ {genai, openai}; `gateway.url` https only (Google documents an HTTPS endpoint) with no userinfo, query or fragment (secrets in a URL);
+  `customHeaders` values starting (case-insensitive) with `Bearer `, `Basic ` or `AIza` → reject (credential);
+  keys and model IDs match case-sensitively; `caCertPath` absolute; `models.list` non-empty when set, entries with a non-empty string `modelId`;
+  `defaultModelId`, if set, a non-empty string. Per-field type checks stay. No cross-field checks
+  (`defaultModelId` in `list`, `enabled` needs `url`): rules valid one at a time must stay valid once merged (D4),
+  and agy reports its own cross-field problems. `launch` on agy → reject (as Gemini).
 - D4 Merge across rules: default rules (objects merge per key, a later rule wins per key, arrays replace).
   `models.list` is an allowlist, so a union would widen it. `gateway.customHeaders` is an object, so headers
   from several rules accumulate, a later rule winning per header name.
@@ -61,11 +63,11 @@ place, `aw agy` launches agy with the policy's env, and the docs say plainly wha
   Settled by T1: agy 1.4.7 starts with `{}`; no admin warning in the log.
 - D6 `aw agy`: passthrough. Merge policy env (same `merge.Env` as other agents), pass args, note
   `agy: enforcement is machine-wide (admin_settings.json via aw-sync); nothing is pinned per launch` (owner).
-- D7 `aw doctor agy` (Inspector): admin file missing → warn; unparseable or fails Validate → error;
+- D7 `aw doctor agy` (Inspector): admin file missing → warn; unreadable or unparseable → error; parseable but fails Validate → warn ("does not pass aw's policy checks (agy may still accept it)");
   no `.aw-revision` sibling → warn (file not written by aw-sync); parseable with sibling → ok worded
   "admin file present, revision X" (never "enforced": agy may ignore it, F5); `gateway.enabled` with no
   `AGY_LLM_GATEWAY_API_KEY` in env → warn (agy then sends gateway requests with no API key; T1);
-  unparseable → error stays the strongest signal, since agy silently ignores an unparseable file (T1); any `AGY_LLM_GATEWAY_*` other than `_API_KEY` in env → ok-level note that the admin file outranks it (F3).
+  unparseable → error stays the strongest signal, since agy silently ignores an unparseable file (T1).
 - D8 aw-sync: `agy` is renderable but opt-in (owner, 2026-10-26): a default `aw-sync enroll` (no `--agents`)
   leaves it out, `--agents ...,agy` adds it, and the docs warn that aw-sync then owns the whole admin file
   (aw-sync overwrites unconditionally, so a Google- or MDM-installed file is replaced).
@@ -94,8 +96,9 @@ place, `aw agy` launches agy with the policy's env, and the docs say plainly wha
 1. Render of a full fixture policy produces exactly the golden `admin_settings.json` (mode 0644) and
    `{}` for a bundle with no agy rules; `SystemDir` gives F1's path per OS: `go test ./internal/agent/agy -run 'TestRender' -v`.
 2. Validate rejects each of: unknown top-level key, unknown nested key, `gateway.apiKey`, custom headers `Authorization`, `X-Api-Key` and `Cookie`,
-   `enabled: true` without `url`, `wireProtocol: "grpc"`, `http://` gateway url, relative `caCertPath`,
-   `defaultModelId` not in `list`; accepts the golden fixture: `go test ./internal/agent/agy/managed -v`.
+   `wireProtocol: "grpc"`, `http://` gateway url, gateway url with userinfo, query or fragment, header values starting
+   `Bearer `, `Basic ` or `AIza`, empty `models.list`, relative `caCertPath`; accepts the golden fixture, and accepts
+   `enabled: true` without `url` and `defaultModelId` not in `list` (per-field only): `go test ./internal/agent/agy/managed -v`.
 3. `awd apply` of a policy with `gateway.apiKey` for agy exits non-zero naming `AGY_LLM_GATEWAY_API_KEY`,
    and with `launch` on agy exits non-zero: `go test ./cmd/awd -run 'Agy' -v`.
 4. Two rules setting `models.list` compile to the later rule's list only, and two rules' `customHeaders`
@@ -149,5 +152,7 @@ gateway for `gateway.example.com`, `AGY_LLM_GATEWAY_API_KEY=probe-key` unless no
 - Unknown nested key (`gateway.foo`, `models.list[0].foo`) → ignored, gateway still applied. So agy does not reject unknown fields here. Our strict allowlist (D3) is stricter than agy.
 - `gateway.enabled:true` without `AGY_LLM_GATEWAY_API_KEY` → no startup error and no "gatewayAuth: ... is not set". `agy models` exit 0 and `agy -p` still POSTs to the gateway, with no `Authorization` header. The D7 warn "agy fails with gatewayAuth" is wrong for this path: reword to "agy sends requests without an API key".
 - No Google sign-in present (the container default) → the gateway path works: log "ChainedAuth: authenticated via gateway", `authMethod=gateway`, `email=` empty. The log line `Failed to refresh cache in background: admin controls not applicable` appears on every run, including the working golden run. It is not a sign the admin file was skipped. Do not use it as a signal.
+- 2026-10-26 re-probe, CA outside the system cert dirs (`/opt/probe/ca.pem`, golden file copy with `caCertPath` pointing there): `agy models` exit 0, `agy -p` reaches the stub (404 as before), so `caCertPath` is honored. The same file with `caCertPath` removed: `agy -p` exit 3 with `x509: certificate signed by unknown authority`, and the stub logs `bad certificate`. The earlier success could not be told from a system-store hit; this one can.
+- 2026-10-26 `{"models":{"list":[]}}` alone: agy starts, no admin warning, no gateway, sign-in prompt as for `{}`. It shows no effect without a gateway, so aw rejects an empty list as a likely mistake rather than on agy's behavior.
 - Not probed: bad field values (wrong type, bad URL, missing CA file). Validate (D3) rejects them before render, so agy's reaction is out of scope.
 - D5 outcome: render `{}` (or an empty object) for "no agy rules". agy accepts it.
