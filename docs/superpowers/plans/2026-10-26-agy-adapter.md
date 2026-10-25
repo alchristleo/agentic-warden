@@ -70,3 +70,4 @@ T5 done 97fd9de sdd-implementer-lite 6 docs files; AC10 checks run by coordinato
 T4 done e8abe9f sdd-implementer wiring + e2e; launch reject pre-existing; agy sorts first; doctor e2e reads real /etc
 T4 review approve e8abe9f sdd-reviewer should: doctor e2e vacuous (rename); nits launch msg wording, optIn var, JSON test loosened
 T5 fix 97fd9de sdd-reviewer-lite fix-needed model IDs unsourced, README/index 3 agents, removing.md row, wrap
+T4 coord ebbea68 rename doctor e2e TestDoctorListsAgyFindings (wiring only) + AC8 command
