@@ -58,14 +58,14 @@ place, `aw agy` launches agy with the policy's env, and the docs say plainly wha
   from several rules accumulate, a later rule winning per header name.
 - D5 Render: one file, `admin_settings.json`, mode 0644, owned whole by aw-sync, revision in the
   `.aw-revision` sibling (JSON has no comments). Empty policy → `{}` (stale file never outlives its policy).
-  `pending: T1`: T1 must show agy 1.4.7 starts with `{}` before any render task starts; if it does not,
-  the empty case renders a file agy accepts or the spec returns to the owner.
+  Settled by T1: agy 1.4.7 starts with `{}` and applies no controls, same as no file.
 - D6 `aw agy`: passthrough. Merge policy env (same `merge.Env` as other agents), pass args, note
   `agy: enforcement is machine-wide (admin_settings.json via aw-sync); nothing is pinned per launch` (owner).
 - D7 `aw doctor agy` (Inspector): admin file missing → warn; unparseable or fails Validate → error;
   no `.aw-revision` sibling → warn (file not written by aw-sync); parseable with sibling → ok worded
   "admin file present, revision X" (never "enforced": agy may ignore it, F5); `gateway.enabled` with no
-  `AGY_LLM_GATEWAY_API_KEY` in env → warn (agy fails with "gatewayAuth: ... is not set"); any `AGY_LLM_GATEWAY_*` in env → ok-level note that the admin file outranks it (F3).
+  `AGY_LLM_GATEWAY_API_KEY` in env → warn (agy then sends gateway requests with no API key; T1);
+  unparseable → error stays the strongest signal, since agy silently ignores an unparseable file (T1); any `AGY_LLM_GATEWAY_*` in env → ok-level note that the admin file outranks it (F3).
 - D8 aw-sync: `agy` is renderable but opt-in (owner, 2026-10-26): a default `aw-sync enroll` (no `--agents`)
   leaves it out, `--agents ...,agy` adds it, and the docs warn that aw-sync then owns the whole admin file
   (aw-sync overwrites unconditionally, so a Google- or MDM-installed file is replaced).
