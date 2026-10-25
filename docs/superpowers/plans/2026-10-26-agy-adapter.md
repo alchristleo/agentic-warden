@@ -96,3 +96,4 @@ SEAT panel-cdo pass a2936f6 AC10 re-run on fix diff
 PANEL correctness a2936f6 must=0 should=1 nit=1
 SEAT panel-correctness pass a2936f6 AC9 re-run on fix diff
 COORD f06608d probe copies unparseable/no-gateway inputs raw (tested), spec list[] wording; Gemini retired-for-most-users + source link
+COORD fix-wave re-review a2936f6 sdd-reviewer-lite fail: must Gemini EOL claim unsourced (fixed f06608d); nit weak Inspect Error match (backlog)
