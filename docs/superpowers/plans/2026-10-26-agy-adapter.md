@@ -79,7 +79,7 @@ T5 fix 97fd9de sdd-reviewer-lite fix-needed model IDs unsourced, README/index 3 
 T4 coord ebbea68 rename doctor e2e TestDoctorListsAgyFindings (wiring only) + AC8 command
 T5 fix 2b3f9bf sdd-reviewer-lite fix-needed how-it-works:98,112 still 3 agents
 T5 coord e3bafe4 how-it-works compare table + bullet list four agents
-USAGE end 66
+USAGE end 86
 COORD review approve e3bafe4 sdd-reviewer-lite ebbea68 + e3bafe4; nits wiring-only test, plan cites old test name
 PANEL cdo e4f5b69 must=0 should=7 nit=2
 SEAT panel-cdo pass e4f5b69 AC10 markdown only, no browser run
@@ -100,3 +100,13 @@ COORD fix-wave re-review a2936f6 sdd-reviewer-lite fail: must Gemini EOL claim u
 COORD f06608d review fail sdd-reviewer-lite: spec D9 EOL wording, enterprise claim unverified -> 9edd992 verified via WebFetch of The Register (Standard/Enterprise + paid API keys keep access), source in commit body; not re-reviewed
 CONVERGE 7f65913 spec-converge AC1-8,11,12 VERIFIED; AC9 VERIFIED by coordinator probe re-run at b82b2a7; AC10 INCONCLUSIVE (seat stale after f06608d/9edd992), owner at gate
 SEAT owner pass 40729ca AC10
+PR #11 opened https://github.com/alchristleo/agentic-warden/pull/11
+MERGED a45bbae PR #11 CI green at 98e67ae; origin/main..origin/agy-adapter empty
+
+## Retro (2026-10-26)
+
+- **Numbers:** tasks=5 fix_rounds=3 coord=6 fix_waves=1 blocked=0 seats pass/fail=4/0 reruns=2 owner=1 panel(must/should/nit)=[cdo 0/7/2; design 0/3/7; correctness 1/4/3; security 0/2/1; re-runs cdo 0/0/2, correctness 0/1/1] triage=[fixed=20 dismissed=2 backlog=3] 5h=42→86 (44pt).
+- **Escape to panel (must):** per-rule `awd apply` validation vs merged-doc render: cross-field checks could pass apply and fail sync fleet-wide. Fixed for agy by per-field-only checks; all-agent merged validation is Backlog.
+- **Wasted effort:** an unsourced dated vendor claim (Gemini CLI "end of life") cost 2 review rounds; the pre-mortem and spec Facts had it without a URL. Proposed structure: lean-sdd step 3, each dated vendor fact in Facts carries a source URL, and docs quoting it link it.
+- **Wasted effort:** implementer sandboxes refused `scripts/check-links.sh`/`check-readme.sh` twice, so the coordinator ran AC10 checks by hand. Proposed structure: allow `bash scripts/check-*.sh` for subagents in project settings.
+- **T1 paid off:** the real-agy probe settled `{}` safety, unknown-key leniency and silent ignore of bad JSON before rendering code, and caught the wrong D7 premise.
