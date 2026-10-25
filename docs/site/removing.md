@@ -19,13 +19,13 @@ The trial writes under your home directory and nothing else:
 - `~/.cache/agent-wrapper/claude/settings-<hash>.json`, the merged settings cache `aw` writes
 - the two repositories `../payments-api` and `../sandbox` from step 5
 
-`awd serve` keeps its policy in memory and writes nothing to disk. The clone and its `bin/` hold the binaries, and `quickstart.2.yaml` from step 7 sits in the clone.
+`awd serve` keeps its policy in memory and writes nothing to disk. The binaries are in `~/.local/bin` (`aw`, `aw-policy`, `aw-sync`, `awd`), and `quickstart.2.yaml` from step 7 sits in the clone.
 
 To remove it:
 
 1. Stop `awd`.
 2. From inside the clone, run `rm -rf ~/.aw-try ~/.cache/agent-wrapper ../payments-api ../sandbox`.
-3. Delete the clone.
+3. Delete the clone, and delete the four binaries: `rm ~/.local/bin/aw ~/.local/bin/aw-policy ~/.local/bin/aw-sync ~/.local/bin/awd`.
 
 Claude Code does not read `~/.aw-try/claude`. In this mode only `aw claude`, through `--settings`, applies the policy, so nothing else changes while it is there.
 

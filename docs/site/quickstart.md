@@ -11,8 +11,7 @@ You run a control plane on your laptop, enroll your own machine, and watch
 a rule you applied stop Claude Code in one repository while the same request runs in another.
 Nothing is written under `/etc`.
 
-You need Linux or macOS, git, curl, and Claude Code installed and logged in. Docker and Go are
-not needed (building from source is in the [Reference](./reference.md#from-source)). Only the Claude commands in steps 6 and 7 need the login.
+You need Linux or macOS, git, curl, and Claude Code installed and logged in. Docker and Go are not needed. Only the Claude commands in steps 6 and 7 need the login. To build from source instead, see [From source](./reference.md#from-source).
 
 Run the steps in one terminal, in order. The control plane from step 2 keeps running in it.
 
@@ -25,7 +24,8 @@ REL=https://github.com/alchristleo/agentic-warden/releases
 curl -fsSL $REL/latest/download/install.sh \
   | sh
 export PATH="$HOME/.local/bin:$PATH"
-ls ~/.local/bin
+git checkout -q "$(aw version)"
+ls ~/.local/bin/aw*
 ```
 
 ```text
@@ -35,8 +35,7 @@ aw-sync
 awd
 ```
 
-The installer is described under [Install](./reference.md#install) in the Reference. The clone is
-for the example policy in later steps.
+The installer prints a hint that `~/.local/bin` is not on your PATH. The `export` line above fixes that. Details are under [Install](./reference.md#install) in the Reference. The clone is for the example policy in later steps, and `git checkout` puts it on the tag you installed so the examples match your binaries.
 
 ![Cloning the repository and installing the four binaries](../assets/01-build.gif)
 

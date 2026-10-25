@@ -105,7 +105,8 @@ REL=https://github.com/alchristleo/agentic-warden/releases
 curl -fsSL $REL/latest/download/install.sh \
   | sh
 export PATH="$HOME/.local/bin:$PATH"
-ls ~/.local/bin
+git checkout -q "$(aw version)"
+ls ~/.local/bin/aw*
 ```
 
 You should see:

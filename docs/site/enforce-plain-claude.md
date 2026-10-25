@@ -41,8 +41,7 @@ AW_SYNC_TOKEN=$token sudo -E aw-sync enroll --server http://localhost:8080 --age
 sudo aw-sync once
 ```
 
-Install `aw-policy` before the first sync. The drop-in that `aw-sync` writes names
-`/usr/local/bin/aw-policy`, and without that binary every `claude` launch refuses to start.
+The installer above put `aw-policy` in `/usr/local/bin` before the first sync. The drop-in that `aw-sync` writes names `/usr/local/bin/aw-policy`, and without that binary every `claude` launch refuses to start.
 
 Check it. Without `AW_SYNC_STATE_DIR`, `aw doctor` reads `/var/lib/agent-wrapper`, and the
 evaluation-mode line and the root warnings are gone. The quickstart's `awd` does not sign bundles, so

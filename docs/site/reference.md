@@ -17,9 +17,11 @@ curl -fsSL $REL/latest/download/install.sh \
   | sh
 ```
 
-Check: `aw version`. Next: [Quickstart](./quickstart.md).
+Check: `~/.local/bin/aw version`. If `aw` alone is not found, add `export PATH="$HOME/.local/bin:$PATH"` to your shell profile. Next: [Quickstart](./quickstart.md).
 
-`install.sh` needs `curl`, `tar`, `sha256sum` or `shasum`, and standard POSIX tools. It downloads the archive for your system and `checksums.txt` from the same release, checks the archive against its line in `checksums.txt`, and only then copies the four binaries. It never uses `sudo`. It changes nothing in `AW_BIN_DIR` (beyond creating it) unless the archive verified and all four binaries were staged. Only the final four renames can fail midway, which can leave a mix of old and new binaries.
+`install.sh` needs `curl`, `tar`, `sha256sum` or `shasum`, and standard POSIX tools. It downloads the archive for your system and `checksums.txt` from the same release, checks the archive against its line in `checksums.txt`, and only then copies the four binaries. It never uses `sudo`.
+
+It changes nothing in `AW_BIN_DIR` (beyond creating it) unless the archive verified and all four binaries were staged. Only the final four renames can fail midway, which can leave a mix of old and new binaries.
 
 Two variables change what it does:
 
@@ -77,7 +79,7 @@ less install.sh
 sudo env AW_BIN_DIR=/usr/local/bin sh install.sh
 ```
 
-Press `q` to leave `less`. Check: `aw version`.
+Press `q` to leave `less`. Check: `/usr/local/bin/aw version`.
 
 The script never calls `sudo` itself. Running it as root is your choice. The directory must be root-owned and not writable by your user. Check with `ls -ld /usr/local/bin`: the third column is the owner, and it should be `root`. If your user owns it, use another root-owned directory.
 

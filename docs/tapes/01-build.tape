@@ -39,7 +39,10 @@ Wait+Line@60s /\$\s*$/
 Type 'export PATH="$HOME/.local/bin:$PATH"'
 Enter
 Sleep 400ms
-Type "ls ~/.local/bin"
+Type 'git checkout -q "$(aw version)"'
+Enter
+Sleep 600ms
+Type "ls ~/.local/bin/aw*"
 Enter
 Sleep 2s
 
