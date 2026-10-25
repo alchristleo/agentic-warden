@@ -97,3 +97,5 @@ SEAT panel-correctness fail 32a14c3 AC4
 TRIAGE fixed=4 dismissed=0 backlog=1
 FIX wave a01f1e9 sdd-implementer(sonnet) key-id from real key; CheckRedirect on 3 clients; revoke hint; threat-model path + rollover note
 FIX review fail→coord 91505b2 sdd-reviewer-lite threat-model:52 rollover wording fixed by coordinator; backlog CheckRedirect with injected client
+COORD review approve 91505b2 sdd-reviewer-lite(haiku) 0b91724 + threat-model wording
+CONVERGE 6fbdd9c spec-converge: AC1-11 VERIFIED; AC12/AC14 INCONCLUSIVE (security seat stale after a01f1e9); AC13 nav = front matter section/order (docs-nav.tsx), wording owner
