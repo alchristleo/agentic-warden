@@ -136,6 +136,7 @@ installed.
 | Claude Code bundle and drop-in | `/etc/claude-code` | `/Library/Application Support/ClaudeCode` | `C:\Program Files\ClaudeCode` |
 | Codex `requirements.toml` | `/etc/codex` | `/etc/codex` | `%ProgramData%\OpenAI\Codex` |
 | Gemini `settings.json` and `policies/50-agent-wrapper.toml` | `/etc/gemini-cli` | `/Library/Application Support/GeminiCli` | `%ProgramData%\gemini-cli` |
+| agy `admin_settings.json`, opt-in | `/etc/antigravity` | `/Library/Application Support/Antigravity` | `%ProgramData%\Antigravity` |
 | Helper and sync binaries | `/usr/local/bin` | `/usr/local/bin` | `C:\Program Files\AgentWrapper` |
 
 Under the Claude Code directory, `aw-sync` writes `aw-bundle.json` and
@@ -156,6 +157,22 @@ variable and falls back to `C:\ProgramData`.
 `aw` writes the merged settings it hands to the agent under the user cache directory:
 `~/.cache/agent-wrapper/<agent>/settings-<hash>.json` on Linux, and the platform's equivalent
 elsewhere.
+
+## agy managed keys
+
+`agents.agy.managed` is the content of agy's `admin_settings.json`. `awd apply` and `aw-sync` check it
+against these rules, and an unknown key at any level is an error:
+
+| Key | Rule |
+|---|---|
+| `gateway.enabled` | A boolean. `true` needs `gateway.url`. |
+| `gateway.url` | An `https://` address. |
+| `gateway.wireProtocol` | `genai` or `openai`. |
+| `gateway.customHeaders` | Header names that contain `auth`, `key`, `token`, `secret`, `cookie` or `password` (any case) are errors. The check is a substring match, so it is best effort. |
+| `gateway.apiKey` | Always an error. Set `AGY_LLM_GATEWAY_API_KEY` on each developer machine instead. |
+| `caCertPath` | An absolute path. |
+| `models.defaultModelId` | A non-empty string. When you set `models.list`, the default must be in the list. |
+| `models.list[].modelId` | A non-empty string. |
 
 ## Files written by the rootless trial
 

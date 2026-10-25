@@ -38,6 +38,7 @@ These are the Linux paths. macOS and Windows differ.
 | Claude bundle and drop-in | `/etc/claude-code/aw-bundle.json` and `/etc/claude-code/managed-settings.d/50-agent-wrapper.json` |
 | Codex, if enrolled | `/etc/codex/requirements.toml` |
 | Gemini, if enrolled | `/etc/gemini-cli/settings.json` and `/etc/gemini-cli/policies/50-agent-wrapper.toml` |
+| agy, if enrolled | `/etc/antigravity/admin_settings.json` and its `.aw-revision` sibling |
 | Helper settings, if you created them | `/etc/claude-code/aw-policy.json` (for example `requireBundle`) |
 | Helper audit log, one per developer | `~/.cache/agent-wrapper/aw-policy/aw-policy.log`; on macOS `~/Library/Caches/agent-wrapper/aw-policy/aw-policy.log` |
 | State | `/var/lib/agent-wrapper/`: `machine.json` (private), `state.json`, `aw-bundle.json`, the audit log, the lock |
