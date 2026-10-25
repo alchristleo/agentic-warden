@@ -123,3 +123,30 @@ builds, checksums and attests a GitHub release. The module path matches the repo
   compromised release; the attestation command is the check for that, and the docs say so.
 - `install.sh` never calls `sudo` itself; root is the user's explicit choice.
 - Release `aw-policy` is built without `awtest` (AC3 checks it).
+
+## Status (converged 2026-10-25)
+
+Branch `releases`, base `612c69d`, head `8463db0`. Runs: AC1 `git grep` and `go test -count=1`; AC2 `go test -run Version -v` plus manual `-X` builds; AC3 `release-build.sh v0.0.0-test <tmp>/dist` then `test-release-build.sh <tmp>/dist v0.0.0-test`; AC4/5 `test-install.sh <tmp>/dist`; AC10 `check-quickstart.sh`. Temp dirs removed.
+
+| # | criterion (short) | verdict | evidence (command + key output line) |
+|---|---|---|---|
+| 1 | No old module path; build and test pass | VERIFIED | `git grep -n "github.com/acme/agent-wrapper" -- ':!docs/superpowers'` printed nothing (exit 1); `go build ./... && go test -count=1 ./...`, 0 FAIL lines |
+| 2 | Version stamping (4 binaries, `dev` when unstamped) | VERIFIED | `go test ./internal/version/ ./cmd/... -run Version -v` PASS (TestVersionStampedWins, TestVersionCommandStamped/Unstamped in aw, aw-policy, aw-sync, awd). Uncached manual build `-X ...internal/version.Version=v9.9.9`: `aw version` → `v9.9.9`, `awd version` → `v9.9.9`, `aw-sync version` → `v9.9.9`, `aw-policy build-info` → `version v9.9.9`. Unstamped: `dev` for all |
+| 3 | Release archives, layout, arch, checksums, no overrides | VERIFIED | `release-build.sh v0.0.0-test <tmp>/dist`: 4 `.tar.gz` + `checksums.txt`; `tar -tzf` lists `aw aw-policy aw-sync awd LICENSE` in each; `file` on all 16 binaries: ELF x86-64 / ARM aarch64 for linux, Mach-O x86_64 / arm64 for darwin; `sha256sum -c checksums.txt` → 4× OK; `test-release-build.sh <tmp>/dist v0.0.0-test` → `ok: release build`, exit 0; linux/amd64 `aw-policy build-info` → `env-overrides=off`, `version v0.0.0-test` |
+| 4 | Install happy path (default dir, AW_BIN_DIR, no root) | VERIFIED | `test-install.sh <tmp>/dist` → `ok default dir (latest)`, `ok custom dir, pinned`, `PASS`, exit 0. Script asserts 4 executables in each dir, `aw version` equals the dist version, PATH hint, run under `dash` |
+| 5 | Install fails closed (tamper, missing sum, uname, 404) | VERIFIED | same run → `ok tampered`, `ok nosum`, `ok uname`, `ok notfound` (curl 404 → `download failed: ... (does AW_VERSION=v9.9.9 exist?)`), `ok staging`, `ok signal`. Each asserts non-zero exit, message match, and byte-identical `AW_BIN_DIR` (find + sha256 before/after) |
+| 6 | POSIX shell: shellcheck clean; test runs under dash | INCONCLUSIVE | `command -v shellcheck` → not installed. Partial: `dash -n install.sh` ok; `test-install.sh` runs install.sh under dash (PASS above). Missing run: `shellcheck -s sh install.sh` (runs in the PR dry-run job) |
+| 7 | PR CI dry-run job green | INCONCLUSIVE | `gh pr list --head releases --state all` → empty, no PR. Missing run: `gh pr checks <PR>` after the PR is open |
+| 8 | Workflow security (permissions, SHA pins, no pull_request_target, quoting) | VERIFIED | `check: seat panel-security`: `SEAT panel-security pass 1aba8e6 AC8` (plan ledger line 118). Last commit touching `.github/workflows/release.yml` is 4367d75, an ancestor of 1aba8e6 (`git merge-base --is-ancestor`). Supporting: `grep -c pull_request_target release.yml` → 0 |
+| 9 | First release `v0.1.0` assets and attestation | INCONCLUSIVE | `check: owner at gate`: owner checks at merge gate |
+| 10 | Quickstart step 1 and README switch to install.sh (phase 2) | NOT VERIFIED | `docs/site/quickstart.md` step 1 still reads `go build -o bin/ ./cmd/...`; README line 104 still `go build`. `check-quickstart.sh docs/site/quickstart.md` exits 0 on the current file, but the criterion requires the install.sh switch, which is T7 (phase 2, not started, by design) |
+| 11 | Reference Install section reads right, usable alone | VERIFIED | `check: seat panel-cdo`: `SEAT panel-cdo pass 1aba8e6 AC11` (plan ledger line 119). Last commit touching `docs/site/reference.md` is 4367d75, an ancestor of 1aba8e6 |
+
+### Deviations
+
+- AC9 verdict: the launch note asked for NOT VERIFIED. The `check: owner at gate` rule gives INCONCLUSIVE with evidence `owner checks at merge gate`; the owner confirms after the `v0.1.0` push.
+- AC6 and AC7 stay INCONCLUSIVE until PR CI runs shellcheck and the dry-run job.
+- AC2 `go test` output was served from cache (`(cached)`); the verdict also rests on uncached manual `-X` builds.
+- AC10 is phase 2 by design (spec Decision 10); NOT VERIFIED records the missing switch, not a regression.
+- Historical specs and plans under `docs/superpowers/` keep the old module path by design (Decision 1).
+- Panel nits and open items are in the plan Backlog, not in this milestone.
