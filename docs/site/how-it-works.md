@@ -95,8 +95,8 @@ detects the collision, and reports the bundle and aw-sync's last cycle.
 
 As of October 2026. This compares mechanisms only.
 
-| As of October 2026            | Per repository | Per IdP group      | Claude Code, Codex, Gemini CLI |
-|-------------------------------|----------------|--------------------|--------------------------------|
+| As of October 2026            | Per repository | Per IdP group      | Claude Code, Codex, Gemini CLI, Antigravity CLI |
+|-------------------------------|----------------|--------------------|-------------------------------------------------|
 | Vendor admin console          | No             | Varies by vendor   | One vendor each                |
 | Managed settings files (MDM)  | No             | No                 | One format per vendor          |
 | Agentic Warden                | Yes            | Yes                | One policy                     |
@@ -109,7 +109,7 @@ their own API key or cloud provider. What remains uncovered:
 - Per-repository rules.
 - Per-group policy for Claude Code on claude.ai seats (the console is organization-uniform; the
   gateway needs an upstream API or cloud credential).
-- One policy across Claude Code, Codex and Gemini CLI.
+- One policy across Claude Code, Codex, Gemini CLI and Antigravity CLI (gateway and models only).
 
 Codex on ChatGPT plans already has per-group rules in OpenAI's Agent Security, so for Codex this
 project adds per-repository rules, API-key use and self-hosting.
