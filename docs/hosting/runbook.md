@@ -140,7 +140,7 @@ Run after the first apply of a cell, and the first time on any new account.
    ```
 5. Signature check, as in the README ("Inspect what the wrapper would run"):
    ```sh
-   AW_SYNC_STATE_DIR=./state ./aw --policy <(curl -s https://<tenant>.<domain>/v1/policy) doctor
+   AW_SYNC_STATE_DIR=./state ./aw --policy <(curl -s -H "Authorization: Bearer $AWD_ADMIN_TOKEN" https://<tenant>.<domain>/v1/policy) doctor
    ```
    The output must include `bundle signature: verified (v2, key ...)`.
 6. Signing is logged. `<key-arn>` is the cell's current key: the ARN of the last label in `signing_keys` (`k1` unless you have rotated) from `tofu -chdir=deploy/aws/cell output kms_key_arns`. This shows `Sign` events from the cell's task role (CloudTrail can lag a few minutes):

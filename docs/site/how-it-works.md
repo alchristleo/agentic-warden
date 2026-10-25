@@ -66,7 +66,8 @@ the one decision left in it (which repository the session is in), validates
 the result against the published Claude Code settings schema, and prints it.
 With no bundle, or one it cannot use, it prints an envelope with no settings,
 which leaves the static managed-settings files in force, and still exits 0.
-It exits non-zero only when the organization sets `requireBundle`. Each run
+Once a key is pinned it exits non-zero instead, unless the organization sets
+`requireBundle` to `false`; `requireBundle: true` does it on every machine. Each run
 tries to append one line to a local audit log; the write is best effort and is skipped silently if
 it fails. [deploy/aw-sync/README.md](https://github.com/alchristleo/agentic-warden/blob/main/deploy/aw-sync/README.md)
 installs the timer;

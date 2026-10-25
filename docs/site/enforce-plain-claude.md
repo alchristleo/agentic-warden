@@ -16,7 +16,7 @@ Do this on a test VM. It writes under `/etc/claude-code` and `/var/lib/agent-wra
 the four binaries into `/usr/local/bin`.
 
 A helper that exits non-zero, or emits settings that fail schema validation, makes Claude Code
-refuse to start. `aw-policy` exits 0 unless the organization sets `requireBundle`.
+refuse to start. On a machine with a pinned signing key, `aw-policy` exits non-zero when the bundle is missing, bad or tampered, unless the organization sets `requireBundle` to `false`. With no pinned key it exits 0 unless `requireBundle` is `true`.
 
 ## Install on Linux or macOS
 
