@@ -102,3 +102,20 @@ Branch `security-hardening` at 41ab0a1 against `main`. No earlier status table e
 - AC13 asks for a link from the docs nav. The repo has no nav file. `docs/site/index.md` lists pages by hand and does not link `upgrading.md`. Add a link there or accept the three cross-links.
 - The Check line of AC3 lists four tests. The fix wave added two more (named in row 3); they pass.
 - AC12 and AC14 seats are stale after the fix wave (a01f1e9, 91505b2).
+
+## Status (converged 2026-10-25), phase 2: AC12-14 after security re-run
+
+Branch `security-hardening` at da6e06e against `main`. Phase 1 above is kept as the record. Code is unchanged since 6fbdd9c (`git diff 6fbdd9c --stat` lists only `docs/superpowers/plans/2026-10-25-security-hardening.md`), so AC1-11 carry their phase 1 rows.
+
+| # | Criterion (short) | Verdict | Evidence |
+|---|---|---|---|
+| 1-11 | See phase 1 rows 1-11 | VERIFIED (carried) | Phase 1 rows 1-11 above; no code commit since 6fbdd9c. |
+| 12 | threat-model Known issues lists none of gaps 1-6; limits documented; seat | VERIFIED | `grep -c 'needs no token\|email_verified. claim is accepted\|is not checked' docs/site/threat-model.md` prints `0`. `SEAT panel-security pass 1569a22 AC12` (plan ledger line 110, da6e06e). Last commit touching `threat-model.md` is 91505b2, which precedes 1569a22. |
+| 13 | upgrading.md lists four changes, linked from nav; owner wording | INCONCLUSIVE | `grep -c 'http://\|revisedAt\|email_verified\|requireBundle' docs/site/upgrading.md` prints `7` (>= 4). Nav wiring is by code read only: front matter `section: security-review`, `order: 5`; `web/lib/docs.ts` line 11 defines the section and `web/app/docs/layout.tsx` feeds `navSections(loadDocs())` into `DocsNav`. No browser run of the nav. Owner wording: `OWNER approve AC13 docs/site/upgrading.md wording` (ledger line 108) is not a `SEAT owner pass` line; owner checks at merge gate. |
+| 14 | No new env var or CLI flag; seat | VERIFIED | `git diff main..HEAD -U0 -- '*.go' ':!*_test.go' \| grep -E '^\+.*(os\.Getenv\|flag\.\|fs\.(String\|Bool\|Int\|Int64\|Duration\|Var\|Func\|Uint))'` prints nothing (rc 1). Positive control: the same diff has 173 added non-test Go lines. `git diff main --stat` shows 42 files changed. `SEAT panel-security pass 1569a22 AC14` (plan ledger line 111, da6e06e). Last commit touching Go files is a01f1e9, which precedes 1569a22. |
+
+### Deviations (phase 2)
+
+- AC13 nav: the phase 1 deviation is resolved. The nav is built from front matter (`section`, `order`), so `upgrading.md` appears in the Security review section without a hand-kept index link. The nav check is still code-read only, so AC13 stays INCONCLUSIVE.
+- The phase 1 deviation "AC12 and AC14 seats are stale" is resolved by the 1569a22 seat lines. The phase 1 text is kept as the record.
+- Panel-security 1569a22 raised 3 nits, and the ledger sends them to backlog. No must or should finding is open.
