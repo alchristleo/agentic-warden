@@ -109,3 +109,4 @@ OWNER approve AC13 docs/site/upgrading.md wording
 PANEL security 1569a22 must=0 should=0 nit=3 (re-run on fix diff 32a14c3..1569a22; nits → backlog)
 SEAT panel-security pass 1569a22 AC12
 SEAT panel-security pass 1569a22 AC14
+CONVERGE a5b1db4 spec-converge: AC1-12,14 VERIFIED; AC13 INCONCLUSIVE (owner approved wording; nav via front matter, not browser-run)
