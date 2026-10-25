@@ -47,6 +47,57 @@ func TestEnrollPostsTheTokenAndReturnsTheCredential(t *testing.T) {
 	}
 }
 
+// enrollServer answers every enrollment with the given body.
+func enrollServer(t *testing.T, body string) *sync.Client {
+	t.Helper()
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusCreated)
+		_, _ = w.Write([]byte(body))
+	}))
+	t.Cleanup(srv.Close)
+	return &sync.Client{Server: srv.URL}
+}
+
+func TestEnrollRefusesAKeyIDMismatch(t *testing.T) {
+	c := enrollServer(t, `{"machineId":"m1","credential":"c1","user":"u","publicKey":"pk","keyId":"bbbb"}`)
+
+	_, err := c.Enroll(context.Background(), "secret.aaaa", "h", "linux")
+
+	if err == nil || !strings.Contains(err.Error(), "aaaa") {
+		t.Fatalf("err = %v, want a key id mismatch naming the token's key", err)
+	}
+}
+
+func TestEnrollRefusesAMissingKeyWhenTokenNamesOne(t *testing.T) {
+	c := enrollServer(t, `{"machineId":"m1","credential":"c1","user":"u"}`)
+
+	_, err := c.Enroll(context.Background(), "secret.aaaa", "h", "linux")
+
+	if err == nil {
+		t.Fatal("an enrollment with no key was accepted although the token names one")
+	}
+}
+
+func TestEnrollAcceptsAMatchingKeyID(t *testing.T) {
+	c := enrollServer(t, `{"machineId":"m1","credential":"c1","user":"u","publicKey":"pk","keyId":"aaaa"}`)
+
+	e, err := c.Enroll(context.Background(), "secret.aaaa", "h", "linux")
+
+	if err != nil || e.KeyID != "aaaa" {
+		t.Fatalf("e = %+v, err = %v", e, err)
+	}
+}
+
+func TestEnrollWithoutKeyIDSuffixStillPins(t *testing.T) {
+	c := enrollServer(t, `{"machineId":"m1","credential":"c1","user":"u","publicKey":"pk","keyId":"bbbb"}`)
+
+	e, err := c.Enroll(context.Background(), "secret", "h", "linux")
+
+	if err != nil || e.KeyID != "bbbb" || e.PublicKey != "pk" {
+		t.Fatalf("e = %+v, err = %v", e, err)
+	}
+}
+
 func TestEnrollDecodesASuccessBodyLargerThanTheErrorCap(t *testing.T) {
 	// maxErrorBody is 4096 bytes; the enrollment payload itself is small,
 	// so pad it past that with a long unknown field to prove the 201 path

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/alchristleo/agentic-warden/internal/handler"
@@ -218,5 +219,28 @@ func TestRevokingAMachine(t *testing.T) {
 	again.Body.Close()
 	if again.StatusCode != http.StatusNotFound {
 		t.Errorf("revoking twice: status = %d, want 404", again.StatusCode)
+	}
+}
+
+func TestEnrollmentTokenCarriesKeyID(t *testing.T) {
+	h := handler.New(store.NewMemory(), nil)
+	h.AdminToken = adminToken
+	key, _ := signing.Generate()
+	h.Signer = &handler.Signer{Current: signing.NewSeedSigner(key)}
+	srv := httptest.NewServer(h.Routes())
+	t.Cleanup(srv.Close)
+
+	token := mintToken(t, srv, "alice@acme.com")
+
+	want := "." + signing.KeyID(key.Public().(ed25519.PublicKey))
+	if !strings.HasSuffix(token, want) {
+		t.Errorf("token %q does not end in %q", token, want)
+	}
+	if id, credential := enroll(t, srv, token); id == "" || credential == "" {
+		t.Fatal("the suffixed token did not enroll")
+	}
+	resp := postAs(t, srv, "/v1/machines/enroll", `{"token":"`+token+`","name":"other"}`, "")
+	if resp.StatusCode != http.StatusConflict {
+		t.Errorf("second enrollment status = %d, want 409", resp.StatusCode)
 	}
 }
