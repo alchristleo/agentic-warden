@@ -104,6 +104,7 @@ done < "$file"
 
 if [[ -n ${AW_QS_DIST:-} ]]; then
   root=$(cd "$(dirname "$0")/.." && pwd)
+  [[ -f $AW_QS_DIST/checksums.txt ]] || { echo "check-quickstart: $AW_QS_DIST/checksums.txt not found (AW_QS_DIST must be a release-build.sh output dir)" >&2; exit 1; }
   ver=$(sed -n 's/^[0-9a-f]*  agentic-warden_\(v[^_]*\)_.*/\1/p' "$AW_QS_DIST/checksums.txt" | sort -u)
   [[ $ver == v* && $ver != *$'\n'* ]] || { echo "check-quickstart: cannot derive one version from $AW_QS_DIST/checksums.txt" >&2; exit 1; }
   web=$tmp/web
@@ -123,9 +124,14 @@ if [[ -n ${AW_QS_DIST:-} ]]; then
   done
   [[ -n $port ]] || { echo "check-quickstart: http server did not start" >&2; exit 1; }
   base=http://127.0.0.1:$port
+  # The doc's git clone resolves to a bare copy of this checkout, tagged like the CI build, so
+  # that "git checkout $(aw version)" finds its tag.
+  git clone -q --bare "$root" "$tmp/clone.git"
+  git -C "$tmp/clone.git" tag "$ver" HEAD
   {
     sed -n 1p "$session"
     echo "export AW_BASE_URL=$base"
+    echo "export GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=url.$tmp/clone.git.insteadOf GIT_CONFIG_VALUE_0=https://github.com/alchristleo/agentic-warden.git"
     sed 1d "$session" | sed "s#https://github.com/alchristleo/agentic-warden/releases#$base#g"
   } > "$session.new"
   mv "$session.new" "$session"

@@ -51,6 +51,7 @@ expect "quickstart: text block not after a sh block exits 1 and names the line" 
 dist=$(mktemp -d "${TMPDIR:-/tmp}/test-checks-dist.XXXXXX")
 echo "0000000000000000000000000000000000000000000000000000000000000000  agentic-warden_v0.0.0-test_linux_amd64.tar.gz" >"$dist/checksums.txt"
 tdir=$(mktemp -d "${TMPDIR:-/tmp}/test-checks-tmp.XXXXXX")
+trap 'rm -rf "$out" "$dist" "$tdir"' EXIT
 AW_QS_DIST=$dist TMPDIR=$tdir expect "quickstart: AW_QS_DIST with a failing block exits 1" 1 "block 1 (" "$qs" "$data/quickstart-failing-block.md"
 if pgrep -f "http.server.*$tdir" >/dev/null; then
   echo "FAIL dist: http.server still running after check-quickstart exited"
@@ -58,6 +59,7 @@ if pgrep -f "http.server.*$tdir" >/dev/null; then
   fail=1
 fi
 rm -rf "$dist" "$tdir"
+trap 'rm -f "$out"' EXIT
 expect "links: passing file exits 0" 0 - "$ln" "$data/quickstart-pass.md"
 expect "links: broken relative link exits 1" 1 "does-not-exist.md" "$ln" "$data/links-broken.md"
 expect "links: broken /docs link exits 1" 1 "/docs/nope" "$ln" "$data/links-broken.md"
