@@ -43,6 +43,18 @@ outranks a repo-scoped rule for the same tool. Keep machine-wide
 `policies` to what must hold everywhere and let repo rules tighten the
 rest.
 
+Gemini CLI reached end of life on 2026-06-18. Its successor is Antigravity CLI (`agy`).
+`aw-sync` renders agy only when you enroll with `--agents ...,agy`. Then it writes agy's machine-wide admin file, and it
+owns that whole file. agy reads the gateway, CA bundle and model list from that file, and a developer
+cannot override them. agy has no path override, so `aw agy` cannot scope the file to a repository.
+aw drops repository-scoped agy rules and prints a note.
+
+agy's permission rules, MCP servers and hooks live only in each developer's home directory, so aw does
+not enforce them. The gateway API key stays out of the policy. Each developer sets
+`AGY_LLM_GATEWAY_API_KEY` from their own credential store. `aw doctor agy` reports whether the admin
+file is present and valid. It says "admin file present, revision X", not "enforced", because agy
+ignores a file it cannot parse, and `aw doctor agy` reports that case as an error.
+
 A release build of the helper reads only the system directory. The
 `AW_POLICY_BUNDLE` and `AW_POLICY_CONFIG` overrides the tests use exist
 only under `-tags awtest`; a release build ignores them and says so on

@@ -14,7 +14,7 @@
 
 ## The problem
 
-Claude Code, Codex and Gemini CLI each read their own settings, in their own format.
+Claude Code, Codex and Gemini CLI each read their own settings, in their own format. Gemini CLI reached end of life on 2026-06-18. For its successor, Antigravity CLI (`agy`), aw writes an opt-in machine-wide file ([how it works](docs/site/how-it-works.md)).
 Vendor consoles and managed settings files cannot scope a rule to one repository.
 Neither carries a single policy across all three ([how it works](docs/site/how-it-works.md#compared-with-what-you-have-today)).
 

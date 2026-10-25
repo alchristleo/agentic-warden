@@ -31,9 +31,10 @@ rules:
 
 - `name` identifies the rule.
 - `match` narrows who the rule applies to. A rule with no `match` block applies to everyone.
-- `agents` holds one block per agent: `claude`, `codex` or `gemini`.
+- `agents` holds one block per agent: `claude`, `codex`, `gemini` or `agy`.
 - `managed` is the machine-wide layer. For Claude it is the managed settings; for Codex it is
-  `requirements.toml`; for Gemini it is the system settings and the admin policy.
+  `requirements.toml`; for Gemini it is the system settings and the admin policy; for agy it is the
+  admin settings file.
 - `launch` is Codex's per-launch `config.toml` layer, applied by `aw codex` and not by `aw-sync`.
 - `env` and `forceEnv` set environment variables. With `forceEnv: true`, organization values replace
   what a developer already exports.
@@ -78,13 +79,40 @@ rules:
 
 Group names compare exactly. User keys match the enrolled email exactly, with no case folding.
 
+## Rules for agy
+
+```yaml
+rules:
+  - name: agy-gateway
+    agents:
+      agy:
+        managed:
+          gateway:
+            enabled: true
+            url: https://gateway.example.com
+            wireProtocol: genai
+            customHeaders:
+              X-Cost-Center: platform
+          caCertPath: /etc/ssl/certs/example-ca.pem
+          models:
+            defaultModelId: gemini-3.8-flash
+            list:
+              - modelId: gemini-3.8-flash
+              - modelId: gemini-3.8-pro
+```
+
+`managed` for agy is the admin settings file, so it applies to every developer on the machine.
+`awd apply` refuses a `launch` block for agy. Set `AGY_LLM_GATEWAY_API_KEY` on each developer machine, not in
+`env`. [How it works](./how-it-works.md) lists what agy does not enforce.
+
 ## How rules combine
 
 Rules apply in order, and a later rule overrides an earlier one per key. Permission lists union
 across rules instead of replacing one another. Codex scalars and allowlists replace across rules, and
 `prefix_rules` accumulate. For Gemini, `tools.exclude` and `mcp.allowed` union, `mcpServers` merge by
 name, other settings replace, and policies accumulate. Every Gemini policy rule needs `toolName`,
-`decision` and an integer `priority` from 0 to 999.
+`decision` and an integer `priority` from 0 to 999. For agy, `models.list` replaces across rules, and
+`gateway.customHeaders` accumulate, with a later rule winning per header name.
 
 `aw doctor` shows the compiled result for the repository you are in.
 
