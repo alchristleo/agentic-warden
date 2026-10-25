@@ -75,3 +75,30 @@ Close the known gaps an attacker can use, listed under "Known issues" in `docs/s
 - Trust chain after this milestone: an out-of-band token gives a verified key pin; signed bundles give integrity; a monotonic signed revision time gives freshness against network replay. The key-id suffix is public data, and putting it in the token leaks nothing.
 - Failure direction: every new check fails closed (it refuses and keeps the old files). The one exception is the explicit `requireBundle: false`.
 - The database-restore case is the main operational risk of D4. The recovery (`enroll --force`) goes in the threat model and the `aw-sync` README.
+
+## Status (converged 2026-10-25)
+
+Branch `security-hardening` at 41ab0a1 against `main`. No earlier status table existed.
+
+| # | Criterion (short) | Verdict | Evidence |
+|---|---|---|---|
+| 1 | Anonymous GET /v1/policy 401, admin 200 | VERIFIED | `go test ./internal/handler -run TestReadingPolicyNeedsAdmin -v`: `--- PASS` |
+| 2 | Token ends `.<keyId>`, enrolls once | VERIFIED | `go test ./internal/handler -run 'TestEnrollmentTokenCarriesKeyID\|TestATokenEnrollsOneMachine' -v`: both PASS |
+| 3 | enroll refuses on key id mismatch or missing; accepts match and unsuffixed | VERIFIED | AC command plus fix-wave tests `TestEnrollRefusesAKeyThatDoesNotMatchTheTokensKeyID`, `TestEnrollRefusesAnUnparseableKeyWhenTokenNamesOne`: 6 of 6 PASS in `internal/sync`. Earlier panel-correctness fail at 32a14c3 is addressed by a01f1e9. |
+| 4 | `--force` applies the same check | VERIFIED | `go test ./cmd/aw-sync -run TestForceReenrollChecksKeyID -v`: PASS |
+| 5 | http to non-loopback refused (enroll, run, awd CLI) | VERIFIED | AC command: `TestCheckTransport`, `TestRunRefusesASavedPlainHTTPServer`, `TestEnrollRefusesPlainHTTP`, `TestAdminCLIRefusesPlainHTTP` PASS; sync, aw-sync, awd `ok` |
+| 6 | Bundle carries signed `revisedAt`; rollback apply later | VERIFIED | `go test ./internal/handler -run 'TestBundleCarriesRevisedAt\|TestRollbackApplyMovesRevisedAtForward' -v`: both PASS |
+| 7 | Pinned `run` refuses lower or missing `revisedAt`, accepts equal or higher, survives rollover | VERIFIED | `go test ./internal/sync -run 'TestRunRefusesAnOlderRevision\|TestRunAcceptsSameOrNewerRevision\|TestRunRefusesMissingRevisedAtOnceStored\|TestRolloverKeepsRevisedAt' -v`: 4 of 4 PASS |
+| 8 | `--force` resets value; restart then apply accepted | VERIFIED | `go test ./cmd/aw-sync ./cmd/awd -run 'TestForceReenrollResetsRevisedAt\|TestRestartThenApplyIsAccepted' -v`: both PASS |
+| 9 | SSO strict `email_verified` / `xms_edov` | VERIFIED | AC command: all 5 tests PASS (sso and handler `ok`) |
+| 10 | `aw-policy` tri-state fail mode | VERIFIED | AC command: all 6 tests PASS (policyhelper, aw-policy `ok`) |
+| 11 | Full suite and quickstart check | VERIFIED | `go test ./...` rc 0, no FAIL lines. `scripts/check-quickstart.sh docs/site/quickstart.md`: `ok (10 run, 2 skipped, 24 expected lines found)`; the 2 skips need a logged-in Claude. |
+| 12 | threat-model Known issues lists none of gaps 1-6; limits documented | INCONCLUSIVE | Grep prints 0 and the rate limiter and `X-Applied-By` are stated as limits with workarounds. The only seat line, `SEAT panel-security pass 32a14c3 AC12`, predates 91505b2 and a01f1e9, which edited `threat-model.md`. Needs panel-security re-pass after 41ab0a1. |
+| 13 | upgrading.md lists four changes, linked from nav; wording | INCONCLUSIVE | `grep -c` prints 7 (>= 4). Linked from `admin-console.md`, `threat-model.md`, `security-model.md`; there is no nav file and `docs/site/index.md` does not link it (see deviations). Wording: `owner checks at merge gate`. |
+| 14 | No new env var or CLI flag | INCONCLUSIVE | `git diff main..HEAD -U0 -- '*.go' ':!*_test.go'` filtered for `os.Getenv\|flag.\|fs.<Type>` additions: no matches. The only seat line, `SEAT panel-security pass 32a14c3 AC14`, predates a01f1e9, which touched `cmd/awd/main.go` and `internal/sync/client.go`. Needs panel-security re-pass. |
+
+### Deviations
+
+- AC13 asks for a link from the docs nav. The repo has no nav file. `docs/site/index.md` lists pages by hand and does not link `upgrading.md`. Add a link there or accept the three cross-links.
+- The Check line of AC3 lists four tests. The fix wave added two more (named in row 3); they pass.
+- AC12 and AC14 seats are stale after the fix wave (a01f1e9, 91505b2).
