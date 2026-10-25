@@ -15,9 +15,10 @@
 //
 // The contract with Claude Code is strict: a non-zero exit, a timeout, or a
 // schema violation in the output refuses the launch. This program therefore
-// always exits 0 with a valid envelope, printing an empty one when there is
-// no usable bundle, unless the organization opts into failing closed with
-// "requireBundle". See internal/policyhelper for the rules.
+// prints a valid envelope, an empty one when there is no usable bundle, and
+// exits 0, unless a key is pinned on the machine (then no usable bundle exits
+// non-zero) or "requireBundle" says otherwise: true always fails closed, false
+// always fails open. See internal/policyhelper for the rules.
 //
 // The one argument it recognises is "build-info", which prints the version
 // and whether the AW_POLICY_BUNDLE and AW_POLICY_CONFIG overrides are compiled
@@ -73,9 +74,9 @@ const maxStderr = 16 << 10
 // fileConfig is the deployed configuration file.
 type fileConfig struct {
 	// RequireBundle makes the helper exit non-zero, so Claude Code refuses
-	// to start, when no usable bundle is on the machine. Off by default:
-	// failing safe keeps developers working.
-	RequireBundle bool `json:"requireBundle"`
+	// to start, when no usable bundle is on the machine. Absent or null:
+	// closed once a key is pinned, open otherwise. False opts out.
+	RequireBundle *bool `json:"requireBundle"`
 }
 
 func main() {
