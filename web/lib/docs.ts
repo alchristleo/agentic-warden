@@ -93,6 +93,8 @@ function rewriteHref(href: string): string {
   return href;
 }
 
+let seen = new Map<string, number>();
+
 const marked = new Marked({
   walkTokens(token) {
     if (token.type === "link" || token.type === "image") token.href = rewriteHref(token.href);
@@ -100,6 +102,15 @@ const marked = new Marked({
     if (token.type === "heading" && token.depth === 1) token.depth = 2;
   },
   renderer: {
+    heading({ tokens, depth }) {
+      const inner = this.parser.parseInline(tokens);
+      if (depth !== 2 && depth !== 3) return `<h${depth}>${inner}</h${depth}>\n`;
+      const text = tokens.map((t) => ("text" in t ? String(t.text) : t.raw)).join("");
+      const base = text.toLowerCase().replace(/[^\p{L}\p{N} _-]/gu, "").replace(/ /g, "-");
+      const n = seen.get(base) ?? 0;
+      seen.set(base, n + 1);
+      return `<h${depth} id="${n ? `${base}-${n}` : base}">${inner}</h${depth}>\n`;
+    },
     code({ text, lang }) {
       const cls = lang ? ` class="language-${escapeHtml(lang)}"` : "";
       return `<div class="code-block"><button type="button" class="copy-button" aria-label="Copy">Copy</button><pre><code${cls}>${escapeHtml(text)}</code></pre></div>\n`;
@@ -108,5 +119,6 @@ const marked = new Marked({
 });
 
 export function renderMarkdown(body: string): string {
+  seen = new Map();
   return marked.parse(body, { async: false });
 }
