@@ -606,7 +606,9 @@ func TestDoctorChecksOnlyEnrolledAgents(t *testing.T) {
 	}
 }
 
-func TestDoctorReportsTheAgyAdminFile(t *testing.T) {
+// Wiring only: aw has no system-dir override, so this reads the host's real
+// admin path. File states are covered by the agy package's Inspect tests.
+func TestDoctorListsAgyFindings(t *testing.T) {
 	binDir := t.TempDir()
 	fakeAgent(t, binDir, "agy", "exit 0")
 

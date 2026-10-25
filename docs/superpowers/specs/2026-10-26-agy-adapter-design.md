@@ -109,7 +109,7 @@ place, `aw agy` launches agy with the policy's env, and the docs say plainly wha
 7. `aw agy` Build: policy env merged, args passed through in order, D6 note present, no files written:
    `go test ./internal/agent/agy -run TestBuild -v`.
 8. `aw doctor agy` reports each D7 case at its level: `go test ./internal/agent/agy -run TestInspect -v`
-   and `go test ./cmd/aw -run TestDoctorReportsHowTheAgentIsGoverned -v`.
+   and `go test ./cmd/aw -run TestDoctorListsAgyFindings -v` (wiring only: aw has no system-dir override).
 9. Real agy 1.4.7 as root reads the golden file: with the stub gateway it sends its model request to the
    gateway url with the custom header, and `agy models` lists only the policy's models; agy starts with `{}`; T1's findings on
    F5 are recorded in this spec: `scripts/probe-agy-admin.sh internal/agent/agy/testdata/admin_settings.golden.json`
