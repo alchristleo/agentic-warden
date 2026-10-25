@@ -73,3 +73,4 @@ T5 fix 97fd9de sdd-reviewer-lite fix-needed model IDs unsourced, README/index 3 
 T4 coord ebbea68 rename doctor e2e TestDoctorListsAgyFindings (wiring only) + AC8 command
 T5 fix 2b3f9bf sdd-reviewer-lite fix-needed how-it-works:98,112 still 3 agents
 T5 coord e3bafe4 how-it-works compare table + bullet list four agents
+USAGE end 66
