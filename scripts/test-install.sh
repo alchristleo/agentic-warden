@@ -118,6 +118,20 @@ done
 expect_fail nosum 'checksum' "$tmp/nosum"
 
 expect_fail uname 'unsupported' "$tmp/good" PATH="$shim:$PATH"
-expect_fail notfound 'download|404|fail' "$tmp/good" AW_VERSION=v9.9.9
+expect_fail notfound 'download failed' "$tmp/good" AW_VERSION=v9.9.9
+
+# staging failure on the 3rd binary: nothing in AW_BIN_DIR may change (no mixed versions, no residue)
+cshim=$tmp/chmod-shim
+mkdir -p "$cshim"
+cat >"$cshim/chmod" <<'SH'
+#!/bin/sh
+n=$(cat "$AW_TEST_COUNT" 2>/dev/null || echo 0)
+n=$((n + 1))
+echo "$n" >"$AW_TEST_COUNT"
+[ "$n" -ne 3 ] || exit 1
+exec /bin/chmod "$@"
+SH
+/bin/chmod +x "$cshim/chmod"
+expect_fail staging 'cannot (write|stage)' "$tmp/good" PATH="$cshim:$PATH" AW_TEST_COUNT="$tmp/chmod-count"
 
 echo "PASS"

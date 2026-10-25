@@ -2,7 +2,8 @@
 # agentic-warden installer. Downloads the release archive for this OS/arch, verifies it against
 # the release's checksums.txt and installs aw, aw-policy, aw-sync and awd into AW_BIN_DIR.
 # Env: AW_VERSION (default: latest), AW_BIN_DIR (default: $HOME/.local/bin), AW_BASE_URL.
-# Never uses sudo. Nothing is written to AW_BIN_DIR until the archive has been verified.
+# Never uses sudo. AW_BIN_DIR is untouched until the archive is verified and all four binaries are
+# staged; a failure before that leaves it as it was. Only the final four renames could fail midway.
 set -eu
 
 base=${AW_BASE_URL:-https://github.com/alchristleo/agentic-warden/releases}
@@ -59,8 +60,13 @@ done
 
 mkdir -p "$bindir" || die "cannot create $bindir"
 for b in aw aw-policy aw-sync awd; do
-  cp "$tmp/x/$b" "$bindir/.$b.new.$$" && chmod 755 "$bindir/.$b.new.$$" && mv -f "$bindir/.$b.new.$$" "$bindir/$b" ||
-    die "cannot write $bindir/$b"
+  if ! { cp "$tmp/x/$b" "$bindir/.$b.new.$$" && chmod 755 "$bindir/.$b.new.$$"; }; then
+    for c in aw aw-policy aw-sync awd; do rm -f "$bindir/.$c.new.$$"; done
+    die "cannot stage $bindir/$b; nothing was installed"
+  fi
+done
+for b in aw aw-policy aw-sync awd; do
+  mv -f "$bindir/.$b.new.$$" "$bindir/$b" || die "cannot write $bindir/$b"
 done
 
 echo "Installed $file to $bindir: aw aw-policy aw-sync awd"
