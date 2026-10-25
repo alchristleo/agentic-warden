@@ -88,3 +88,4 @@ PANEL security e4f5b69 must=0 should=2 nit=1
 DISMISSED design type-checks drop (owner: keep, merge-safe per-field, loud at apply)
 DISMISSED design probe delete (owner: keep, label one-off)
 TRIAGE fixed=20 dismissed=2 backlog=3
+FIX wave 6a360c6 sdd-implementer 20 items: cross-field checks dropped, url/header secret rejects, empty list, Inspect warn, probe CA moved + rerun, docs CDO items
