@@ -31,7 +31,7 @@ rules:
 
 - `name` identifies the rule.
 - `match` narrows who the rule applies to. A rule with no `match` block applies to everyone.
-- `agents` holds one block per agent: `claude`, `codex`, `gemini` (end of life) or `agy`.
+- `agents` holds one block per agent: `claude`, `codex`, `gemini` (retired for most users) or `agy`.
 - `managed` is the machine-wide layer. For Claude it is the managed settings; for Codex it is
   `requirements.toml`; for Gemini it is the system settings and the admin policy; for agy it is the
   admin settings file.

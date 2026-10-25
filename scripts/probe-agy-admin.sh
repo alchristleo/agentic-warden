@@ -23,8 +23,15 @@ cleanup() { docker rm -f "$name" >/dev/null 2>&1; rm -rf "$work"; }
 trap cleanup EXIT
 
 python3 -I - "$admin" "$work/admin.json" "${PROBE_NO_CA:-}" <<'PY' || exit 1
-import json, sys
-doc = json.load(open(sys.argv[1]))
+import json, shutil, sys
+# Inputs that do not parse or have no gateway are probed byte for byte.
+try:
+    doc = json.load(open(sys.argv[1]))
+except ValueError:
+    doc = None
+if not isinstance(doc, dict) or "gateway" not in doc:
+    shutil.copyfile(sys.argv[1], sys.argv[2])
+    sys.exit(0)
 if sys.argv[3]:
     doc.pop("caCertPath", None)
 else:

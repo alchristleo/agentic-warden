@@ -14,7 +14,7 @@
 
 ## The problem
 
-Claude Code, Codex, Gemini CLI and Antigravity CLI each read their own settings, in their own format. Gemini CLI reached end of life on 2026-06-18. Antigravity CLI (`agy`) is its successor, and aw governs only its gateway and models ([how it works](docs/site/how-it-works.md)).
+Claude Code, Codex, Gemini CLI and Antigravity CLI each read their own settings, in their own format. Google retired Gemini CLI for most users on 2026-06-18 ([announcement coverage](https://www.theregister.com/ai-ml/2026/05/20/bye-bye-gemini-cli-google-nudges-devs-toward-antigravity/5243605)); paid enterprise licences keep it for now. Antigravity CLI (`agy`) is its successor, and aw governs only its gateway and models ([how it works](docs/site/how-it-works.md)).
 Vendor consoles and managed settings files cannot scope a rule to one repository.
 Neither carries a single policy across all four ([how it works](docs/site/how-it-works.md#compared-with-what-you-have-today)).
 
@@ -62,7 +62,7 @@ In `payments-api`, Claude Code refuses `curl` even when the command allows it, b
 
 ## What you get
 
-- **One policy for four agents.** One YAML file covers Claude Code (enforced), Codex and Gemini CLI (end of life, advisory), and Antigravity CLI (gateway and models only). See [write your first policy](docs/site/write-first-policy.md).
+- **One policy for four agents.** One YAML file covers Claude Code (enforced), Codex and Gemini CLI (retired for most users, advisory), and Antigravity CLI (gateway and models only). See [write your first policy](docs/site/write-first-policy.md).
 - **Scoped by repository and by group.** Rules match a repository pattern or an identity-provider group, and groups can come from Okta or Entra ID ([rules for a group](docs/site/write-first-policy.md#rules-for-a-group)).
 - **Works offline.** `aw` compiles from the last synced bundle on local disk, so a stopped control plane leaves the policy in force ([quickstart step 7](docs/site/quickstart.md#7-change-the-rule-then-pull-the-plug)).
 - **Signed bundles.** When you configure a signing key, each machine enrolled after that pins the key it is given at enrollment (trust on first use, so enroll over TLS) and verifies an Ed25519 or AWS KMS signature before it parses the body. Signing detects tampering and cannot stop a root user ([security model](docs/site/security-model.md)).
@@ -79,7 +79,7 @@ As of October 2026. This compares mechanisms only.
 |------------------------------|:--------------:|:----------------:|:------------------------------:|
 | Vendor admin console         | ❌             | ➖ varies by vendor | ❌ one vendor each          |
 | Managed settings files (MDM) | ❌             | ❌               | ❌ one format per vendor       |
-| Agentic Warden               | ✅             | ✅               | ✅ one policy (Codex and Gemini CLI (end of life) advisory, Antigravity gateway and models only) |
+| Agentic Warden               | ✅             | ✅               | ✅ one policy (Codex and Gemini CLI advisory, Antigravity gateway and models only) |
 
 Claude Code already ships managed settings, MDM delivery, server-managed settings, sandboxing and OpenTelemetry. What remains uncovered is per-repository rules, per-group policy for Claude Code on claude.ai seats, and one policy across the four agents ([details](docs/site/how-it-works.md#compared-with-what-you-have-today)).
 

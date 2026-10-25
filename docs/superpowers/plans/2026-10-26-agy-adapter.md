@@ -51,6 +51,7 @@ Copy the shape of `internal/agent/gemini` (renderer, managed/, Inspect) and its 
 - One shared `agent.DroppedRepoRules` helper (codex, gemini, agy copies) (panel-design).
 - aw-sync removes files of agents no longer enrolled (panel-correctness).
 - README: say `aw agy` is a thin launcher (panel-design nit).
+- README:82 drop inner "(end of life)" in compare cell; how-it-works:90 move hooks-bullet parenthetical below list (panel-cdo nits).
 - awd apply validates merged docs per subject for every agent, not just per rule (agy fixed by dropping cross-field checks).
 
 ## Ledger
@@ -89,3 +90,5 @@ DISMISSED design type-checks drop (owner: keep, merge-safe per-field, loud at ap
 DISMISSED design probe delete (owner: keep, label one-off)
 TRIAGE fixed=20 dismissed=2 backlog=3
 FIX wave 6a360c6 sdd-implementer 20 items: cross-field checks dropped, url/header secret rejects, empty list, Inspect warn, probe CA moved + rerun, docs CDO items
+PANEL cdo a2936f6 must=0 should=0 nit=2
+SEAT panel-cdo pass a2936f6 AC10 re-run on fix diff
