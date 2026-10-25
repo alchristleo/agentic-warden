@@ -83,3 +83,4 @@ T4 fix 2f1ac86 sdd-implementer unpinned-skip test + full snapshot + comment
 T4 review approve 2f1ac86 sdd-reviewer-lite fix round 1 pass
 T7 done da93f26 sdd-implementer docs+upgrading.md+inspect.go; also edited security-model, how-it-works, enforce-plain-claude; CONCERN Entra has no email_verified (uses xms_edov) — owner question
 T5b done bd00d7a sdd-implementer email check only for user claim email; xms_edov accepted (owner decision)
+T7+T5b review approve 551977e sdd-reviewer nits: doctor ignores explicit requireBundle; xms_edov-with-email source (in MS ref); threat-model path
