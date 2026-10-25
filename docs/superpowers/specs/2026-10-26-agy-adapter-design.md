@@ -156,3 +156,33 @@ gateway for `gateway.example.com`, `AGY_LLM_GATEWAY_API_KEY=probe-key` unless no
 - 2026-10-26 `{"models":{"list":[]}}` (probe added a caCertPath; no gateway): agy starts, no admin warning, no gateway, sign-in prompt as for `{}`. It shows no effect without a gateway, so aw rejects an empty list as a likely mistake rather than on agy's behavior.
 - Not probed: bad field values (wrong type, bad URL, missing CA file). Validate (D3) rejects them before render, so agy's reaction is out of scope.
 - D5 outcome: render `{}` (or an empty object) for "no agy rules". agy accepts it.
+
+## Status (converged 2026-10-26)
+
+Branch `agy-adapter` HEAD b82b2a7 against `main` 93c8ece. All commands run with `-count=1` where noted; Go 1.24.0 floor, 1.27.3 stable.
+
+| # | Criterion (short) | Verdict | Evidence |
+|---|---|---|---|
+| 1 | Render golden + `{}`, SystemDir per OS | VERIFIED | `go test ./internal/agent/agy -run 'TestRender' -v`: TestRenderMatchesTheGoldenFiles, TestRenderWithNoAgyRulesWritesEmpty PASS. The AC's `-run` pattern does not match SystemDir, so also ran `-run TestSystemDirPerOS` (additional run): PASS |
+| 2 | Validate rejects/accepts list | VERIFIED | `go test ./internal/agent/agy/managed -v`: 30 PASS lines, ok |
+| 3 | awd apply rejects apiKey and launch | VERIFIED | `go test ./cmd/awd -run 'Agy' -v`: TestApplyRejectsAnAgyGatewayAPIKey, TestApplyRejectsALaunchDocumentForAgy PASS |
+| 4 | models.list replaces, headers accumulate | VERIFIED | `go test ./internal/policy -run TestCompileAgyModelsListReplaces -v`: PASS |
+| 5 | Repo-scoped rule noted | VERIFIED | `go test ./internal/agent/agy -run TestRenderNotesTheRepoScopedRulesItDropped -v`: PASS |
+| 6 | aw-sync e2e enroll/once/outage | VERIFIED | `go test ./cmd/aw-sync -run TestEnrollOnceStatusAndOutage -v`: PASS |
+| 7 | aw agy Build | VERIFIED | `go test ./internal/agent/agy -run TestBuild -v`: TestBuildMergesEnvPassesArgsAndWritesNothing, TestBuildFailsWhenTheBinaryIsMissing PASS |
+| 8 | doctor agy D7 cases | VERIFIED | `-run TestInspect`: 6 PASS (missing, unparseable, Validate fail, no revision, present, no API key); `go test ./cmd/aw -run TestDoctorListsAgyFindings -v`: PASS |
+| 9 | Real agy 1.4.7 reads golden file | INCONCLUSIVE | Ledger `SEAT panel-correctness pass a2936f6 AC9` predates f06608d, which changed `scripts/probe-agy-admin.sh` (AC9 file). I did not re-run the probe. Missing run: `scripts/probe-agy-admin.sh internal/agent/agy/testdata/admin_settings.golden.json` (docker present, not run). Owner chose light review, no seat re-run |
+| 10 | Docs, link and readme checks, wording | INCONCLUSIVE | Ran `for f in README.md docs/site/*.md; do bash scripts/check-links.sh "$f"; done && bash scripts/check-readme.sh`: pass ("check-readme: README.md ok"). Wording seat: `SEAT panel-cdo pass a2936f6 AC10` predates f06608d and 9edd992, which edited README.md and docs/site/*.md. Owner chose light review, no seat re-run |
+| 11 | Full suite on floor and stable | VERIFIED | `go test -count=1 ./...` (go1.24.0): no failures. `GOTOOLCHAIN=go1.27.3 go test -count=1 ./...` (go1.27.3): no failures |
+| 12 | Default enroll leaves agy out | VERIFIED | `go test ./cmd/aw-sync -run TestEnrollDefaultLeavesAgyOut -v`: PASS |
+
+### Deviations
+
+- AC1: the Check command does not cover `SystemDir`; verified by an added run of `TestSystemDirPerOS`.
+- AC9, AC10: seat passes are stale by the rule (later commits f06608d, 9edd992 touched their files). Owner decision: light review (sdd-reviewer-lite, `COORD f06608d review fail`, fixed in 9edd992, not re-reviewed). Owner confirms at the merge gate.
+- No earlier status table existed in this spec.
+
+### Open findings
+
+- Backlog from TRIAGE (3 items) and the weak Inspect error match nit (`COORD ... nit weak Inspect Error match (backlog)`): backlogged, not open.
+- 9edd992 (Gemini EOL wording) was not re-reviewed after the fail verdict.
