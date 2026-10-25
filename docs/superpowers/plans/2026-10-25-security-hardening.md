@@ -64,6 +64,9 @@ Branch: `security-hardening`. Constraint for every task: no new env var or CLI f
 - Repin before the revisedAt check, so a refused bundle carrying a rollover still moves the pin (panel-correctness nit; documented meanwhile).
 - Sync `Client.CheckRedirect` skipped when `cfg.HTTP` is injected (tests only today; no production caller sets it).
 - Doctor `emptyEffect` should read explicit `requireBundle` (T7 review nit).
+- Custom `CheckRedirect` drops Go's 10-redirect cap; also refuse when `len(via) >= 10` (client.go:269, awd main.go:396/:509; security re-run nit).
+- threat-model rows :43/:49 should name `TestEnrollRefusesAKeyThatDoesNotMatchTheTokensKeyID`, `TestRedirectToPlainHTTPIsRefused`, `TestAdminCLIRefusesRedirectToPlainHTTP` (security re-run nit).
+- Spec D3/AC3 text still says "response keyId differs"; the check is now "presented publicKey must hash to the token's key id" (security re-run nit).
 
 ## Ledger
 
@@ -101,3 +104,8 @@ COORD review approve 91505b2 sdd-reviewer-lite(haiku) 0b91724 + threat-model wor
 CONVERGE 6fbdd9c spec-converge: AC1-11 VERIFIED; AC12/AC14 INCONCLUSIVE (security seat stale after a01f1e9); AC13 nav = front matter section/order (docs-nav.tsx), wording owner
 PAUSED at step 7 seat re-run, next: panel-security re-run (Opus, fix diff only: review-pkg.sh 32a14c3; brief lists dismissed/triaged items + owns AC12/AC14) → spec-converge update AC12/14 → owner checks docs/site/upgrading.md wording (AC13) → merge gate (finishing-a-development-branch, PR, pr-checks-wait.sh) → retro (incl. asd-ste100 wiring proposal)
 USAGE end 93
+USAGE start 0
+OWNER approve AC13 docs/site/upgrading.md wording
+PANEL security 1569a22 must=0 should=0 nit=3 (re-run on fix diff 32a14c3..1569a22; nits → backlog)
+SEAT panel-security pass 1569a22 AC12
+SEAT panel-security pass 1569a22 AC14
