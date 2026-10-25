@@ -66,8 +66,9 @@ place, `aw agy` launches agy with the policy's env, and the docs say plainly wha
   no `.aw-revision` sibling → warn (file not written by aw-sync); parseable with sibling → ok worded
   "admin file present, revision X" (never "enforced": agy may ignore it, F5); `gateway.enabled` with no
   `AGY_LLM_GATEWAY_API_KEY` in env → warn (agy fails with "gatewayAuth: ... is not set"); any `AGY_LLM_GATEWAY_*` in env → ok-level note that the admin file outranks it (F3).
-- D8 aw-sync: `agy` is renderable. Whether a default `aw-sync enroll` includes it: `pending gate: Q1`
-  (aw-sync overwrites unconditionally, so a Google- or MDM-installed admin file would be replaced).
+- D8 aw-sync: `agy` is renderable but opt-in (owner, 2026-10-26): a default `aw-sync enroll` (no `--agents`)
+  leaves it out, `--agents ...,agy` adds it, and the docs warn that aw-sync then owns the whole admin file
+  (aw-sync overwrites unconditionally, so a Google- or MDM-installed file is replaced).
   Machines already enrolled keep their stored list. aw-sync runs as root; an unwritable path fails the
   whole cycle, as for every agent today (Renderer contract, all-or-nothing); not changed here.
 - D10 Launch notes print only in `aw doctor`, so the D6 note never appears on a normal launch.
@@ -118,6 +119,8 @@ place, `aw agy` launches agy with the policy's env, and the docs say plainly wha
     enforced and says how the gateway key reaches developers; Gemini marked deprecated; `for f in README.md docs/site/*.md; do bash scripts/check-links.sh "$f" || exit 1; done &&
     bash scripts/check-readme.sh` pass; wording `check: seat panel-cdo`.
 11. Full suite green on the Go floor and stable: `go test ./... && GOTOOLCHAIN=go1.27.3 go test ./...`.
+12. A default `aw-sync enroll` (no `--agents`) stores claude, codex and gemini but not agy; `--agents agy`
+    is accepted: `go test ./cmd/aw-sync -run TestEnrollDefaultLeavesAgyOut -v`.
 
 ## Security notes
 
