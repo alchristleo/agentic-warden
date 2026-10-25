@@ -94,3 +94,4 @@ PANEL correctness 32a14c3 must=1 should=1 nit=2
 SEAT panel-correctness fail 32a14c3 AC3
 SEAT panel-correctness fail 32a14c3 AC4
 TRIAGE fixed=4 dismissed=0 backlog=1
+FIX wave a01f1e9 sdd-implementer(sonnet) key-id from real key; CheckRedirect on 3 clients; revoke hint; threat-model path + rollover note
