@@ -9,6 +9,66 @@ description: Every environment variable the four binaries read, and every file t
 
 Defaults come from `awd help`, `aw help` and `aw-sync help`, and from the code that reads them.
 
+## Install
+
+On Linux or macOS, amd64 or arm64, this installs `aw`, `aw-policy`, `aw-sync` and `awd` to `~/.local/bin` without root:
+
+```sh
+curl -fsSL https://github.com/alchristleo/agentic-warden/releases/latest/download/install.sh | sh
+```
+
+`install.sh` needs `curl`, `tar`, and `sha256sum` or `shasum`. It downloads the archive for your system and `checksums.txt` from the same release, checks the archive against its line in `checksums.txt`, and only then copies the four binaries. It never uses `sudo`. It writes nothing to `AW_BIN_DIR` unless the archive verified and all four binaries were staged. Only the final four renames can fail midway, which can leave a mix of old and new binaries.
+
+| Variable | Purpose |
+|---|---|
+| `AW_VERSION` | Release to install, such as `v0.1.0`. Default `latest`. |
+| `AW_BIN_DIR` | Directory for the four binaries. Default `$HOME/.local/bin`. |
+| `AW_BASE_URL` | Release base URL, for mirrors and tests. Default `https://github.com/alchristleo/agentic-warden/releases`. |
+
+A pinned version downloads from `<base>/download/<version>/` instead of `<base>/latest/download/`:
+
+```sh
+curl -fsSL https://github.com/alchristleo/agentic-warden/releases/download/v0.1.0/install.sh | AW_VERSION=v0.1.0 sh
+```
+
+### Verify a download
+
+Save the archive and `checksums.txt` from the same release in one directory, then run:
+
+```sh
+sha256sum --ignore-missing -c checksums.txt
+```
+
+This proves the archive matches the checksum published in its release. It catches corruption and tampering in transit. It does not prove who built the archive, because whoever can replace the release can replace its checksums too.
+
+```sh
+gh attestation verify agentic-warden_v0.1.0_linux_amd64.tar.gz -R alchristleo/agentic-warden
+```
+
+This proves GitHub recorded build provenance for the archive: a workflow run of this repository built it. It covers the case where the release itself is compromised. It needs the GitHub CLI. `install.sh` does not run it.
+
+`install.sh` is not in `checksums.txt` and has no attestation, so read it before you run it.
+
+### Install for enforcement
+
+Enforcement needs a root-owned `aw-policy`, so install to a system directory with `sudo`:
+
+```sh
+curl -fsSL https://github.com/alchristleo/agentic-warden/releases/latest/download/install.sh | sudo env AW_BIN_DIR=/usr/local/bin sh
+```
+
+The script never calls `sudo` itself. Running it as root is your choice.
+
+### From source
+
+With Go 1.24 or newer:
+
+```sh
+go install github.com/alchristleo/agentic-warden/cmd/...@latest
+```
+
+This builds from the module source. It does not check a release checksum or attestation.
+
 ## Control plane (`awd`)
 
 | Variable | Purpose |
