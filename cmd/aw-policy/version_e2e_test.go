@@ -3,6 +3,7 @@ package main_test
 import (
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -34,7 +35,22 @@ func TestVersionCommandStamped(t *testing.T) {
 }
 
 func TestVersionCommandUnstamped(t *testing.T) {
-	if got := buildVersioned(t, ""); got != "env-overrides=off\nversion dev\n" {
-		t.Errorf("output = %q, want version dev line", got)
+	want := "env-overrides=off\nversion " + wantUnstamped(t) + "\n"
+	if got := buildVersioned(t, ""); got != want {
+		t.Errorf("output = %q, want %q", got, want)
 	}
+}
+
+// wantUnstamped is what an unstamped build reports: the tag when the checkout
+// is clean and exactly at one (Go stamps it from VCS), otherwise "dev".
+func wantUnstamped(t *testing.T) string {
+	t.Helper()
+	tag, err := exec.Command("git", "describe", "--tags", "--exact-match").Output()
+	if err != nil {
+		return "dev"
+	}
+	if dirty, err := exec.Command("git", "status", "--porcelain").Output(); err != nil || len(dirty) > 0 {
+		return "dev"
+	}
+	return strings.TrimSpace(string(tag))
 }
