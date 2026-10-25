@@ -4,7 +4,7 @@
 
 <h1>Agentic Warden</h1>
 
-<h3>Set agent rules once. Scope them by repository and IdP group, across Claude Code, Codex and Gemini CLI.</h3>
+<h3>Set agent rules once. Scope them by repository and IdP group, across Claude Code, Codex, Gemini CLI and Antigravity CLI (Antigravity: gateway and models only).</h3>
 
 <img src="docs/assets/hero.gif" width="900" alt="aw claude refuses curl in payments-api and runs it in sandbox">
 
@@ -14,9 +14,9 @@
 
 ## The problem
 
-Claude Code, Codex and Gemini CLI each read their own settings, in their own format.
+Claude Code, Codex, Gemini CLI and Antigravity CLI each read their own settings, in their own format. Google retired Gemini CLI for most users on 2026-06-18 ([announcement coverage](https://www.theregister.com/ai-ml/2026/05/20/bye-bye-gemini-cli-google-nudges-devs-toward-antigravity/5243605)); Gemini Code Assist Standard and Enterprise licences and paid API keys keep it. Antigravity CLI (`agy`) is its successor, and aw governs only its gateway and models ([how it works](docs/site/how-it-works.md)).
 Vendor consoles and managed settings files cannot scope a rule to one repository.
-Neither carries a single policy across all three ([how it works](docs/site/how-it-works.md#compared-with-what-you-have-today)).
+Neither carries a single policy across all four ([how it works](docs/site/how-it-works.md#compared-with-what-you-have-today)).
 
 ## See it work
 
@@ -52,7 +52,7 @@ In `payments-api`, Claude Code refuses `curl` even when the command allows it, b
 <p align="center">
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="docs/assets/architecture-dark.svg">
-    <img src="docs/assets/architecture-light.svg" width="900" alt="A policy file goes to awd, aw-sync carries it to each laptop, and Claude Code, Codex and Gemini CLI read it there. Model traffic goes straight to the vendor, not through awd.">
+    <img src="docs/assets/architecture-light.svg" width="900" alt="A policy file goes to awd, aw-sync carries it to each laptop, and Claude Code, Codex, Gemini CLI and Antigravity CLI read it there. Model traffic goes straight to the vendor, not through awd.">
   </picture>
 </p>
 
@@ -62,7 +62,7 @@ In `payments-api`, Claude Code refuses `curl` even when the command allows it, b
 
 ## What you get
 
-- **One policy for three agents.** One YAML file covers Claude Code (enforced) and Codex and Gemini CLI (advisory). See [write your first policy](docs/site/write-first-policy.md).
+- **One policy for four agents.** One YAML file covers Claude Code (enforced), Codex and Gemini CLI (retired for most users, advisory), and Antigravity CLI (gateway and models only). See [write your first policy](docs/site/write-first-policy.md).
 - **Scoped by repository and by group.** Rules match a repository pattern or an identity-provider group, and groups can come from Okta or Entra ID ([rules for a group](docs/site/write-first-policy.md#rules-for-a-group)).
 - **Works offline.** `aw` compiles from the last synced bundle on local disk, so a stopped control plane leaves the policy in force ([quickstart step 7](docs/site/quickstart.md#7-change-the-rule-then-pull-the-plug)).
 - **Signed bundles.** When you configure a signing key, each machine enrolled after that pins the key it is given at enrollment (trust on first use, so enroll over TLS) and verifies an Ed25519 or AWS KMS signature before it parses the body. Signing detects tampering and cannot stop a root user ([security model](docs/site/security-model.md)).
@@ -75,20 +75,20 @@ In `payments-api`, Claude Code refuses `curl` even when the command allows it, b
 
 As of October 2026. This compares mechanisms only.
 
-| Mechanism                    | Per repository | Per IdP group    | Claude Code, Codex, Gemini CLI |
+| Mechanism                    | Per repository | Per IdP group    | Claude Code, Codex, Gemini CLI, Antigravity CLI |
 |------------------------------|:--------------:|:----------------:|:------------------------------:|
 | Vendor admin console         | ❌             | ➖ varies by vendor | ❌ one vendor each          |
 | Managed settings files (MDM) | ❌             | ❌               | ❌ one format per vendor       |
-| Agentic Warden               | ✅             | ✅               | ✅ one policy (Codex, Gemini advisory) |
+| Agentic Warden               | ✅             | ✅               | ✅ one policy (Codex and Gemini CLI advisory, Antigravity gateway and models only) |
 
-Claude Code already ships managed settings, MDM delivery, server-managed settings, sandboxing and OpenTelemetry. What remains uncovered is per-repository rules, per-group policy for Claude Code on claude.ai seats, and one policy across the three agents ([details](docs/site/how-it-works.md#compared-with-what-you-have-today)).
+Claude Code already ships managed settings, MDM delivery, server-managed settings, sandboxing and OpenTelemetry. What remains uncovered is per-repository rules, per-group policy for Claude Code on claude.ai seats, and one policy across the four agents ([details](docs/site/how-it-works.md#compared-with-what-you-have-today)).
 
 ## Questions your security team will ask
 
 - **Do our code or prompts reach you?** No. `awd` is not in the path of an agent session, so it never sees prompts, code or model traffic. It sees enrollment and sync requests. In the hosted pilot we store your policies with their revision history, machine records (machine id, enrolled email, key id, last sync), identity-provider group membership, audit events (who applied what policy, and when) and service logs kept 30 days ([security model](docs/site/security-model.md#what-the-control-plane-sees), [trust statement](docs/hosting/trust.md)).
 - **What if the server goes down?** A machine keeps the policy it has, with no expiry. A machine with a pinned signing key that holds a bad or missing bundle refuses to start Claude Code; with no pinned key it falls back to the static files. `requireBundle` overrides either way ([design limits](docs/site/security-model.md#design-limits)).
 - **Can a developer bypass it?** Partly. Bare `claude` is governed, but a local administrator can edit the managed source or remove the drop-in, the `origin` remote that repository rules key on is the developer's to edit, and a developer's own Claude Code install is outside managed settings ([what it does not stop](docs/site/security-model.md#what-it-does-not-stop)).
-- **What is not covered yet?** `awd` has no rate limit, the audit actor on the token path is caller-chosen, and two replays are not detected (same revision with older group membership, and a backwards control plane clock). `aw codex` and `aw gemini` are advisory. Co-signed revisions are planned and not built ([design limits](docs/site/security-model.md#design-limits), [threat model](docs/site/threat-model.md)).
+- **What is not covered yet?** agy permissions, MCP servers, hooks and repository-scoped rules are not enforced ([how it works](docs/site/how-it-works.md#antigravity-cli-gateway-and-models-only)). `awd` has no rate limit, the audit actor on the token path is caller-chosen, and two replays are not detected (same revision with older group membership, and a backwards control plane clock). `aw codex` and `aw gemini` are advisory. Co-signed revisions are planned and not built ([design limits](docs/site/security-model.md#design-limits), [threat model](docs/site/threat-model.md)).
 
 You run `awd` yourself and hold the signing key. A hosted design-partner pilot also exists, on the terms in the [trust statement](docs/hosting/trust.md).
 

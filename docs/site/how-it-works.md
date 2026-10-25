@@ -78,15 +78,38 @@ Server-managed settings from the claude.ai console shadow the helper
 entirely, so an organization uses one channel or the other; `aw doctor`
 detects the collision, and reports the bundle and aw-sync's last cycle.
 
+## Antigravity CLI (gateway and models only)
+
+Google retired Gemini CLI for most users on 2026-06-18 ([announcement coverage](https://www.theregister.com/ai-ml/2026/05/20/bye-bye-gemini-cli-google-nudges-devs-toward-antigravity/5243605)); Gemini Code Assist Standard and Enterprise licences and paid API keys keep it. Its successor is Antigravity CLI (`agy`).
+`aw-sync` renders agy only when you enroll with `--agents ...,agy`. Then it writes agy's
+machine-wide admin file, and it owns that whole file. agy reads the gateway, CA bundle and
+model list from that file, and a developer cannot override them. agy has no path override, so
+`aw agy` cannot scope the file to a repository. aw drops repository-scoped agy rules and prints
+a note.
+
+Not enforced:
+
+- agy permissions
+- MCP servers
+- hooks (agy's permission rules, MCP servers and hooks live only in each developer's home directory)
+- repository-scoped rules
+
+The gateway API key stays out of the policy. aw does not distribute this key. Issue it per developer at your
+gateway and set it through your usual secret or shell-profile channel, as `AGY_LLM_GATEWAY_API_KEY`.
+`aw doctor agy` reports whether the admin file is present. It says "admin file present, revision X",
+not "enforced", because agy may ignore the file. It warns when the file does not pass aw's policy checks
+(agy may still accept it). It reports an error only when the file is unreadable or not valid JSON,
+because agy silently ignores a file it cannot parse.
+
 ## Compared with what you have today
 
 As of October 2026. This compares mechanisms only.
 
-| As of October 2026            | Per repository | Per IdP group      | Claude Code, Codex, Gemini CLI |
-|-------------------------------|----------------|--------------------|--------------------------------|
+| As of October 2026            | Per repository | Per IdP group      | Claude Code, Codex, Gemini CLI, Antigravity CLI |
+|-------------------------------|----------------|--------------------|-------------------------------------------------|
 | Vendor admin console          | No             | Varies by vendor   | One vendor each                |
 | Managed settings files (MDM)  | No             | No                 | One format per vendor          |
-| Agentic Warden                | Yes            | Yes                | One policy                     |
+| Agentic Warden                | Yes            | Yes                | One policy (Antigravity: gateway and models only) |
 
 Claude Code already ships managed settings files, MDM delivery, server-managed settings from the
 claude.ai console, `managedMcpServers`, sandboxing, and OpenTelemetry. Anthropic's self-hosted Claude
@@ -96,7 +119,7 @@ their own API key or cloud provider. What remains uncovered:
 - Per-repository rules.
 - Per-group policy for Claude Code on claude.ai seats (the console is organization-uniform; the
   gateway needs an upstream API or cloud credential).
-- One policy across Claude Code, Codex and Gemini CLI.
+- One policy across Claude Code, Codex, Gemini CLI and Antigravity CLI (gateway and models only).
 
 Codex on ChatGPT plans already has per-group rules in OpenAI's Agent Security, so for Codex this
 project adds per-repository rules, API-key use and self-hosting.

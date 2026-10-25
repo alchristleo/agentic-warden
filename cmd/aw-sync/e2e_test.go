@@ -216,7 +216,8 @@ const e2ePolicy = `{
       "gemini": {"managed": {
         "settings": {"admin": {"secureModeEnabled": true}},
         "policies": [{"toolName": "run_shell_command", "commandPrefix": "rm -rf", "decision": "deny", "priority": 100}]
-      }}
+      }},
+      "agy": {"managed": {"gateway": {"enabled": true, "url": "https://gw.example.com"}}}
     }},
     {"name": "platform", "match": {"groups": ["platform"]}, "agents": {"claude": {"managed": {"model": "opus"}}}},
     {"name": "payments", "match": {"repos": ["github.com/acme/payments*"]}, "agents": {
@@ -254,11 +255,12 @@ func TestEnrollOnceStatusAndOutage(t *testing.T) {
 	claudeRoot := filepath.Join(t.TempDir(), "claude-root")
 	codexRoot := filepath.Join(t.TempDir(), "codex-root")
 	geminiRoot := filepath.Join(t.TempDir(), "gemini-root")
+	agyRoot := filepath.Join(t.TempDir(), "agy-root")
 
 	// Enroll, with the token in the environment so it never hits argv.
 	token := mintToken(t, s, "alice@acme.com")
 	stdout, stderr, code := runSync(t, []string{"AW_SYNC_TOKEN=" + token},
-		"enroll", "--server", s.url, "--name", "e2e-host", "--agents", "claude,codex,gemini", "--state-dir", stateDir)
+		"enroll", "--server", s.url, "--name", "e2e-host", "--agents", "claude,codex,gemini,agy", "--state-dir", stateDir)
 	if code != 0 {
 		t.Fatalf("enroll exited %d: %s%s", code, stdout, stderr)
 	}
@@ -291,7 +293,7 @@ func TestEnrollOnceStatusAndOutage(t *testing.T) {
 	if err := json.Unmarshal([]byte(stdout), &freshReport); err != nil {
 		t.Fatalf("status --json is not JSON: %v\n%s", err, stdout)
 	}
-	if !freshReport.Enrolled || freshReport.MachineID == "" || len(freshReport.Agents) != 3 || freshReport.Agents[0] != "claude" || freshReport.Agents[1] != "codex" || freshReport.Agents[2] != "gemini" {
+	if !freshReport.Enrolled || freshReport.MachineID == "" || len(freshReport.Agents) != 4 || freshReport.Agents[0] != "claude" || freshReport.Agents[1] != "codex" || freshReport.Agents[2] != "gemini" || freshReport.Agents[3] != "agy" {
 		t.Errorf("status right after enroll = %+v", freshReport)
 	}
 	if runtime.GOOS != "windows" && os.Geteuid() != 0 {
@@ -317,7 +319,7 @@ func TestEnrollOnceStatusAndOutage(t *testing.T) {
 	}
 
 	// The first cycle renders both Claude files.
-	stdout, stderr, code = runSync(t, nil, "once", "--state-dir", stateDir, "--root", "claude="+claudeRoot, "--root", "codex="+codexRoot, "--root", "gemini="+geminiRoot)
+	stdout, stderr, code = runSync(t, nil, "once", "--state-dir", stateDir, "--root", "claude="+claudeRoot, "--root", "codex="+codexRoot, "--root", "gemini="+geminiRoot, "--root", "agy="+agyRoot)
 	if code != 0 {
 		t.Fatalf("once exited %d: %s%s", code, stdout, stderr)
 	}
@@ -382,6 +384,18 @@ func TestEnrollOnceStatusAndOutage(t *testing.T) {
 		t.Errorf("50-agent-wrapper.toml =\n%s", policies)
 	}
 
+	// agy gets one file, admin_settings.json, with its revision in a sibling.
+	admin, err := os.ReadFile(filepath.Join(agyRoot, "admin_settings.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(admin), `"url": "https://gw.example.com"`) {
+		t.Errorf("admin_settings.json =\n%s", admin)
+	}
+	if got, _ := os.ReadFile(filepath.Join(agyRoot, "admin_settings.json.aw-revision")); string(got) != "2026-09-21.e2e\n" {
+		t.Errorf("admin_settings.json.aw-revision = %q; a JSON file carries its revision in a sibling", got)
+	}
+
 	// aw-policy resolves the rendered bundle per launch and needs no
 	// server: outside a repository the platform rule sets the model and
 	// the payments deny stays out; inside a payments repository it joins.
@@ -406,7 +420,7 @@ func TestEnrollOnceStatusAndOutage(t *testing.T) {
 	}
 
 	// A second cycle is a 304 no-op.
-	stdout, _, code = runSync(t, nil, "once", "--state-dir", stateDir, "--root", "claude="+claudeRoot, "--root", "codex="+codexRoot, "--root", "gemini="+geminiRoot)
+	stdout, _, code = runSync(t, nil, "once", "--state-dir", stateDir, "--root", "claude="+claudeRoot, "--root", "codex="+codexRoot, "--root", "gemini="+geminiRoot, "--root", "agy="+agyRoot)
 	if code != 0 || !strings.Contains(stdout, "unchanged") {
 		t.Errorf("second once: exit %d, stdout %q; want an unchanged report", code, stdout)
 	}
@@ -427,7 +441,7 @@ func TestEnrollOnceStatusAndOutage(t *testing.T) {
 	if err := json.Unmarshal([]byte(stdout), &report); err != nil {
 		t.Fatalf("status --json is not JSON: %v\n%s", err, stdout)
 	}
-	if !report.Enrolled || report.Version != "2026-09-21.e2e" || report.Drift || report.Error != "" || len(report.Files) != 6 {
+	if !report.Enrolled || report.Version != "2026-09-21.e2e" || report.Drift || report.Error != "" || len(report.Files) != 7 {
 		t.Errorf("report = %+v", report)
 	}
 	if notes := strings.Join(report.Notes, "\n"); !strings.Contains(notes, "repo-scoped rule") || !strings.Contains(notes, "payments") ||
@@ -446,7 +460,7 @@ func TestEnrollOnceStatusAndOutage(t *testing.T) {
 	if !strings.Contains(stdout, "drift") {
 		t.Errorf("status does not report drift:\n%s", stdout)
 	}
-	stdout, stderr, code = runSync(t, nil, "once", "--state-dir", stateDir, "--root", "claude="+claudeRoot, "--root", "codex="+codexRoot, "--root", "gemini="+geminiRoot)
+	stdout, stderr, code = runSync(t, nil, "once", "--state-dir", stateDir, "--root", "claude="+claudeRoot, "--root", "codex="+codexRoot, "--root", "gemini="+geminiRoot, "--root", "agy="+agyRoot)
 	if code != 0 {
 		t.Fatalf("once after drift exited %d: %s%s", code, stdout, stderr)
 	}
@@ -466,7 +480,7 @@ func TestEnrollOnceStatusAndOutage(t *testing.T) {
 
 	// The server goes away: the cycle fails, the files stay.
 	s.stop()
-	stdout, stderr, code = runSync(t, nil, "once", "--state-dir", stateDir, "--root", "claude="+claudeRoot, "--root", "codex="+codexRoot, "--root", "gemini="+geminiRoot)
+	stdout, stderr, code = runSync(t, nil, "once", "--state-dir", stateDir, "--root", "claude="+claudeRoot, "--root", "codex="+codexRoot, "--root", "gemini="+geminiRoot, "--root", "agy="+agyRoot)
 	if code != 1 {
 		t.Errorf("once during an outage exited %d, want 1: %s%s", code, stdout, stderr)
 	}
@@ -478,6 +492,9 @@ func TestEnrollOnceStatusAndOutage(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(geminiRoot, "policies", "50-agent-wrapper.toml")); err != nil {
 		t.Error("an outage removed the Gemini policy file")
+	}
+	if _, err := os.Stat(filepath.Join(agyRoot, "admin_settings.json")); err != nil {
+		t.Error("an outage removed the agy admin file")
 	}
 	if got, _ := os.ReadFile(bundlePath); string(got) != "{}\n" {
 		t.Error("an outage rewrote the bundle; a failed fetch must leave files as they are")
@@ -834,5 +851,32 @@ func TestForceReenrollResetsRevisedAt(t *testing.T) {
 	}
 	if got := revisedAt(); got != 0 {
 		t.Errorf("revisedAt after enroll --force = %d, want 0", got)
+	}
+}
+
+func TestEnrollDefaultLeavesAgyOut(t *testing.T) {
+	// agy is opt-in: aw-sync owns the whole admin file once it syncs agy, so
+	// a default enroll does not take it. --agents names it explicitly.
+	s := startAwd(t)
+	applyPolicy(t, s)
+	stateDir := filepath.Join(t.TempDir(), "state")
+
+	token := mintToken(t, s, "alice@acme.com")
+	stdout, stderr, code := runSync(t, []string{"AW_SYNC_TOKEN=" + token},
+		"enroll", "--server", s.url, "--name", "e2e-host", "--state-dir", stateDir)
+	if code != 0 {
+		t.Fatalf("enroll exited %d: %s%s", code, stdout, stderr)
+	}
+
+	stdout, stderr, code = runSync(t, nil, "status", "--json", "--state-dir", stateDir)
+	if code != 0 {
+		t.Fatalf("status exited %d: %s%s", code, stdout, stderr)
+	}
+	var report struct{ Agents []string }
+	if err := json.Unmarshal([]byte(stdout), &report); err != nil {
+		t.Fatal(err)
+	}
+	if got := strings.Join(report.Agents, ","); got != "claude,codex,gemini" {
+		t.Errorf("default enrollment agents = %q, want claude,codex,gemini", got)
 	}
 }

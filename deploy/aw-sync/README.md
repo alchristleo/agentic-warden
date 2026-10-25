@@ -39,8 +39,8 @@ Administrators right after enrolling:
     icacls "C:\ProgramData\agent-wrapper" /inheritance:r /grant:r "SYSTEM:(OI)(CI)F" "BUILTIN\Administrators:(OI)(CI)F"
 
 `--agents claude,codex,gemini` limits the sync to the agents installed here;
-the default is every agent this build can render, and the choices are
-`claude`, `codex` and `gemini`. List only the agents this machine runs: a file
+the default is `claude`, `codex` and `gemini`, and the choices are
+`claude`, `codex`, `gemini` and `agy`. List only the agents this machine runs: a file
 rendered for an agent that is not installed is noise for whoever audits the
 box. Codex's file is `/etc/codex/requirements.toml`
 (`%ProgramData%\OpenAI\Codex\requirements.toml` on Windows), and aw-sync owns
@@ -57,6 +57,16 @@ mode first. A user can point `GEMINI_CLI_SYSTEM_SETTINGS_PATH` elsewhere, so
 put the rules that must hold in `policies` and treat `settings` as defaults
 until the launch-time `aw gemini` wrapper pins that variable. Re-enrolling
 needs `--force`.
+
+`agy` is opt-in: a default enroll leaves it out, and `--agents claude,codex,gemini,agy` adds it.
+Its file is `/etc/antigravity/admin_settings.json`
+(`/Library/Application Support/Antigravity/admin_settings.json` on macOS,
+`%ProgramData%\Antigravity\admin_settings.json` on Windows). aw-sync owns the whole file. Each cycle
+overwrites it, including a file that Google's installer or MDM put there. Enroll `agy` only on a
+machine where aw-sync should own that file. A machine enrolled before agy support keeps its stored
+agent list.
+
+> **Warning:** Re-enrolling without agy leaves `/etc/antigravity/admin_settings.json` in place. aw-sync stops updating it, and agy keeps reading it. Remove the file by hand. See [removing](../../docs/site/removing.md).
 
 `aw-sync` refuses an `http://` server unless the host is `localhost`, `127.0.0.0/8` or `::1`. Use an `https://` address. A token from a signing `awd` ends in the key id; `enroll` refuses a server that presents a different key. If it does, mint a new token from the server you mean to trust.
 

@@ -221,7 +221,7 @@ func TestLaunchIsAcceptedForCodexAlone(t *testing.T) {
 	if err := ok.Validate(); err != nil {
 		t.Errorf("codex launch: %v; want nil", err)
 	}
-	for _, agentName := range []string{"claude", "gemini"} {
+	for _, agentName := range []string{"claude", "gemini", "agy"} {
 		bad := &policy.RuleSet{Version: "v1", Rules: []policy.Rule{
 			{Name: "b", Agents: map[string]policy.AgentConfig{agentName: {Launch: map[string]any{"x": 1}}}},
 		}}

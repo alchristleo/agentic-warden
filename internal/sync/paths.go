@@ -9,6 +9,7 @@ import (
 	"fmt"
 
 	"github.com/alchristleo/agentic-warden/internal/agent"
+	"github.com/alchristleo/agentic-warden/internal/agent/agy"
 	"github.com/alchristleo/agentic-warden/internal/agent/claude"
 	"github.com/alchristleo/agentic-warden/internal/agent/codex"
 	"github.com/alchristleo/agentic-warden/internal/agent/gemini"
@@ -41,6 +42,8 @@ func AgentRoot(goos, agentName string) (string, error) {
 		return codex.SystemDir(goos), nil
 	case gemini.Name:
 		return gemini.SystemDir(goos), nil
+	case agy.Name:
+		return agy.SystemDir(goos), nil
 	}
 	return "", fmt.Errorf("sync: no system directory is known for agent %q", agentName)
 }

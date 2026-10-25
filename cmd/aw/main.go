@@ -27,6 +27,7 @@ import (
 	"time"
 
 	"github.com/alchristleo/agentic-warden/internal/agent"
+	"github.com/alchristleo/agentic-warden/internal/agent/agy"
 	"github.com/alchristleo/agentic-warden/internal/agent/claude"
 	"github.com/alchristleo/agentic-warden/internal/agent/codex"
 	"github.com/alchristleo/agentic-warden/internal/agent/gemini"
@@ -78,7 +79,7 @@ func run(argv []string) error {
 	claudeAdapter.StateDir = stateDirFor()
 
 	registry := &agent.Registry{}
-	for _, a := range []agent.Adapter{claudeAdapter, codex.New(), gemini.New()} {
+	for _, a := range []agent.Adapter{claudeAdapter, codex.New(), gemini.New(), agy.New()} {
 		if err := registry.Register(a); err != nil {
 			return err
 		}
