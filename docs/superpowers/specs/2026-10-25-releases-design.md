@@ -86,7 +86,7 @@ builds, checksums and attests a GitHub release. The module path matches the repo
    archives named per Decision 6, each holding the 4 binaries + LICENSE for its os/arch
    (checked with `file`), and `cd dist && sha256sum -c checksums.txt` passes. The linux/amd64
    `aw-policy build-info` reports the env overrides off:
-   `scripts/test-release-build.sh` exits 0.
+   `scripts/test-release-build.sh dist v0.0.0-test` exits 0.
 4. **Install, happy path.** Against a local served dist, `install.sh` with a temp HOME puts
    4 executables in `~/.local/bin` (default) and in a custom `AW_BIN_DIR`, without root, and
    `aw version` prints the dist's version: `scripts/test-install.sh dist` exits 0.
