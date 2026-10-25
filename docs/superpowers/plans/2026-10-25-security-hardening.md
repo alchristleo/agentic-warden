@@ -77,3 +77,5 @@ T6 review approve 49c1d9c sdd-reviewer should: managed-settings README + README:
 T3 review approve 108a0ca sdd-reviewer nits: redact URL userinfo in error (coord), groups case optional
 MERGE group1 ffd6daa go test ./... all ok
 T3 coord 0b91724 coordinator redact userinfo in CheckTransport error (+test)
+T4 done 3d445ec sdd-implementer revisedAt; old aw-policy/aw-sync tolerate field (plain Unmarshal; strict only on aw-policy config, checked by coordinator)
+T4 review approve 3d445ec sdd-reviewer should: no unpinned-skip test; nits: snapshot all files, stale comment → fix round 1
