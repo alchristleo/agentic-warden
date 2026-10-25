@@ -66,3 +66,7 @@ COORD review approve 2ed5b25 coordinator applied reviewer-lite's exact wording (
 T3 done 018d218 sdd-implementer adapter; golden compared as JSON; env note skips _API_KEY; bad file = single error
 T3 review approve 018d218 sdd-reviewer nits: D7 _API_KEY wording, unreadable case untested
 T3 coord d4a3486 D7 wording matches code (excludes _API_KEY)
+T5 done 97fd9de sdd-implementer-lite 6 docs files; AC10 checks run by coordinator: pass; open: removing.md row, README 3-agent mentions
+T4 done e8abe9f sdd-implementer wiring + e2e; launch reject pre-existing; agy sorts first; doctor e2e reads real /etc
+T4 review approve e8abe9f sdd-reviewer should: doctor e2e vacuous (rename); nits launch msg wording, optIn var, JSON test loosened
+T5 fix 97fd9de sdd-reviewer-lite fix-needed model IDs unsourced, README/index 3 agents, removing.md row, wrap
