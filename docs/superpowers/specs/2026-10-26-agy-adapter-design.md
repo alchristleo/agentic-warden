@@ -131,3 +131,23 @@ place, `aw agy` launches agy with the policy's env, and the docs say plainly wha
 - No secrets in policy: `apiKey` and auth headers rejected (D3). Policy `env` could still carry
   `AGY_LLM_GATEWAY_API_KEY`; same as any env secret today; docs say don't.
 - File is world-readable by design (agy runs as the developer).
+
+## T1 findings
+
+Probe: `scripts/probe-agy-admin.sh <file>` (2026-10-26). agy 1.4.7 as root in a debian:bookworm-slim container, no
+Google credentials in the container, file at `/etc/antigravity/admin_settings.json` root:root 0644, stub https
+gateway for `gateway.example.com`, `AGY_LLM_GATEWAY_API_KEY=probe-key` unless noted. Both `agy models` and
+`agy -p` ran. agy does not need Google sign-in to read the admin file or reach the gateway (F5 settled).
+
+- Golden full file → `agy models` exit 0 and lists exactly the two `models.list` ids from the file (log: "Resolving
+  models from Tier 1 (Inline admin_settings models.list)"). `agy -p` POSTs `/v1beta/models/gemini-3.8-flash:streamGenerateContent?alt=sse`
+  over HTTP/2 to the gateway with `Authorization: Bearer probe-key` and `X-Cost-Center: platform`. The CA at `caCertPath` was trusted (self-signed stub accepted). The stub's 404 gave `agy -p` exit 3.
+- `{}` (D5) → agy starts, no admin warning in the log. With no gateway configured it asks for Google sign-in (`agy models` exit 1 "Please sign in", `agy -p` prints the OAuth URL). `{}` is a safe "no rules" file.
+- Empty file (0 bytes) → same as `{}`: no gateway, sign-in prompt.
+- Unparseable JSON (`{"gateway":`) → agy starts, logs `W admin_settings.go: Failed to load MDM admin_settings from "/etc/antigravity/admin_settings.json": failed to parse admin settings JSON: unexpected end of JSON input`, ignores the file, asks for sign-in. A bad file silently drops all controls.
+- Unknown top-level key alone (`{"bogus":1}`) → same as `{}`. Unknown top-level key next to a valid gateway → ignored, gateway still applied (`models` and `-p` hit the stub).
+- Unknown nested key (`gateway.foo`, `models.list[0].foo`) → ignored, gateway still applied. So agy does not reject unknown fields here. Our strict allowlist (D3) is stricter than agy.
+- `gateway.enabled:true` without `AGY_LLM_GATEWAY_API_KEY` → no startup error and no "gatewayAuth: ... is not set". `agy models` exit 0 and `agy -p` still POSTs to the gateway, with no `Authorization` header. The D7 warn "agy fails with gatewayAuth" is wrong for this path: reword to "agy sends requests without an API key".
+- No Google sign-in present (the container default) → the gateway path works: log "ChainedAuth: authenticated via gateway", `authMethod=gateway`, `email=` empty. The log line `Failed to refresh cache in background: admin controls not applicable` appears on every run, including the working golden run. It is not a sign the admin file was skipped. Do not use it as a signal.
+- Not probed: bad field values (wrong type, bad URL, missing CA file). Validate (D3) rejects them before render, so agy's reaction is out of scope.
+- D5 outcome: render `{}` (or an empty object) for "no agy rules". agy accepts it.

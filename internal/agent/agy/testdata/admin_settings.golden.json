@@ -1,0 +1,22 @@
+{
+  "gateway": {
+    "enabled": true,
+    "url": "https://gateway.example.com",
+    "wireProtocol": "genai",
+    "customHeaders": {
+      "X-Cost-Center": "platform"
+    }
+  },
+  "caCertPath": "/etc/ssl/certs/example-ca.pem",
+  "models": {
+    "defaultModelId": "gemini-3.8-flash",
+    "list": [
+      {
+        "modelId": "gemini-3.8-flash"
+      },
+      {
+        "modelId": "gemini-3.8-pro"
+      }
+    ]
+  }
+}
