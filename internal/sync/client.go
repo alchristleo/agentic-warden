@@ -125,6 +125,11 @@ func (c *Client) Enroll(ctx context.Context, token, name, goos string) (Enrollme
 	if e.MachineID == "" || e.Credential == "" {
 		return Enrollment{}, errors.New("sync: the control plane returned an incomplete enrollment")
 	}
+	// A token minted by a signing control plane ends in ".<keyId>". The token
+	// travelled out of band, so the key the server presents must match it.
+	if i := strings.LastIndex(token, "."); i >= 0 && e.KeyID != token[i+1:] {
+		return Enrollment{}, fmt.Errorf("sync: the enrollment token names signing key %q but the control plane presented %q; not pinning it", token[i+1:], e.KeyID)
+	}
 	return e, nil
 }
 

@@ -7,6 +7,7 @@ import (
 	"errors"
 	"io"
 	"net/http"
+	"net/http/httptest"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -638,6 +639,37 @@ func TestEnrollChecksEnrollmentUnderTheLock(t *testing.T) {
 		"enroll", "--server", "http://127.0.0.1:1", "--agents", "claude", "--state-dir", stateDir)
 	if code != 1 || !strings.Contains(stderr, "--force") {
 		t.Errorf("after release: exit %d, stderr %q; want the already-enrolled refusal", code, stderr)
+	}
+	got, err := os.ReadFile(machinePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(got, machine) {
+		t.Errorf("machine.json changed: %q", got)
+	}
+}
+
+// TestForceReenrollChecksKeyID: --force takes the same key id check, so a
+// token naming a different key than the server presents is refused and the
+// existing enrollment is left intact.
+func TestForceReenrollChecksKeyID(t *testing.T) {
+	stub := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusCreated)
+		_, _ = w.Write([]byte(`{"machineId":"m2","credential":"c2","user":"u","publicKey":"pk","keyId":"bbbb"}`))
+	}))
+	t.Cleanup(stub.Close)
+	stateDir := t.TempDir()
+	machine := []byte(`{"server":"http://awd","machineId":"m1","credential":"c","agents":["claude"]}` + "\n")
+	machinePath := filepath.Join(stateDir, "machine.json")
+	if err := os.WriteFile(machinePath, machine, 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	_, stderr, code := runSync(t, []string{"AW_SYNC_TOKEN=secret.aaaa"},
+		"enroll", "--server", stub.URL, "--agents", "claude", "--force", "--state-dir", stateDir)
+
+	if code != 1 || !strings.Contains(stderr, "aaaa") {
+		t.Errorf("exit %d, stderr %q; want a key id refusal", code, stderr)
 	}
 	got, err := os.ReadFile(machinePath)
 	if err != nil {

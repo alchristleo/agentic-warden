@@ -53,6 +53,12 @@ func (h *Handler) postEnrollmentToken(w http.ResponseWriter, r *http.Request) {
 		h.fail(w, r, err)
 		return
 	}
+	if h.Signer != nil {
+		// The key id travels with the token, out of band, so the machine can
+		// check the key the server presents at enrollment even over HTTP.
+		plain += "." + h.Signer.KeyID()
+		hash = credential.Hash(plain)
+	}
 	expires := h.Now().Add(ttl)
 	event := model.AuditEvent{At: h.Now(), Actor: actorOf(r.Context()), Action: model.AuditTokenCreate, Target: req.User, Detail: map[string]any{"expiresAt": expires}}
 	if err := h.store.PutEnrollmentToken(r.Context(), model.EnrollmentToken{Hash: hash, User: req.User, ExpiresAt: expires}, event); err != nil {
