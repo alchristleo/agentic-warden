@@ -38,7 +38,7 @@ awd
 The installer is described under [Install](./reference.md#install) in the Reference. The clone is
 for the example policy in later steps.
 
-![Cloning the repository and building the four binaries](../assets/01-build.gif)
+![Cloning the repository and installing the four binaries](../assets/01-build.gif)
 
 ## 2. Start the control plane
 
