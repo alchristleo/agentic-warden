@@ -13,21 +13,22 @@ On Linux or macOS, amd64 or arm64, this installs `aw`, `aw-policy`, `aw-sync` an
 
 ```sh
 REL=https://github.com/alchristleo/agentic-warden/releases
-curl -fsSL $REL/latest/download/install.sh | sh
+curl -fsSL $REL/latest/download/install.sh \
+  | sh
 ```
 
 Check: `aw version`. Next: [Quickstart](./quickstart.md).
 
 `install.sh` needs `curl`, `tar`, `sha256sum` or `shasum`, and standard POSIX tools. It downloads the archive for your system and `checksums.txt` from the same release, checks the archive against its line in `checksums.txt`, and only then copies the four binaries. It never uses `sudo`. It changes nothing in `AW_BIN_DIR` (beyond creating it) unless the archive verified and all four binaries were staged. Only the final four renames can fail midway, which can leave a mix of old and new binaries.
 
-| Variable | Purpose |
-|---|---|
-| `AW_VERSION` | Release to install, such as `v0.1.0`. Default `latest`. |
-| `AW_BIN_DIR` | Directory for the four binaries. Default `$HOME/.local/bin`. |
+Two variables change what it does:
+
+- `AW_VERSION`: the release to install, with its leading `v`, such as `v0.1.1`. Default `latest`.
+- `AW_BIN_DIR`: where the four binaries go. Default `$HOME/.local/bin`.
 
 `AW_BASE_URL` overrides the release base URL (used by the installer tests).
 
-A pinned version downloads from `<base>/download/<version>/` instead of `<base>/latest/download/`. Replace the version with yours:
+A pinned version downloads from `<base>/download/<version>/` instead of `<base>/latest/download/`. Replace `<version>` with yours, keeping the leading `v` (`v0.1.1`):
 
 ```sh
 REL=https://github.com/alchristleo/agentic-warden/releases
@@ -76,7 +77,9 @@ less install.sh
 sudo env AW_BIN_DIR=/usr/local/bin sh install.sh
 ```
 
-The script never calls `sudo` itself. Running it as root is your choice. The directory must be root-owned and not writable by your user. Check with `ls -ld /usr/local/bin`; if your user owns it, use another root-owned directory.
+Press `q` to leave `less`. Check: `aw version`.
+
+The script never calls `sudo` itself. Running it as root is your choice. The directory must be root-owned and not writable by your user. Check with `ls -ld /usr/local/bin`: the third column is the owner, and it should be `root`. If your user owns it, use another root-owned directory.
 
 ### From source
 
