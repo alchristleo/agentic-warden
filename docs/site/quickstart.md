@@ -25,7 +25,7 @@ curl -fsSL $REL/latest/download/install.sh \
   | sh
 export PATH="$HOME/.local/bin:$PATH"
 git checkout -q "$(aw version)"
-ls ~/.local/bin/aw*
+ls ~/.local/bin | grep '^aw'
 ```
 
 ```text

@@ -42,7 +42,7 @@ Sleep 400ms
 Type 'git checkout -q "$(aw version)"'
 Enter
 Sleep 600ms
-Type "ls ~/.local/bin/aw*"
+Type "ls ~/.local/bin | grep '^aw'"
 Enter
 Sleep 2s
 
