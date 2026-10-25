@@ -99,3 +99,5 @@ FIX wave a01f1e9 sdd-implementer(sonnet) key-id from real key; CheckRedirect on 
 FIX review fail→coord 91505b2 sdd-reviewer-lite threat-model:52 rollover wording fixed by coordinator; backlog CheckRedirect with injected client
 COORD review approve 91505b2 sdd-reviewer-lite(haiku) 0b91724 + threat-model wording
 CONVERGE 6fbdd9c spec-converge: AC1-11 VERIFIED; AC12/AC14 INCONCLUSIVE (security seat stale after a01f1e9); AC13 nav = front matter section/order (docs-nav.tsx), wording owner
+PAUSED at step 7 seat re-run, next: panel-security re-run (Opus, fix diff only: review-pkg.sh 32a14c3; brief lists dismissed/triaged items + owns AC12/AC14) → spec-converge update AC12/14 → owner checks docs/site/upgrading.md wording (AC13) → merge gate (finishing-a-development-branch, PR, pr-checks-wait.sh) → retro (incl. asd-ste100 wiring proposal)
+USAGE end 93
