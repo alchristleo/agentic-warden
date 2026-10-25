@@ -36,6 +36,9 @@ func TestAgentRootTable(t *testing.T) {
 		{"linux", "gemini", "/etc/gemini-cli"},
 		{"darwin", "gemini", "/Library/Application Support/GeminiCli"},
 		{"windows", "gemini", `C:\ProgramData\gemini-cli`},
+		{"linux", "agy", "/etc/antigravity"},
+		{"darwin", "agy", "/Library/Application Support/Antigravity"},
+		{"windows", "agy", `C:\ProgramData\Antigravity`},
 	}
 	for _, tc := range cases {
 		got, err := sync.AgentRoot(tc.goos, tc.agent)

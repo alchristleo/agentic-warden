@@ -892,3 +892,58 @@ func TestRestartThenApplyIsAccepted(t *testing.T) {
 		t.Errorf("revisedAt %d -> %d, want it to move forward", before.RevisedAt, after.RevisedAt)
 	}
 }
+
+func postRevision(t *testing.T, s *server, body string) int {
+	t.Helper()
+	req, err := http.NewRequest(http.MethodPost, s.url+"/v1/policy/revisions", strings.NewReader(body))
+	if err != nil {
+		t.Fatal(err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+e2eAdminToken)
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	return resp.StatusCode
+}
+
+func TestApplyRejectsAnAgyGatewayAPIKey(t *testing.T) {
+	// A key in policy would ship to every machine in the signed bundle, so
+	// apply refuses it and names the environment variable to use instead.
+	s := startServer(t)
+	path := writePolicy(t, "version: v1\nrules:\n  - name: baseline\n    agents:\n      agy:\n        managed:\n          gateway:\n            enabled: true\n            url: https://gw.example.com\n            apiKey: sk-secret\n")
+
+	out, code := runAwd(t, "apply", path, "--url", s.url)
+
+	if code == 0 {
+		t.Fatalf("apply exited 0, want non-zero for a gateway apiKey: %s", out)
+	}
+	if !strings.Contains(out, "AGY_LLM_GATEWAY_API_KEY") {
+		t.Errorf("output %q does not name AGY_LLM_GATEWAY_API_KEY", out)
+	}
+	body := `{"version":"v2","rules":[{"name":"b","agents":{"agy":{"managed":{"gateway":{"enabled":true,"url":"https://gw.example.com","apiKey":"sk-secret"}}}}}]}`
+	if status := postRevision(t, s, body); status != http.StatusUnprocessableEntity {
+		t.Errorf("server status = %d, want 422", status)
+	}
+}
+
+func TestApplyRejectsALaunchDocumentForAgy(t *testing.T) {
+	// agy has no per-launch channel, so a launch entry would do nothing.
+	s := startServer(t)
+	path := writePolicy(t, "version: v1\nrules:\n  - name: baseline\n    agents:\n      agy:\n        launch:\n          x: 1\n")
+
+	out, code := runAwd(t, "apply", path, "--url", s.url)
+
+	if code == 0 {
+		t.Fatalf("apply exited 0, want non-zero for launch on agy: %s", out)
+	}
+	if !strings.Contains(out, "launch") || !strings.Contains(out, "agy") {
+		t.Errorf("output %q does not name launch and the agent", out)
+	}
+	body := `{"version":"v2","rules":[{"name":"b","agents":{"agy":{"launch":{"x":1}}}}]}`
+	if status := postRevision(t, s, body); status != http.StatusUnprocessableEntity {
+		t.Errorf("server status = %d, want 422", status)
+	}
+}

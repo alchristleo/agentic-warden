@@ -23,11 +23,13 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"strings"
 	"text/tabwriter"
 	"time"
 
 	"github.com/alchristleo/agentic-warden/internal/agent"
+	"github.com/alchristleo/agentic-warden/internal/agent/agy"
 	"github.com/alchristleo/agentic-warden/internal/agent/claude"
 	"github.com/alchristleo/agentic-warden/internal/agent/codex"
 	"github.com/alchristleo/agentic-warden/internal/agent/gemini"
@@ -40,7 +42,7 @@ import (
 const usage = `aw-sync keeps this machine's agent configuration in step with the control plane.
 
 Usage:
-  aw-sync enroll --server URL [--token T] [--name HOST] [--agents claude,codex,gemini] [--force] [--state-dir DIR]
+  aw-sync enroll --server URL [--token T] [--name HOST] [--agents claude,codex,gemini,agy] [--force] [--state-dir DIR]
   aw-sync once [--state-dir DIR] [--root agent=DIR ...]
   aw-sync status [--json] [--state-dir DIR]
   aw-sync install-timer [--interval 5m] [--state-dir DIR]
@@ -107,13 +109,17 @@ func helpOr(err error, stdout io.Writer) error {
 // implement agent.Renderer are offered to enroll.
 func newRegistry() (*agent.Registry, error) {
 	reg := &agent.Registry{}
-	for _, a := range []agent.Adapter{claude.New(), codex.New(), gemini.New()} {
+	for _, a := range []agent.Adapter{claude.New(), codex.New(), gemini.New(), agy.New()} {
 		if err := reg.Register(a); err != nil {
 			return nil, err
 		}
 	}
 	return reg, nil
 }
+
+// optIn lists the renderable adapters a default enroll leaves out. agy owns
+// the whole admin file once synced, so a machine asks for it with --agents.
+var optIn = []string{agy.Name}
 
 // renderable lists the registered adapters that render files.
 func renderable(reg *agent.Registry) []string {
@@ -158,7 +164,7 @@ func enroll(argv []string, stdout io.Writer, on bool) error {
 	server := fs.String("server", "", "control plane URL")
 	token := fs.String("token", os.Getenv("AW_SYNC_TOKEN"), "enrollment token (or AW_SYNC_TOKEN)")
 	name := fs.String("name", "", "this machine's name (default: hostname)")
-	agents := fs.String("agents", "", "comma-separated agents to sync (default: every renderable adapter)")
+	agents := fs.String("agents", "", "comma-separated agents to sync (default: every renderable adapter except agy)")
 	force := fs.Bool("force", false, "replace an existing enrollment")
 	if err := fs.Parse(argv); err != nil {
 		return err
@@ -176,7 +182,7 @@ func enroll(argv []string, stdout io.Writer, on bool) error {
 	if err != nil {
 		return err
 	}
-	selected := renderable(reg)
+	selected := defaultAgents(reg)
 	if *agents != "" {
 		selected = strings.Split(*agents, ",")
 		for i, a := range selected {
@@ -508,4 +514,15 @@ func privilegeHint(err error, command string) error {
 		return fmt.Errorf("%w (run as root: sudo aw-sync %s)", err, command)
 	}
 	return err
+}
+
+// defaultAgents is the renderable adapters minus the opt-in set.
+func defaultAgents(reg *agent.Registry) []string {
+	out := make([]string, 0)
+	for _, name := range renderable(reg) {
+		if !slices.Contains(optIn, name) {
+			out = append(out, name)
+		}
+	}
+	return out
 }

@@ -29,6 +29,7 @@ import (
 	"text/tabwriter"
 	"time"
 
+	agymanaged "github.com/alchristleo/agentic-warden/internal/agent/agy/managed"
 	"github.com/alchristleo/agentic-warden/internal/agent/claude/schema"
 	"github.com/alchristleo/agentic-warden/internal/agent/codex/requirements"
 	"github.com/alchristleo/agentic-warden/internal/agent/gemini/managed"
@@ -413,7 +414,7 @@ func apply(argv []string) error {
 
 // managedValidator runs every agent's own check over a rule's managed
 // settings: Claude's settings schema, Codex's requirements allowlist and
-// Gemini's managed-document rules. Each ignores the agents it does not
+// Gemini's and agy's managed-document rules. Each ignores the agents it does not
 // know, so adding an agent is adding a line here. The parameter is doc,
 // not managed, so the Gemini package name is not shadowed.
 func managedValidator(agentName string, doc map[string]any) error {
@@ -423,7 +424,10 @@ func managedValidator(agentName string, doc map[string]any) error {
 	if err := requirements.ForAgent(agentName, doc); err != nil {
 		return err
 	}
-	return managed.ForAgent(agentName, doc)
+	if err := managed.ForAgent(agentName, doc); err != nil {
+		return err
+	}
+	return agymanaged.ForAgent(agentName, doc)
 }
 
 func appliedBy() string {
