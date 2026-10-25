@@ -28,5 +28,5 @@ func CheckTransport(rawURL string) error {
 			return nil
 		}
 	}
-	return fmt.Errorf("sync: refusing %s: plain http is only allowed to localhost; use an https URL", rawURL)
+	return fmt.Errorf("sync: refusing %s: plain http is only allowed to localhost; use an https URL", u.Redacted())
 }

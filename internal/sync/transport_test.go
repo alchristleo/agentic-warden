@@ -36,6 +36,9 @@ func TestCheckTransport(t *testing.T) {
 			t.Errorf("%s: want an error naming the URL and https, got %v", tc.url, err)
 		}
 	}
+	if err := sync.CheckTransport("http://admin:s3cret@evil.com"); err == nil || strings.Contains(err.Error(), "s3cret") {
+		t.Errorf("want a refusal that hides the password, got %v", err)
+	}
 }
 
 func TestRunRefusesASavedPlainHTTPServer(t *testing.T) {
