@@ -25,7 +25,10 @@ first:
 - **Entra ID**: register a web platform app with the same redirect URI. Set
   `AWD_CONSOLE_USER_CLAIM=preferred_username`, since Entra ID's ID token
   does not carry `email` by default; if you would rather use `email`, add
-  it as an optional ID token claim on the app registration instead.
+  it as an optional ID token claim on the app registration instead. The
+  console refuses a sign-in whose ID token has no `email_verified` claim, so
+  add `email_verified` as an optional ID token claim too (Token configuration,
+  Add optional claim). See [Upgrading](./upgrading.md).
 
 | Variable | Purpose |
 |---|---|

@@ -528,3 +528,30 @@ func TestInspectDoesNotWarnAboutThePinBeforeAwSyncHasRun(t *testing.T) {
 		t.Errorf("findings %+v warn about a pin on a machine aw-sync has never run on", findings)
 	}
 }
+
+func TestInspectSaysAPinnedMachineRefusesToStartWithoutABundle(t *testing.T) {
+	in := newInspection(t)
+	stateDir := t.TempDir()
+	in.adapter.StateDir = stateDir
+	in.write(t, filepath.Join(stateDir, "aw-trust.pub"), "key\n")
+
+	findings := in.adapter.Inspect([]string{})
+
+	if !findingsWith(findings, agent.Warn, "refuses to start: a key is pinned") {
+		t.Errorf("findings %+v should say a pinned machine fails closed", findings)
+	}
+	if findingsWith(findings, agent.Warn, "emits no settings") {
+		t.Errorf("findings %+v should not claim the helper emits no settings", findings)
+	}
+}
+
+func TestInspectSaysAnUnpinnedMachineEmitsNoSettingsWithoutABundle(t *testing.T) {
+	in := newInspection(t)
+	in.adapter.StateDir = t.TempDir()
+
+	findings := in.adapter.Inspect([]string{})
+
+	if !findingsWith(findings, agent.Warn, "emits no settings") {
+		t.Errorf("findings %+v should say an unpinned machine emits no settings", findings)
+	}
+}

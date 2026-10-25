@@ -58,6 +58,10 @@ put the rules that must hold in `policies` and treat `settings` as defaults
 until the launch-time `aw gemini` wrapper pins that variable. Re-enrolling
 needs `--force`.
 
+`aw-sync` refuses an `http://` server unless the host is `localhost`, `127.0.0.0/8` or `::1`. Use an `https://` address. A token from a signing `awd` ends in the key id; `enroll` refuses a server that presents a different key. If it does, mint a new token from the server you mean to trust.
+
+If `aw-sync` reports `policy revision time ... is older than last rendered ...` (after a database restore or an `awd` downgrade), apply the policy once on the control plane. If that does not clear it, run `enroll --force` with a new token, which resets the stored time.
+
 ## 3. Install the timer
 
     sudo aw-sync install-timer
