@@ -74,7 +74,7 @@ place, `aw agy` launches agy with the policy's env, and the docs say plainly wha
   Machines already enrolled keep their stored list. aw-sync runs as root; an unwritable path fails the
   whole cycle, as for every agent today (Renderer contract, all-or-nothing); not changed here.
 - D10 Launch notes print only in `aw doctor`, so the D6 note never appears on a normal launch.
-- D9 Gemini: adapter unchanged; docs mark it deprecated (Gemini CLI end of life), pointing to agy.
+- D9 Gemini: adapter unchanged; docs mark it deprecated (Gemini CLI retired for most users on 2026-06-18), pointing to agy.
 
 ## Design
 
