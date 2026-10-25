@@ -12,14 +12,20 @@
 # - An HTML comment <!-- check: skip (reason) --> on the line before a sh block skips it. Skipped
 #   blocks are printed with their reason, never silently dropped. Use it only for steps that need
 #   a logged-in Claude or root.
+# - With AW_QS_DIST=<release-build.sh output dir>, that dir is served on 127.0.0.1 (install.sh,
+#   latest/download/ and download/<version>/), the GitHub releases URL in sh blocks is rewritten
+#   to it and AW_BASE_URL points at it, so the install step runs on a build of the checkout.
+#   Unset, the doc runs literally against the real release.
 # - Background processes started in a block (awd serve &) are killed when the script exits.
 set -euo pipefail
 
 file=${1:?usage: check-quickstart.sh <file.md>}
 tmp=$(mktemp -d "${TMPDIR:-/tmp}/check-quickstart.XXXXXX")
 pid=
+srv=
 cleanup() {
   trap - INT TERM EXIT
+  [[ -z $srv ]] || kill "$srv" 2>/dev/null || true
   [[ -z $pid ]] || kill -- -"$pid" 2>/dev/null || true
   rm -rf "$tmp"
 }
@@ -95,6 +101,31 @@ while IFS= read -r line || [[ -n $line ]]; do
   fi
   prev=$line
 done < "$file"
+
+if [[ -n ${AW_QS_DIST:-} ]]; then
+  root=$(cd "$(dirname "$0")/.." && pwd)
+  ver=$(sed -n 's/^[0-9a-f]*  agentic-warden_\(v[^_]*\)_.*/\1/p' "$AW_QS_DIST/checksums.txt" | sort -u)
+  [[ $ver == v* && $ver != *$'\n'* ]] || { echo "check-quickstart: cannot derive one version from $AW_QS_DIST/checksums.txt" >&2; exit 1; }
+  web=$tmp/web
+  mkdir -p "$web/download/$ver" "$web/latest/download"
+  cp "$AW_QS_DIST"/* "$web/download/$ver/"
+  cp "$AW_QS_DIST"/* "$web/latest/download/"
+  cp "$root/install.sh" "$web/install.sh"
+  cp "$root/install.sh" "$web/latest/download/install.sh"
+  cp "$root/install.sh" "$web/download/$ver/install.sh"
+  python3 -u -m http.server 0 --bind 127.0.0.1 --directory "$web" >"$tmp/srv.log" 2>&1 &
+  srv=$!
+  port=
+  for _ in $(seq 100); do
+    port=$(sed -n 's/.*127\.0\.0\.1 port \([0-9]*\).*/\1/p' "$tmp/srv.log" | head -1)
+    [[ -n $port ]] && break
+    sleep 0.1
+  done
+  [[ -n $port ]] || { echo "check-quickstart: http server did not start" >&2; exit 1; }
+  base=http://127.0.0.1:$port
+  sed -i "s#https://github.com/alchristleo/agentic-warden/releases#$base#g" "$session"
+  sed -i "2i export AW_BASE_URL=$base" "$session"
+fi
 
 set -m
 (cd "$tmp/work" && HOME="$tmp/home" bash "$session") &
