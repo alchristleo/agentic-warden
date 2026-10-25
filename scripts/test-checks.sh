@@ -48,6 +48,18 @@ expect "quickstart: a You should see: line may sit between a sh block and its te
 expect "quickstart: You should see: with no sh block before the text block exits 1" 1 "quickstart-label-orphan.md:5" "$qs" "$data/quickstart-label-orphan.md"
 expect "quickstart: skip exits 0 and prints the reason" 0 "needs a logged-in Claude" "$qs" "$data/quickstart-skip.md"
 expect "quickstart: text block not after a sh block exits 1 and names the line" 1 "quickstart-unchecked-text.md:9" "$qs" "$data/quickstart-unchecked-text.md"
+dist=$(mktemp -d "${TMPDIR:-/tmp}/test-checks-dist.XXXXXX")
+echo "0000000000000000000000000000000000000000000000000000000000000000  agentic-warden_v0.0.0-test_linux_amd64.tar.gz" >"$dist/checksums.txt"
+tdir=$(mktemp -d "${TMPDIR:-/tmp}/test-checks-tmp.XXXXXX")
+trap 'rm -rf "$out" "$dist" "$tdir"' EXIT
+AW_QS_DIST=$dist TMPDIR=$tdir expect "quickstart: AW_QS_DIST with a failing block exits 1" 1 "block 1 (" "$qs" "$data/quickstart-failing-block.md"
+if pgrep -f "http.server.*$tdir" >/dev/null; then
+  echo "FAIL dist: http.server still running after check-quickstart exited"
+  pkill -f "http.server.*$tdir"
+  fail=1
+fi
+rm -rf "$dist" "$tdir"
+trap 'rm -f "$out"' EXIT
 expect "links: passing file exits 0" 0 - "$ln" "$data/quickstart-pass.md"
 expect "links: broken relative link exits 1" 1 "does-not-exist.md" "$ln" "$data/links-broken.md"
 expect "links: broken /docs link exits 1" 1 "/docs/nope" "$ln" "$data/links-broken.md"

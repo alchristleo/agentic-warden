@@ -74,6 +74,16 @@ builds, checksums and attests a GitHub release. The module path matches the repo
   `sha256sum -c` and `gh attestation verify` commands, the sudo form for enforcement, and
   `go install github.com/alchristleo/agentic-warden/cmd/...@latest` as the from-source path.
 
+## Phase 2 decisions (owner, 2026-10-25)
+
+- Quickstart step 1 keeps `git clone` (example policy, later `cd ../agentic-warden`) and replaces
+  `go build` with `install.sh`; Go leaves the quickstart prerequisites (from-source path only).
+- `check-quickstart.sh` installs the PR's own build: CI builds a dist, serves it locally, rewrites the
+  doc's release base URL to it and sets `AW_BASE_URL`. Doc commands stay literal.
+- Tape 01 re-recorded with the same local-dist redirect (no live network).
+- Folded in: Install links from home and enforce-plain-claude.md (sudo form instead of `bin/`), and the
+  6 panel-cdo Reference nits from the releases Backlog.
+
 ## Acceptance criteria
 
 1. **No old module path.** `git grep -n "github.com/acme/agent-wrapper" -- ':!docs/superpowers'`
@@ -126,27 +136,27 @@ builds, checksums and attests a GitHub release. The module path matches the repo
 
 ## Status (converged 2026-10-25)
 
-Branch `releases`, base `612c69d`, head `8463db0`. Runs: AC1 `git grep` and `go test -count=1`; AC2 `go test -run Version -v` plus manual `-X` builds; AC3 `release-build.sh v0.0.0-test <tmp>/dist` then `test-release-build.sh <tmp>/dist v0.0.0-test`; AC4/5 `test-install.sh <tmp>/dist`; AC10 `check-quickstart.sh`. Temp dirs removed.
+Phase 2 (quickstart switch, PR on branch `quickstart-switch`, head `2e8a63f` before this commit). Replaces the phase 1 table; phase 1 status is in git history before this commit.
+Runs: fresh `scripts/release-build.sh v0.0.0-ci <tmp>/dist`; `go test -count=1 ./...`; `scripts/test-release-build.sh <tmp>/dist v0.0.0-ci`; `scripts/test-install.sh <tmp>/dist`; `scripts/test-checks.sh`; `AW_QS_DIST=<tmp>/dist scripts/check-quickstart.sh` on `docs/site/quickstart.md` and `README.md`. Temp dirs removed.
 
 | # | criterion (short) | verdict | evidence (command + key output line) |
 |---|---|---|---|
-| 1 | No old module path; build and test pass | VERIFIED | `git grep -n "github.com/acme/agent-wrapper" -- ':!docs/superpowers'` printed nothing (exit 1); `go build ./... && go test -count=1 ./...`, 0 FAIL lines |
-| 2 | Version stamping (4 binaries, `dev` when unstamped) | VERIFIED | `go test ./internal/version/ ./cmd/... -run Version -v` PASS (TestVersionStampedWins, TestVersionCommandStamped/Unstamped in aw, aw-policy, aw-sync, awd). Uncached manual build `-X ...internal/version.Version=v9.9.9`: `aw version` → `v9.9.9`, `awd version` → `v9.9.9`, `aw-sync version` → `v9.9.9`, `aw-policy build-info` → `version v9.9.9`. Unstamped: `dev` for all |
-| 3 | Release archives, layout, arch, checksums, no overrides | VERIFIED | `release-build.sh v0.0.0-test <tmp>/dist`: 4 `.tar.gz` + `checksums.txt`; `tar -tzf` lists `aw aw-policy aw-sync awd LICENSE` in each; `file` on all 16 binaries: ELF x86-64 / ARM aarch64 for linux, Mach-O x86_64 / arm64 for darwin; `sha256sum -c checksums.txt` → 4× OK; `test-release-build.sh <tmp>/dist v0.0.0-test` → `ok: release build`, exit 0; linux/amd64 `aw-policy build-info` → `env-overrides=off`, `version v0.0.0-test` |
-| 4 | Install happy path (default dir, AW_BIN_DIR, no root) | VERIFIED | `test-install.sh <tmp>/dist` → `ok default dir (latest)`, `ok custom dir, pinned`, `PASS`, exit 0. Script asserts 4 executables in each dir, `aw version` equals the dist version, PATH hint, run under `dash` |
-| 5 | Install fails closed (tamper, missing sum, uname, 404) | VERIFIED | same run → `ok tampered`, `ok nosum`, `ok uname`, `ok notfound` (curl 404 → `download failed: ... (does AW_VERSION=v9.9.9 exist?)`), `ok staging`, `ok signal`. Each asserts non-zero exit, message match, and byte-identical `AW_BIN_DIR` (find + sha256 before/after) |
-| 6 | POSIX shell: shellcheck clean; test runs under dash | VERIFIED | PR #6 CI `dry-run` pass (run 40178937558) includes `shellcheck -s sh install.sh`; `test-install.sh` runs install.sh under dash (PASS locally and in the same job) |
-| 7 | PR CI dry-run job green | VERIFIED | `gh pr checks 6` → `dry-run pass 1m59s`, docs and test pass, publish skipping (tag-only) |
-| 8 | Workflow security (permissions, SHA pins, no pull_request_target, quoting) | VERIFIED | `check: seat panel-security`: `SEAT panel-security pass 1aba8e6 AC8` (plan ledger line 118). Last commit touching `.github/workflows/release.yml` is 4367d75, an ancestor of 1aba8e6 (`git merge-base --is-ancestor`). Supporting: `grep -c pull_request_target release.yml` → 0 |
-| 9 | First release `v0.1.0` assets and attestation | INCONCLUSIVE | `check: owner at gate`: owner checks at merge gate |
-| 10 | Quickstart step 1 and README switch to install.sh (phase 2) | NOT VERIFIED | `docs/site/quickstart.md` step 1 still reads `go build -o bin/ ./cmd/...`; README line 104 still `go build`. `check-quickstart.sh docs/site/quickstart.md` exits 0 on the current file, but the criterion requires the install.sh switch, which is T7 (phase 2, not started, by design) |
-| 11 | Reference Install section reads right, usable alone | VERIFIED | `check: seat panel-cdo`: `SEAT panel-cdo pass 1aba8e6 AC11` (plan ledger line 119). Last commit touching `docs/site/reference.md` is 4367d75, an ancestor of 1aba8e6 |
+| 1 | No old module path; build and test pass | VERIFIED | `git grep -n "github.com/acme/agent-wrapper" -- ':!docs/superpowers'` exit 1, no output; `go build ./...` exit 0; `go test -count=1 ./...` exit 0, every package `ok` or `[no test files]` |
+| 2 | Version stamping, `dev` when unstamped | VERIFIED | `go test ./internal/version/ ./cmd/... -run Version -v -count=1`: `--- PASS: TestVersionStampedWins`, `TestVersionCommandStamped`, `TestVersionCommandUnstamped`, `TestVersionDefaultDev`; `ok` for cmd/aw, cmd/aw-policy, cmd/aw-sync, cmd/awd, internal/version. Manual `-X` builds from phase 1 not re-run |
+| 3 | Release archives, layout, arch, checksums, no overrides | VERIFIED | fresh `release-build.sh v0.0.0-ci`: 4 `.tar.gz` + `checksums.txt`; `tar -tzf` of each archive lists `aw aw-policy aw-sync awd LICENSE`; `file` on the binaries: ELF x86-64 / ARM aarch64 (linux), Mach-O x86_64 / arm64 (darwin); `sha256sum -c checksums.txt` → 4× `OK`; `scripts/test-release-build.sh <tmp>/dist v0.0.0-ci` → `ok: release build`, exit 0 |
+| 4 | Install happy path (default dir, AW_BIN_DIR, no root) | VERIFIED | `scripts/test-install.sh <tmp>/dist` → `ok default dir (latest)`, `ok custom dir, pinned`, `PASS`, exit 0 |
+| 5 | Install fails closed (tamper, missing sum, uname, 404) | VERIFIED | same run → `ok tampered`, `ok nosum`, `ok uname`, `ok notfound`, `ok staging`, `ok signal`; exit 0 |
+| 6 | POSIX shell: shellcheck clean; test runs under dash | VERIFIED | PR #8 release `dry-run` job (run 40184621275) passed; it runs `shellcheck -s sh install.sh` and `scripts/test-install.sh dist`. Locally `test-install.sh` under dash passed (row 4); shellcheck is not installed locally |
+| 7 | PR CI dry-run job green | VERIFIED | PR #8 checks at `698ac38`: `dry-run pass 1m30s` (run 40184621275); also docs, tapes and test pass |
+| 8 | Workflow security (permissions, SHA pins, no pull_request_target, quoting) | VERIFIED | `check: seat panel-security`: `SEAT panel-security pass 1aba8e6 AC8` (plan ledger line 130). `git merge-base --is-ancestor 4367d75 1aba8e6` ok; `release.yml` not touched by this branch. Also `grep -c pull_request_target .github/workflows/release.yml` → 0; `contents: write`, `id-token: write`, `attestations: write` at lines 44-46 |
+| 9 | First release assets and attestation | VERIFIED | `SEAT owner pass v0.1.1 AC9` (plan ledger): v0.1.1 release has 4 archives, `checksums.txt`, `install.sh`; real `curl \| sh` install, `sha256sum` OK, `gh attestation verify` passes for archive, install.sh and checksums.txt (run 40182273496); release.yml unchanged since |
+| 10 | Quickstart switch to install.sh; Go to from-source; check-quickstart passes | VERIFIED | `AW_QS_DIST=<tmp>/dist scripts/check-quickstart.sh docs/site/quickstart.md` → `check-quickstart: docs/site/quickstart.md ok (10 run, 2 skipped, 24 expected lines found)`, exit 0; `... README.md` → `ok (4 run, 0 skipped, 8 expected lines found)`, exit 0. Step 1 is `curl ... install.sh \| sh` (quickstart.md line 24); README line 105 same; quickstart.md line 14 says Go is not needed. `.github/workflows/docs.yml` lines 64-72 run the same two commands with `AW_QS_DIST`. PR #8 docs jobs passed at `698ac38` (runs 40184618275, 40184621257) on the PR's own build |
+| 11 | Reference Install section reads right, usable alone | VERIFIED | `check: seat panel-cdo`: `SEAT panel-cdo pass 2e8a63f AC11` (re-run on `git diff 1aba8e6..HEAD -- docs/site/reference.md`, after `428d1c9` and `24863b0`) |
 
 ### Deviations
 
-- AC9 verdict: the launch note asked for NOT VERIFIED. The `check: owner at gate` rule gives INCONCLUSIVE with evidence `owner checks at merge gate`; the owner confirms after the `v0.1.0` push.
-- AC6 and AC7 stay INCONCLUSIVE until PR CI runs shellcheck and the dry-run job.
-- AC2 `go test` output was served from cache (`(cached)`); the verdict also rests on uncached manual `-X` builds.
-- AC10 is phase 2 by design (spec Decision 10); NOT VERIFIED records the missing switch, not a regression.
-- Historical specs and plans under `docs/superpowers/` keep the old module path by design (Decision 1).
-- Panel nits and open items are in the plan Backlog, not in this milestone.
+- AC10: local run plus PR #8 docs CI, both on a fresh build of this checkout. The two skipped blocks (logged-in Claude) are skipped in CI too.
+- AC3 was run with version `v0.0.0-ci`, not `v0.0.0-test` as the criterion writes. The version string is the only difference.
+- AC2 `go test` was run with `-count=1`. Manual `-X` builds from phase 1 were not repeated.
+- AC6, AC7, AC10 settled by PR #8 CI; AC9 by the owner on v0.1.1; AC11 by a scoped panel-cdo re-run (coordinator update after converge).
+- Phase 2 panel findings: fixed in `7dffaf4`..`60cde48` (re-review approved); the no-release 404 finding was dismissed by the owner (v0.1.1 is Latest); remaining nits are in the plan Backlog.

@@ -16,7 +16,9 @@ Download the artifact and commit the GIFs you want.
 
 Each CI tape runs the quickstart commands, as written, in a fresh temp `HOME`. Steps before the
 visible one run hidden through `lib/prep.sh`. The clone in step 1 comes from your checkout, not from
-GitHub. `aw doctor` prints its `file:` line only when `claude` is on `PATH`, so `lib/prep.sh` puts a
+GitHub.
+Tape 1 installs a local build of the checkout served on 127.0.0.1 (`lib/prep.sh`), not a GitHub release.
+`aw doctor` prints its `file:` line only when `claude` is on `PATH`, so `lib/prep.sh` puts a
 stub `claude` first on `PATH` (unless `AW_MANUAL=1`).
 
 ## Render locally

@@ -59,10 +59,17 @@ jobs:
           echo "$RUNNER_TEMP/stub" >> "$GITHUB_PATH"
       - name: Test the doc checks
         run: scripts/test-checks.sh
+      - name: Build a release from this checkout
+        # Step 1 installs from the latest GitHub release. The checks serve this build instead.
+        run: scripts/release-build.sh v0.0.0-ci "$RUNNER_TEMP/dist"
       - name: Run the quickstart
         run: scripts/check-quickstart.sh docs/site/quickstart.md
+        env:
+          AW_QS_DIST: ${{ runner.temp }}/dist
       - name: Run the README
         run: scripts/check-quickstart.sh README.md
+        env:
+          AW_QS_DIST: ${{ runner.temp }}/dist
       - name: Check the README renders on GitHub
         run: scripts/check-readme.sh
         env:

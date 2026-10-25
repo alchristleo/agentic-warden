@@ -13,7 +13,7 @@ setting called `policyHelper` at startup and applies the helper's output as mana
 developer who skips the wrapper is still governed.
 
 Do this on a test VM. It writes under `/etc/claude-code` and `/var/lib/agent-wrapper` and installs
-two binaries into `/usr/local/bin`.
+the four binaries into `/usr/local/bin`.
 
 A helper that exits non-zero, or emits settings that fail schema validation, makes Claude Code
 refuse to start. `aw-policy` exits 0 unless the organization sets `requireBundle`.
@@ -21,18 +21,27 @@ refuse to start. `aw-policy` exits 0 unless the organization sets `requireBundle
 ## Install on Linux or macOS
 
 Start from the quickstart's clone, with `awd` running and the policy applied (steps 1 to 3), in the
-same shell, so `AWD_ADDR` and `AWD_ADMIN_TOKEN` are still exported. Use the plain binaries from step 1. Never install a helper built with `-tags awtest`.
+same shell, so `AWD_ADDR` and `AWD_ADMIN_TOKEN` are still exported. The release binaries from step 1 are the plain ones. Never install a helper built with `-tags awtest`.
+
+First put the binaries in `/usr/local/bin`, owned by root. Download the installer, read it, then run
+it with `sudo` (see [Install for enforcement](./reference.md#install-for-enforcement)):
+
+```sh
+REL=https://github.com/alchristleo/agentic-warden/releases
+curl -fsSLO $REL/latest/download/install.sh
+less install.sh
+sudo env AW_BIN_DIR=/usr/local/bin sh install.sh
+```
+
+Then enroll:
 
 ```sh
 token=$(awd enroll-token you@acme.com)
-sudo install -m 0755 bin/aw-policy /usr/local/bin/aw-policy
-sudo install -m 0755 bin/aw-sync /usr/local/bin/aw-sync
 AW_SYNC_TOKEN=$token sudo -E aw-sync enroll --server http://localhost:8080 --agents claude
 sudo aw-sync once
 ```
 
-Install `aw-policy` before the first sync. The drop-in that `aw-sync` writes names
-`/usr/local/bin/aw-policy`, and without that binary every `claude` launch refuses to start.
+The installer above put `aw-policy` in `/usr/local/bin` before the first sync. The drop-in that `aw-sync` writes names `/usr/local/bin/aw-policy`, and without that binary every `claude` launch refuses to start.
 
 Check it. Without `AW_SYNC_STATE_DIR`, `aw doctor` reads `/var/lib/agent-wrapper`, and the
 evaluation-mode line and the root warnings are gone. The quickstart's `awd` does not sign bundles, so
@@ -74,7 +83,7 @@ files stay. To remove a root setup by hand on Linux, delete:
 
 - `/etc/claude-code/managed-settings.d/50-agent-wrapper.json` and `/etc/claude-code/aw-bundle.json`.
   The drop-in is what makes plain `claude` call the helper, so delete it first.
-- `/usr/local/bin/aw-policy` and `/usr/local/bin/aw-sync`
+- `/usr/local/bin/aw`, `aw-policy`, `aw-sync` and `awd`
 - `/var/lib/agent-wrapper/`
 - the timer units, if you installed them
 

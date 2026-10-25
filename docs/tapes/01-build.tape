@@ -15,7 +15,7 @@ Set Padding 16
 Hide
 Type ". docs/tapes/lib/prep.sh 1"
 Enter
-Wait+Screen@120s /prep done/
+Wait+Screen@300s /prep done/
 Sleep 2s
 Type "clear"
 Enter
@@ -28,12 +28,25 @@ Sleep 1s
 Type "cd agentic-warden"
 Enter
 Sleep 400ms
-Type "go build -o bin/ ./cmd/..."
-Enter
-Wait+Line@180s /\$\s*$/
-Type "export PATH=$PWD/bin:$PATH"
+Type "REL=https://github.com/alchristleo/agentic-warden/releases"
 Enter
 Sleep 400ms
-Type "ls bin"
+Type 'curl -fsSL $REL/latest/download/install.sh \'
+Alt+Enter
+Type "  | sh"
+Enter
+Wait+Line@60s /\$\s*$/
+Type 'export PATH="$HOME/.local/bin:$PATH"'
+Enter
+Sleep 400ms
+Type 'git checkout -q "$(aw version)"'
+Enter
+Sleep 600ms
+Type "ls ~/.local/bin | grep '^aw'"
 Enter
 Sleep 2s
+
+Hide
+Type "kill $aw_srv"
+Enter
+Sleep 300ms

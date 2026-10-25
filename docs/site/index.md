@@ -14,8 +14,8 @@ it stops, and how to roll it out.
 
 **[Start the quickstart](./quickstart.md)** · [Bring your rules](/demo)
 
-Prerequisites: Linux or macOS, Go 1.24 or newer, and Claude Code installed and logged in. Docker is
-not needed.
+Prerequisites: Linux or macOS, git, curl, and Claude Code installed and logged in. Docker and Go are
+not needed. The quickstart [installs a release](./reference.md#install).
 
 ## Where to start
 

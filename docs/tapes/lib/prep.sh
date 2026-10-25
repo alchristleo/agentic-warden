@@ -17,6 +17,33 @@ cd "$(mktemp -d)" && mkdir demo && cd demo
 export GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0="url.$AW_REPO.insteadOf" GIT_CONFIG_VALUE_0=https://github.com/alchristleo/agentic-warden.git
 PS1='\[\e[34m\]\W\[\e[0m\] \[\e[32m\]\$\[\e[0m\] '
 
+if [ "$_aw_n" -eq 1 ]; then
+  # Step 1 installs from a release. Serve a build of the checkout on localhost instead (as
+  # scripts/check-quickstart.sh does with AW_QS_DIST): install.sh reads AW_BASE_URL, and a curl
+  # function rewrites the GitHub releases URL the reader types. HOME is the temp dir above, so the
+  # install lands in a throwaway ~/.local/bin. aw_srv is the server pid; the tape kills it at the end.
+  [ -z "${AW_MANUAL:-}" ] || { echo "prep: tape 1 needs the temp HOME, unset AW_MANUAL"; return 1; }
+  _aw_r "$AW_REPO/scripts/release-build.sh" v0.0.0-ci "$HOME/dist" || return 1
+  # The installed version is v0.0.0-ci, which has no tag: the tape's clone comes from a tagged copy,
+  # so that the visible "git checkout" succeeds.
+  _aw_r git clone --bare "$AW_REPO" "$HOME/clone.git" && _aw_r git -C "$HOME/clone.git" tag v0.0.0-ci HEAD || return 1
+  export GIT_CONFIG_KEY_0="url.$HOME/clone.git.insteadOf"
+  _aw_w=$HOME/web
+  mkdir -p "$_aw_w/download/v0.0.0-ci" "$_aw_w/latest/download"
+  for _aw_d in download/v0.0.0-ci latest/download; do cp "$HOME"/dist/* "$AW_REPO/install.sh" "$_aw_w/$_aw_d/"; done
+  python3 -u -m http.server 0 --bind 127.0.0.1 --directory "$_aw_w" >"$HOME/srv.log" 2>&1 &
+  aw_srv=$!
+  trap 'kill $aw_srv 2>/dev/null' EXIT
+  for _aw_i in $(seq 100); do
+    _aw_p=$(sed -n 's/.*127\.0\.0\.1 port \([0-9]*\).*/\1/p' "$HOME/srv.log" | head -1)
+    [ -n "$_aw_p" ] && break
+    sleep 0.1
+  done
+  [ -n "$_aw_p" ] || { echo "prep: http server did not start"; kill $aw_srv 2>/dev/null; return 1; }
+  export AW_BASE_URL=http://127.0.0.1:$_aw_p
+  curl() { local a=(); for _aw_x in "$@"; do a+=("${_aw_x/#https:\/\/github.com\/alchristleo\/agentic-warden\/releases/$AW_BASE_URL}"); done; command curl "${a[@]}"; }
+  unset _aw_w _aw_d _aw_i _aw_p
+fi
 if [ "$_aw_n" -gt 1 ]; then
   _aw_r git clone https://github.com/alchristleo/agentic-warden.git &&
   cd agentic-warden &&
@@ -26,6 +53,9 @@ fi
 if [ "$_aw_n" -gt 2 ]; then
   export AWD_ADDR=127.0.0.1:8080
   export AWD_ADMIN_TOKEN=$(openssl rand -hex 16)
+  # The previous tape's awd can still hold the port for a moment after its recording ends.
+  for _aw_i in $(seq 50); do (exec 3<>/dev/tcp/127.0.0.1/8080) 2>/dev/null || break; sleep 0.2; done
+  unset _aw_i
   awd serve >/dev/null 2>&1 &
   awd_pid=$!
   sleep 1

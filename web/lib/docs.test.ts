@@ -36,7 +36,7 @@ describe("parseDoc", () => {
     expect(parseDoc("a.md", page("title: A #1 thing\nsection: guides\norder: 1\ndescription: \"it's\"")).title).toBe("A #1 thing");
   });
   it("renders extra body h1s as h2", () => {
-    expect(renderMarkdown("# Again\n\n## Two\n")).toBe('<h2>Again</h2>\n<h2>Two</h2>\n');
+    expect(renderMarkdown("# Again\n\n## Two\n")).toBe('<h2 id="again">Again</h2>\n<h2 id="two">Two</h2>\n');
   });
   it("drops a leading h1 even when its text differs from the title", () => {
     expect(parseDoc("a.md", page("title: A\nsection: guides\norder: 1\ndescription: d", "# Other words\n\ntext")).body).toBe("text\n");
@@ -109,5 +109,16 @@ describe("assetPath", () => {
 describe("renderMarkdown escaping", () => {
   it("escapes double quotes in the fence language", () => {
     expect(renderMarkdown('```a"b\nx\n```')).toContain('class="language-a&quot;b"');
+  });
+});
+
+describe("heading ids", () => {
+  it("gives h2 and h3 GitHub-style ids and dedupes", () => {
+    const html = renderMarkdown("# T\n\n## Install\n\n### From source\n\n## Install for enforcement\n\n## Install\n\n## What's new?\n");
+    expect(html).toContain('<h2 id="install">');
+    expect(html).toContain('<h3 id="from-source">');
+    expect(html).toContain('<h2 id="install-for-enforcement">');
+    expect(html).toContain('<h2 id="install-1">');
+    expect(html).toContain('<h2 id="whats-new">');
   });
 });
