@@ -63,3 +63,4 @@ T1 coord 30f1fd6 spec D5 settled, D7 no-key warn wording + unparseable note
 T1 fix 30f1fd6 sdd-reviewer-lite fix-needed D5 'same as no file' unverified
 T1 coord 2ed5b25 D5 = T1 evidence only, F5 settled
 COORD review approve 2ed5b25 coordinator applied reviewer-lite's exact wording (2 lines)
+T3 done 018d218 sdd-implementer adapter; golden compared as JSON; env note skips _API_KEY; bad file = single error

@@ -65,7 +65,7 @@ place, `aw agy` launches agy with the policy's env, and the docs say plainly wha
   no `.aw-revision` sibling → warn (file not written by aw-sync); parseable with sibling → ok worded
   "admin file present, revision X" (never "enforced": agy may ignore it, F5); `gateway.enabled` with no
   `AGY_LLM_GATEWAY_API_KEY` in env → warn (agy then sends gateway requests with no API key; T1);
-  unparseable → error stays the strongest signal, since agy silently ignores an unparseable file (T1); any `AGY_LLM_GATEWAY_*` in env → ok-level note that the admin file outranks it (F3).
+  unparseable → error stays the strongest signal, since agy silently ignores an unparseable file (T1); any `AGY_LLM_GATEWAY_*` other than `_API_KEY` in env → ok-level note that the admin file outranks it (F3).
 - D8 aw-sync: `agy` is renderable but opt-in (owner, 2026-10-26): a default `aw-sync enroll` (no `--agents`)
   leaves it out, `--agents ...,agy` adds it, and the docs warn that aw-sync then owns the whole admin file
   (aw-sync overwrites unconditionally, so a Google- or MDM-installed file is replaced).
