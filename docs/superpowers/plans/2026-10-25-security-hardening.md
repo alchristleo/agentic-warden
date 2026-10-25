@@ -62,6 +62,7 @@ Branch: `security-hardening`. Constraint for every task: no new env var or CLI f
 - Native TLS in awd.
 - Same-revision group-membership replay detection.
 - Repin before the revisedAt check, so a refused bundle carrying a rollover still moves the pin (panel-correctness nit; documented meanwhile).
+- Sync `Client.CheckRedirect` skipped when `cfg.HTTP` is injected (tests only today; no production caller sets it).
 - Doctor `emptyEffect` should read explicit `requireBundle` (T7 review nit).
 
 ## Ledger
