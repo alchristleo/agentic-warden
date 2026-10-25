@@ -52,3 +52,10 @@ Copy the shape of `internal/agent/gemini` (renderer, managed/, Inspect) and its 
 ## Ledger
 
 PLAN c762fb9 spec approved (owner 2026-10-26: enforced-only, apiKey forbidden, aw agy passthrough, key agy, agy opt-in enroll)
+USAGE start 42
+T2 done 59bfbcf sdd-implementer Validate D3, Windows caCertPath accepted, defaultModelId non-empty
+T2 review approve 59bfbcf sdd-reviewer should: untested Windows caCertPath + defaultModelId; nits type rows, header substring doc (T5)
+T2 coord fb40e5d test rows Windows caCertPath (mutation-checked) + defaultModelId empty/non-string
+T1 done 945c96c sdd-implementer probe 10 cases; {} ok (D5 settled); bad JSON ignored silently; unknown keys ignored; no-key = no auth header, not error (D7 reword)
+COORD review approve fb40e5d sdd-reviewer-lite T2 test rows; nits lowercase drive, len guard
+T1 review approve 945c96c sdd-reviewer re-ran golden probe; should D7 reword; nit ad-hoc cases not saved
