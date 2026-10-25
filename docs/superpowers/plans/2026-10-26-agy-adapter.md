@@ -98,3 +98,4 @@ SEAT panel-correctness pass a2936f6 AC9 re-run on fix diff
 COORD f06608d probe copies unparseable/no-gateway inputs raw (tested), spec list[] wording; Gemini retired-for-most-users + source link
 COORD fix-wave re-review a2936f6 sdd-reviewer-lite fail: must Gemini EOL claim unsourced (fixed f06608d); nit weak Inspect Error match (backlog)
 COORD f06608d review fail sdd-reviewer-lite: spec D9 EOL wording, enterprise claim unverified -> 9edd992 verified via WebFetch of The Register (Standard/Enterprise + paid API keys keep access), source in commit body; not re-reviewed
+CONVERGE 7f65913 spec-converge AC1-8,11,12 VERIFIED; AC9 VERIFIED by coordinator probe re-run at b82b2a7; AC10 INCONCLUSIVE (seat stale after f06608d/9edd992), owner at gate
