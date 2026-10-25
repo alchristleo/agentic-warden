@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/acme/agent-wrapper/internal/agent/claude/schema"
+	"github.com/alchristleo/agentic-warden/internal/agent/claude/schema"
 )
 
 func TestValidateAcceptsWellFormedSettings(t *testing.T) {

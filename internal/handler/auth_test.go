@@ -6,8 +6,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/acme/agent-wrapper/internal/handler"
-	"github.com/acme/agent-wrapper/internal/store"
+	"github.com/alchristleo/agentic-warden/internal/handler"
+	"github.com/alchristleo/agentic-warden/internal/store"
 )
 
 func TestApplyWithoutTheAdminTokenIs401(t *testing.T) {

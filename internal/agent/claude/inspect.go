@@ -13,9 +13,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/acme/agent-wrapper/internal/agent"
-	"github.com/acme/agent-wrapper/internal/policy"
-	"github.com/acme/agent-wrapper/internal/signing"
+	"github.com/alchristleo/agentic-warden/internal/agent"
+	"github.com/alchristleo/agentic-warden/internal/policy"
+	"github.com/alchristleo/agentic-warden/internal/signing"
 )
 
 // stateTrustFile, stateBundleFile and stateSignatureFile mirror

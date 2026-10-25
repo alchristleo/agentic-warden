@@ -4,7 +4,7 @@ import (
 	"encoding/hex"
 	"testing"
 
-	"github.com/acme/agent-wrapper/internal/credential"
+	"github.com/alchristleo/agentic-warden/internal/credential"
 )
 
 func TestNewReturnsAPlainCredentialAndItsHash(t *testing.T) {

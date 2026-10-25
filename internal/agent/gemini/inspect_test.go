@@ -6,8 +6,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/acme/agent-wrapper/internal/agent"
-	"github.com/acme/agent-wrapper/internal/agent/gemini"
+	"github.com/alchristleo/agentic-warden/internal/agent"
+	"github.com/alchristleo/agentic-warden/internal/agent/gemini"
 )
 
 func findingsWith(findings []agent.Finding, level agent.Level, text string) bool {

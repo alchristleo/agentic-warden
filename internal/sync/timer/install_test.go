@@ -10,7 +10,7 @@ import (
 	"time"
 	"unicode/utf16"
 
-	"github.com/acme/agent-wrapper/internal/sync/timer"
+	"github.com/alchristleo/agentic-warden/internal/sync/timer"
 )
 
 // recorder stands in for the OS tools: it records every command and fails

@@ -16,10 +16,10 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/acme/agent-wrapper/internal/model"
-	"github.com/acme/agent-wrapper/internal/policy"
-	"github.com/acme/agent-wrapper/internal/signing"
-	"github.com/acme/agent-wrapper/internal/store"
+	"github.com/alchristleo/agentic-warden/internal/model"
+	"github.com/alchristleo/agentic-warden/internal/policy"
+	"github.com/alchristleo/agentic-warden/internal/signing"
+	"github.com/alchristleo/agentic-warden/internal/store"
 )
 
 // defaultRevisionLimit bounds an unfiltered revision listing.

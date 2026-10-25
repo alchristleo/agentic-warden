@@ -7,7 +7,7 @@ import (
 	"log"
 	"net/http"
 
-	"github.com/acme/agent-wrapper/internal/console/oidctest"
+	"github.com/alchristleo/agentic-warden/internal/console/oidctest"
 )
 
 func main() {

@@ -15,13 +15,13 @@ import (
 	"testing/fstest"
 	"time"
 
-	"github.com/acme/agent-wrapper/internal/console/authz"
-	"github.com/acme/agent-wrapper/internal/console/oidctest"
-	"github.com/acme/agent-wrapper/internal/console/session"
-	"github.com/acme/agent-wrapper/internal/console/sso"
-	"github.com/acme/agent-wrapper/internal/handler"
-	"github.com/acme/agent-wrapper/internal/model"
-	"github.com/acme/agent-wrapper/internal/store"
+	"github.com/alchristleo/agentic-warden/internal/console/authz"
+	"github.com/alchristleo/agentic-warden/internal/console/oidctest"
+	"github.com/alchristleo/agentic-warden/internal/console/session"
+	"github.com/alchristleo/agentic-warden/internal/console/sso"
+	"github.com/alchristleo/agentic-warden/internal/handler"
+	"github.com/alchristleo/agentic-warden/internal/model"
+	"github.com/alchristleo/agentic-warden/internal/store"
 )
 
 type consoleEnv struct {

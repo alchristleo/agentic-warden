@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/acme/agent-wrapper/internal/agent"
+	"github.com/alchristleo/agentic-warden/internal/agent"
 )
 
 // stubAdapter is a minimal Adapter used to exercise the registry.

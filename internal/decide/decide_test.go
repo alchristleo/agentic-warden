@@ -4,7 +4,7 @@ import (
 	"context"
 	"testing"
 
-	"github.com/acme/agent-wrapper/internal/decide"
+	"github.com/alchristleo/agentic-warden/internal/decide"
 )
 
 func rules(t *testing.T, allow, deny []string) *decide.RulesDecider {

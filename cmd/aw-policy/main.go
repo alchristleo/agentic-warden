@@ -19,10 +19,10 @@
 // no usable bundle, unless the organization opts into failing closed with
 // "requireBundle". See internal/policyhelper for the rules.
 //
-// The one argument it recognises is "build-info", which prints whether the
-// AW_POLICY_BUNDLE and AW_POLICY_CONFIG overrides are compiled in; they are
-// only under -tags awtest, for tests. Any other argument runs the helper as
-// usual, so a future Claude Code that passes one cannot break a launch.
+// The one argument it recognises is "build-info", which prints the version
+// and whether the AW_POLICY_BUNDLE and AW_POLICY_CONFIG overrides are compiled
+// in; they are only under -tags awtest, for tests. Any other argument runs the
+// helper as usual, so a future Claude Code that passes one cannot break a launch.
 package main
 
 import (
@@ -36,9 +36,10 @@ import (
 	"strings"
 	"unicode/utf8"
 
-	"github.com/acme/agent-wrapper/internal/agent/claude"
-	"github.com/acme/agent-wrapper/internal/policyhelper"
-	"github.com/acme/agent-wrapper/internal/sync"
+	"github.com/alchristleo/agentic-warden/internal/agent/claude"
+	"github.com/alchristleo/agentic-warden/internal/policyhelper"
+	"github.com/alchristleo/agentic-warden/internal/sync"
+	"github.com/alchristleo/agentic-warden/internal/version"
 )
 
 // configEnv names the configuration file explicitly. It is honoured only
@@ -80,6 +81,7 @@ type fileConfig struct {
 func main() {
 	if len(os.Args) == 2 && os.Args[1] == buildInfoArg {
 		fmt.Fprintln(os.Stdout, buildInfo(envOverrides))
+		fmt.Fprintln(os.Stdout, "version", version.String())
 		os.Exit(0)
 	}
 	os.Exit(run(os.Stdout, os.Stderr, os.Getenv, envOverrides))

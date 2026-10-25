@@ -29,21 +29,22 @@ import (
 	"text/tabwriter"
 	"time"
 
-	"github.com/acme/agent-wrapper/internal/agent/claude/schema"
-	"github.com/acme/agent-wrapper/internal/agent/codex/requirements"
-	"github.com/acme/agent-wrapper/internal/agent/gemini/managed"
-	"github.com/acme/agent-wrapper/internal/config"
-	"github.com/acme/agent-wrapper/internal/console"
-	"github.com/acme/agent-wrapper/internal/console/authz"
-	"github.com/acme/agent-wrapper/internal/console/session"
-	"github.com/acme/agent-wrapper/internal/console/sso"
-	"github.com/acme/agent-wrapper/internal/handler"
-	"github.com/acme/agent-wrapper/internal/model"
-	"github.com/acme/agent-wrapper/internal/policy"
-	"github.com/acme/agent-wrapper/internal/signing"
-	"github.com/acme/agent-wrapper/internal/signing/awskms"
-	"github.com/acme/agent-wrapper/internal/store"
-	"github.com/acme/agent-wrapper/internal/termcolor"
+	"github.com/alchristleo/agentic-warden/internal/agent/claude/schema"
+	"github.com/alchristleo/agentic-warden/internal/agent/codex/requirements"
+	"github.com/alchristleo/agentic-warden/internal/agent/gemini/managed"
+	"github.com/alchristleo/agentic-warden/internal/config"
+	"github.com/alchristleo/agentic-warden/internal/console"
+	"github.com/alchristleo/agentic-warden/internal/console/authz"
+	"github.com/alchristleo/agentic-warden/internal/console/session"
+	"github.com/alchristleo/agentic-warden/internal/console/sso"
+	"github.com/alchristleo/agentic-warden/internal/handler"
+	"github.com/alchristleo/agentic-warden/internal/model"
+	"github.com/alchristleo/agentic-warden/internal/policy"
+	"github.com/alchristleo/agentic-warden/internal/signing"
+	"github.com/alchristleo/agentic-warden/internal/signing/awskms"
+	"github.com/alchristleo/agentic-warden/internal/store"
+	"github.com/alchristleo/agentic-warden/internal/termcolor"
+	"github.com/alchristleo/agentic-warden/internal/version"
 	"sigs.k8s.io/yaml"
 )
 
@@ -59,6 +60,7 @@ Usage:
   awd groups apply FILE [--url URL]   push an identity-provider membership snapshot
   awd groups [--url URL]              show the current membership snapshot
   awd groups resolve USER [--url URL] show one user's groups by source
+  awd version
   awd help
 
 Environment:
@@ -98,6 +100,9 @@ func run(argv []string) error {
 	switch argv[0] {
 	case "help", "-h", "--help":
 		fmt.Print(usage)
+		return nil
+	case "version":
+		fmt.Println(version.String())
 		return nil
 	case "serve":
 		return serve()

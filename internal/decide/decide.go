@@ -13,7 +13,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/acme/agent-wrapper/internal/glob"
+	"github.com/alchristleo/agentic-warden/internal/glob"
 )
 
 // Outcome is what should happen to a tool call.

@@ -27,11 +27,11 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/acme/agent-wrapper/internal/agent/claude/schema"
-	"github.com/acme/agent-wrapper/internal/policy"
-	"github.com/acme/agent-wrapper/internal/repo"
-	"github.com/acme/agent-wrapper/internal/signing"
-	"github.com/acme/agent-wrapper/internal/sync"
+	"github.com/alchristleo/agentic-warden/internal/agent/claude/schema"
+	"github.com/alchristleo/agentic-warden/internal/policy"
+	"github.com/alchristleo/agentic-warden/internal/repo"
+	"github.com/alchristleo/agentic-warden/internal/signing"
+	"github.com/alchristleo/agentic-warden/internal/sync"
 )
 
 // Source says where the emitted policy came from.

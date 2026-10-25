@@ -8,7 +8,7 @@ import (
 	"syscall"
 	"testing"
 
-	"github.com/acme/agent-wrapper/internal/cache"
+	"github.com/alchristleo/agentic-warden/internal/cache"
 )
 
 // umask is process-wide, so these tests set and restore it around each case

@@ -12,8 +12,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/acme/agent-wrapper/internal/signing"
-	"github.com/acme/agent-wrapper/internal/sync"
+	"github.com/alchristleo/agentic-warden/internal/signing"
+	"github.com/alchristleo/agentic-warden/internal/sync"
 )
 
 // built is the helper as the tests need it: with -tags awtest, so fixtures
@@ -247,11 +247,11 @@ func TestAReleaseBuildIgnoresASelfSignedStateDirectory(t *testing.T) {
 
 func TestBuildInfoTellsTheTwoBuildsApart(t *testing.T) {
 	stdout, _, code := runBinary(t, release, []string{"build-info"})
-	if code != 0 || stdout != "env-overrides=off\n" {
+	if code != 0 || !strings.HasPrefix(stdout, "env-overrides=off\nversion ") {
 		t.Errorf("release build-info: exit %d, stdout %q", code, stdout)
 	}
 	stdout, _, code = runBinary(t, built, []string{"build-info"})
-	if code != 0 || stdout != "env-overrides=on\n" {
+	if code != 0 || !strings.HasPrefix(stdout, "env-overrides=on\nversion ") {
 		t.Errorf("awtest build-info: exit %d, stdout %q", code, stdout)
 	}
 }

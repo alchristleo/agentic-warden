@@ -7,7 +7,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/acme/agent-wrapper/internal/model"
+	"github.com/alchristleo/agentic-warden/internal/model"
 )
 
 // Memory is an in-memory Store. It backs tests and a single-node evaluation

@@ -7,7 +7,7 @@ import (
 	"encoding/hex"
 	"sync"
 
-	"github.com/acme/agent-wrapper/internal/signing"
+	"github.com/alchristleo/agentic-warden/internal/signing"
 )
 
 // sigCache remembers signatures by key and message digest. Machines on the

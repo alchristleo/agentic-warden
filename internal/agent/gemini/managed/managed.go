@@ -12,7 +12,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/acme/agent-wrapper/internal/policy"
+	"github.com/alchristleo/agentic-warden/internal/policy"
 )
 
 // Parts splits a Gemini managed document into its settings object and its

@@ -6,9 +6,9 @@ import (
 
 	toml "github.com/pelletier/go-toml/v2"
 
-	"github.com/acme/agent-wrapper/internal/agent"
-	"github.com/acme/agent-wrapper/internal/agent/codex/requirements"
-	"github.com/acme/agent-wrapper/internal/policy"
+	"github.com/alchristleo/agentic-warden/internal/agent"
+	"github.com/alchristleo/agentic-warden/internal/agent/codex/requirements"
+	"github.com/alchristleo/agentic-warden/internal/policy"
 )
 
 // RequirementsFile is Codex's enforced configuration, relative to its system

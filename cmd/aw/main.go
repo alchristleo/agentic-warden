@@ -26,15 +26,16 @@ import (
 	"strings"
 	"time"
 
-	"github.com/acme/agent-wrapper/internal/agent"
-	"github.com/acme/agent-wrapper/internal/agent/claude"
-	"github.com/acme/agent-wrapper/internal/agent/codex"
-	"github.com/acme/agent-wrapper/internal/agent/gemini"
-	"github.com/acme/agent-wrapper/internal/policy"
-	"github.com/acme/agent-wrapper/internal/policyhelper"
-	"github.com/acme/agent-wrapper/internal/repo"
-	"github.com/acme/agent-wrapper/internal/sync"
-	"github.com/acme/agent-wrapper/internal/termcolor"
+	"github.com/alchristleo/agentic-warden/internal/agent"
+	"github.com/alchristleo/agentic-warden/internal/agent/claude"
+	"github.com/alchristleo/agentic-warden/internal/agent/codex"
+	"github.com/alchristleo/agentic-warden/internal/agent/gemini"
+	"github.com/alchristleo/agentic-warden/internal/policy"
+	"github.com/alchristleo/agentic-warden/internal/policyhelper"
+	"github.com/alchristleo/agentic-warden/internal/repo"
+	"github.com/alchristleo/agentic-warden/internal/sync"
+	"github.com/alchristleo/agentic-warden/internal/termcolor"
+	"github.com/alchristleo/agentic-warden/internal/version"
 )
 
 const usage = `aw launches a coding agent with your organization's configuration applied.
@@ -43,6 +44,7 @@ Usage:
   aw [flags] <agent> [agent args...]   run an agent
   aw [flags] agents                    list the agents this binary can launch
   aw [flags] doctor [--json]           report what would run, without running it
+  aw version
   aw help
 
 Flags:
@@ -91,6 +93,9 @@ func run(argv []string) error {
 	switch command {
 	case "help", "-h", "--help":
 		fmt.Print(usage)
+		return nil
+	case "version":
+		fmt.Println(version.String())
 		return nil
 	case "agents":
 		for _, name := range registry.Names() {

@@ -8,7 +8,7 @@ import (
 	"context"
 	"errors"
 
-	"github.com/acme/agent-wrapper/internal/model"
+	"github.com/alchristleo/agentic-warden/internal/model"
 )
 
 // ErrNoGroupData means awd has no IdP group data at all, so no one can be

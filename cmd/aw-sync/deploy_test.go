@@ -7,7 +7,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/acme/agent-wrapper/internal/sync/timer"
+	"github.com/alchristleo/agentic-warden/internal/sync/timer"
 )
 
 var update = flag.Bool("update", false, "rewrite deploy/aw-sync's units from the embedded templates")

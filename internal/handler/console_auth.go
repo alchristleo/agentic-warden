@@ -7,9 +7,9 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/acme/agent-wrapper/internal/console/authz"
-	"github.com/acme/agent-wrapper/internal/console/sso"
-	"github.com/acme/agent-wrapper/internal/model"
+	"github.com/alchristleo/agentic-warden/internal/console/authz"
+	"github.com/alchristleo/agentic-warden/internal/console/sso"
+	"github.com/alchristleo/agentic-warden/internal/model"
 )
 
 var loginErrorPage = template.Must(template.New("e").Parse(`<!doctype html><html lang="en"><head><meta charset="utf-8">

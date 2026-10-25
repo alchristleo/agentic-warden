@@ -13,9 +13,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/acme/agent-wrapper/internal/credential"
-	"github.com/acme/agent-wrapper/internal/model"
-	"github.com/acme/agent-wrapper/internal/scim"
+	"github.com/alchristleo/agentic-warden/internal/credential"
+	"github.com/alchristleo/agentic-warden/internal/model"
+	"github.com/alchristleo/agentic-warden/internal/scim"
 )
 
 // maxSCIMBody bounds a SCIM request. SCIM changes are small; a large group

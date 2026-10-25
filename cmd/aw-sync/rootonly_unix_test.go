@@ -10,7 +10,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/acme/agent-wrapper/internal/sync/timer"
+	"github.com/alchristleo/agentic-warden/internal/sync/timer"
 )
 
 func TestRootOnlyRefusesAUserOwnedPath(t *testing.T) {

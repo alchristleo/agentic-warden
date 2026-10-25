@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/acme/agent-wrapper/internal/agent"
+	"github.com/alchristleo/agentic-warden/internal/agent"
 )
 
 // fakeBinary writes an executable file named name into dir and returns its path.

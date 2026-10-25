@@ -22,10 +22,10 @@ import (
 
 	toml "github.com/pelletier/go-toml/v2"
 
-	"github.com/acme/agent-wrapper/internal/agent"
-	"github.com/acme/agent-wrapper/internal/agent/gemini/managed"
-	"github.com/acme/agent-wrapper/internal/cache"
-	"github.com/acme/agent-wrapper/internal/merge"
+	"github.com/alchristleo/agentic-warden/internal/agent"
+	"github.com/alchristleo/agentic-warden/internal/agent/gemini/managed"
+	"github.com/alchristleo/agentic-warden/internal/cache"
+	"github.com/alchristleo/agentic-warden/internal/merge"
 )
 
 // Name is the subcommand a developer types and the agent key in a policy.

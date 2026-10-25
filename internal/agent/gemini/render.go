@@ -7,9 +7,9 @@ import (
 
 	toml "github.com/pelletier/go-toml/v2"
 
-	"github.com/acme/agent-wrapper/internal/agent"
-	"github.com/acme/agent-wrapper/internal/agent/gemini/managed"
-	"github.com/acme/agent-wrapper/internal/policy"
+	"github.com/alchristleo/agentic-warden/internal/agent"
+	"github.com/alchristleo/agentic-warden/internal/agent/gemini/managed"
+	"github.com/alchristleo/agentic-warden/internal/policy"
 )
 
 // SettingsFile is Gemini's system settings, relative to its system

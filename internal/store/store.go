@@ -8,7 +8,7 @@ import (
 	"context"
 	"time"
 
-	"github.com/acme/agent-wrapper/internal/model"
+	"github.com/alchristleo/agentic-warden/internal/model"
 )
 
 // Store holds policy revisions, enrolled machines, enrollment tokens and

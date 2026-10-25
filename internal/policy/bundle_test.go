@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/acme/agent-wrapper/internal/policy"
+	"github.com/alchristleo/agentic-warden/internal/policy"
 )
 
 // slicingRuleSet has one rule of each kind: ungrouped, grouped, repo-scoped,

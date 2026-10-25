@@ -17,9 +17,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/acme/agent-wrapper/internal/agent"
-	"github.com/acme/agent-wrapper/internal/cache"
-	"github.com/acme/agent-wrapper/internal/signing"
+	"github.com/alchristleo/agentic-warden/internal/agent"
+	"github.com/alchristleo/agentic-warden/internal/cache"
+	"github.com/alchristleo/agentic-warden/internal/signing"
 )
 
 // revisionSuffix names the sibling written beside every rendered JSON file,

@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/acme/agent-wrapper/internal/model"
+	"github.com/alchristleo/agentic-warden/internal/model"
 )
 
 // appendAudit records an event. Callers hold m.mu for writing and have

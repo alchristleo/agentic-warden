@@ -27,13 +27,14 @@ import (
 	"text/tabwriter"
 	"time"
 
-	"github.com/acme/agent-wrapper/internal/agent"
-	"github.com/acme/agent-wrapper/internal/agent/claude"
-	"github.com/acme/agent-wrapper/internal/agent/codex"
-	"github.com/acme/agent-wrapper/internal/agent/gemini"
-	"github.com/acme/agent-wrapper/internal/sync"
-	"github.com/acme/agent-wrapper/internal/sync/timer"
-	"github.com/acme/agent-wrapper/internal/termcolor"
+	"github.com/alchristleo/agentic-warden/internal/agent"
+	"github.com/alchristleo/agentic-warden/internal/agent/claude"
+	"github.com/alchristleo/agentic-warden/internal/agent/codex"
+	"github.com/alchristleo/agentic-warden/internal/agent/gemini"
+	"github.com/alchristleo/agentic-warden/internal/sync"
+	"github.com/alchristleo/agentic-warden/internal/sync/timer"
+	"github.com/alchristleo/agentic-warden/internal/termcolor"
+	"github.com/alchristleo/agentic-warden/internal/version"
 )
 
 const usage = `aw-sync keeps this machine's agent configuration in step with the control plane.
@@ -44,6 +45,7 @@ Usage:
   aw-sync status [--json] [--state-dir DIR]
   aw-sync install-timer [--interval 5m] [--state-dir DIR]
   aw-sync uninstall-timer
+  aw-sync version
   aw-sync help
 
 Environment:
@@ -71,6 +73,9 @@ func run(argv []string, stdout io.Writer, on bool) error {
 	switch argv[0] {
 	case "help", "-h", "--help":
 		fmt.Fprint(stdout, usage)
+		return nil
+	case "version":
+		fmt.Fprintln(stdout, version.String())
 		return nil
 	case "enroll":
 		return helpOr(enroll(argv[1:], stdout, on), stdout)

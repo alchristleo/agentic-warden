@@ -12,7 +12,7 @@ import (
 
 	toml "github.com/pelletier/go-toml/v2"
 
-	"github.com/acme/agent-wrapper/internal/policy"
+	"github.com/alchristleo/agentic-warden/internal/policy"
 )
 
 // Validate reports whether managed can be written as requirements.toml: every

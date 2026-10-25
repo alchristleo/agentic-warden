@@ -6,8 +6,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/acme/agent-wrapper/internal/console/session"
-	"github.com/acme/agent-wrapper/internal/store"
+	"github.com/alchristleo/agentic-warden/internal/console/session"
+	"github.com/alchristleo/agentic-warden/internal/store"
 )
 
 func manager(now *time.Time) (*session.Manager, *store.Memory) {

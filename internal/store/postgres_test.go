@@ -11,8 +11,8 @@ import (
 
 	"github.com/jackc/pgx/v5"
 
-	"github.com/acme/agent-wrapper/internal/store"
-	"github.com/acme/agent-wrapper/internal/store/storetest"
+	"github.com/alchristleo/agentic-warden/internal/store"
+	"github.com/alchristleo/agentic-warden/internal/store/storetest"
 )
 
 // TestPostgres runs the same conformance suite as the in-memory store against

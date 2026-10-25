@@ -9,8 +9,8 @@ import (
 	"sort"
 	"testing"
 
-	"github.com/acme/agent-wrapper/internal/agent/claude"
-	"github.com/acme/agent-wrapper/internal/sync"
+	"github.com/alchristleo/agentic-warden/internal/agent/claude"
+	"github.com/alchristleo/agentic-warden/internal/sync"
 )
 
 func synced(t *testing.T) (sync.Config, string) {

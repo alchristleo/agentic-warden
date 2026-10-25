@@ -8,10 +8,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/acme/agent-wrapper/internal/console/authz"
-	"github.com/acme/agent-wrapper/internal/console/session"
-	"github.com/acme/agent-wrapper/internal/console/sso"
-	"github.com/acme/agent-wrapper/internal/model"
+	"github.com/alchristleo/agentic-warden/internal/console/authz"
+	"github.com/alchristleo/agentic-warden/internal/console/session"
+	"github.com/alchristleo/agentic-warden/internal/console/sso"
+	"github.com/alchristleo/agentic-warden/internal/model"
 )
 
 const (

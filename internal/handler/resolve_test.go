@@ -8,9 +8,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/acme/agent-wrapper/internal/handler"
-	"github.com/acme/agent-wrapper/internal/model"
-	"github.com/acme/agent-wrapper/internal/store"
+	"github.com/alchristleo/agentic-warden/internal/handler"
+	"github.com/alchristleo/agentic-warden/internal/model"
+	"github.com/alchristleo/agentic-warden/internal/store"
 )
 
 func TestBundleGroupsIncludeActiveSCIMGroups(t *testing.T) {

@@ -10,9 +10,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/acme/agent-wrapper/internal/policyhelper"
-	"github.com/acme/agent-wrapper/internal/signing"
-	"github.com/acme/agent-wrapper/internal/sync"
+	"github.com/alchristleo/agentic-warden/internal/policyhelper"
+	"github.com/alchristleo/agentic-warden/internal/signing"
+	"github.com/alchristleo/agentic-warden/internal/sync"
 )
 
 // bundle is what aw-sync leaves for a user in the platform group: a

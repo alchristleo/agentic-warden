@@ -7,10 +7,10 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/acme/agent-wrapper/internal/agent"
-	"github.com/acme/agent-wrapper/internal/agent/claude"
-	"github.com/acme/agent-wrapper/internal/agent/claude/schema"
-	"github.com/acme/agent-wrapper/internal/policy"
+	"github.com/alchristleo/agentic-warden/internal/agent"
+	"github.com/alchristleo/agentic-warden/internal/agent/claude"
+	"github.com/alchristleo/agentic-warden/internal/agent/claude/schema"
+	"github.com/alchristleo/agentic-warden/internal/policy"
 )
 
 func sampleBundle() *policy.Bundle {

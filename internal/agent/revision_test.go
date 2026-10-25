@@ -3,7 +3,7 @@ package agent_test
 import (
 	"testing"
 
-	"github.com/acme/agent-wrapper/internal/agent"
+	"github.com/alchristleo/agentic-warden/internal/agent"
 )
 
 func TestRevisionFromHeader(t *testing.T) {

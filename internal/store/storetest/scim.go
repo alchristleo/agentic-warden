@@ -8,8 +8,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/acme/agent-wrapper/internal/model"
-	"github.com/acme/agent-wrapper/internal/store"
+	"github.com/alchristleo/agentic-warden/internal/model"
+	"github.com/alchristleo/agentic-warden/internal/store"
 )
 
 // RunSCIM executes the SCIM conformance cases against the store the
