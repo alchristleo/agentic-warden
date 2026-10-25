@@ -1,11 +1,11 @@
 ---
-title: Environment variables and files
+title: Install, environment variables and files
 section: reference
 order: 1
-description: Every environment variable the four binaries read, and every file they write, per operating system.
+description: How to install and verify the release, every environment variable the four binaries read, and every file they write, per operating system.
 ---
 
-# Environment variables and files
+# Install, environment variables and files
 
 Defaults come from `awd help`, `aw help` and `aw-sync help`, and from the code that reads them.
 
