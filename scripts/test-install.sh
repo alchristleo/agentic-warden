@@ -134,4 +134,12 @@ SH
 /bin/chmod +x "$cshim/chmod"
 expect_fail staging 'cannot (write|stage)' "$tmp/good" PATH="$cshim:$PATH" AW_TEST_COUNT="$tmp/chmod-count"
 
+# SIGTERM during staging: the installer must stop and leave AW_BIN_DIR as it was
+sshim=$tmp/sig-shim && mkdir -p "$sshim"
+printf '%s\n' '#!/bin/sh' 'n=$(cat "$AW_TEST_COUNT" 2>/dev/null || echo 0); echo $((n + 1)) >"$AW_TEST_COUNT"' \
+  '[ "$n" -ne 1 ] || kill -TERM "$PPID"' 'exec /bin/chmod "$@"' >"$sshim/chmod"
+/bin/chmod +x "$sshim/chmod"
+expect_fail signal '' "$tmp/good" PATH="$sshim:$PATH" AW_TEST_COUNT="$tmp/sig-count"
+! grep -q cannot <<<"$out" || fail "signal: installer kept running after SIGTERM: $out"
+
 echo "PASS"

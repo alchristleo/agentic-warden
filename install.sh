@@ -42,7 +42,8 @@ cleanup() {
   rm -rf "$tmp"
   for c in aw aw-policy aw-sync awd; do rm -f "$bindir/.$c.new.$$"; done
 }
-trap cleanup EXIT INT TERM
+trap cleanup EXIT
+trap 'exit 1' INT TERM
 
 fetch() { curl -fsSL -o "$2" "$1" || die "download failed: $1"; }
 
