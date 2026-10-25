@@ -7,15 +7,16 @@ description: How to install and verify the release, every environment variable t
 
 # Install, environment variables and files
 
-Defaults come from `awd help`, `aw help` and `aw-sync help`, and from the code that reads them.
-
 ## Install
 
 On Linux or macOS, amd64 or arm64, this installs `aw`, `aw-policy`, `aw-sync` and `awd` to `~/.local/bin` without root:
 
 ```sh
-curl -fsSL https://github.com/alchristleo/agentic-warden/releases/latest/download/install.sh | sh
+REL=https://github.com/alchristleo/agentic-warden/releases
+curl -fsSL $REL/latest/download/install.sh | sh
 ```
+
+Check: `aw version`. Next: [Quickstart](./quickstart.md).
 
 `install.sh` needs `curl`, `tar`, `sha256sum` or `shasum`, and standard POSIX tools. It downloads the archive for your system and `checksums.txt` from the same release, checks the archive against its line in `checksums.txt`, and only then copies the four binaries. It never uses `sudo`. It changes nothing in `AW_BIN_DIR` (beyond creating it) unless the archive verified and all four binaries were staged. Only the final four renames can fail midway, which can leave a mix of old and new binaries.
 
@@ -23,12 +24,15 @@ curl -fsSL https://github.com/alchristleo/agentic-warden/releases/latest/downloa
 |---|---|
 | `AW_VERSION` | Release to install, such as `v0.1.0`. Default `latest`. |
 | `AW_BIN_DIR` | Directory for the four binaries. Default `$HOME/.local/bin`. |
-| `AW_BASE_URL` | Release base URL, for mirrors and tests. Default `https://github.com/alchristleo/agentic-warden/releases`. |
 
-A pinned version downloads from `<base>/download/<version>/` instead of `<base>/latest/download/`:
+`AW_BASE_URL` overrides the release base URL (used by the installer tests).
+
+A pinned version downloads from `<base>/download/<version>/` instead of `<base>/latest/download/`. Replace the version with yours:
 
 ```sh
-curl -fsSL https://github.com/alchristleo/agentic-warden/releases/download/v0.1.0/install.sh | AW_VERSION=v0.1.0 sh
+REL=https://github.com/alchristleo/agentic-warden/releases
+curl -fsSL $REL/download/<version>/install.sh \
+  | AW_VERSION=<version> sh
 ```
 
 ### Verify a download
@@ -43,32 +47,47 @@ shasum -a 256 --ignore-missing -c checksums.txt   # macOS
 This proves the archive matches the checksum published in its release. It catches a corrupted download. It does not prove who built the archive, because whoever can replace the release can replace its checksums too.
 
 ```sh
-gh attestation verify agentic-warden_v0.1.0_linux_amd64.tar.gz -R alchristleo/agentic-warden
+gh attestation verify \
+  agentic-warden_<version>_<os>_<arch>.tar.gz \
+  -R alchristleo/agentic-warden
 ```
 
-This proves GitHub recorded build provenance for the archive: a workflow run of this repository built it. It covers the case where the release itself is compromised. It needs the GitHub CLI. `install.sh` does not run it.
+Replace the version, OS and architecture with yours. This proves GitHub recorded build provenance for the archive: a workflow run of this repository built it. It covers the case where the release itself is compromised. It needs the GitHub CLI. `install.sh` does not run it.
 
-`install.sh` is not in `checksums.txt` and has no attestation, so read it before you run it.
+The release workflow attests `install.sh` and `checksums.txt` as well, so `gh attestation verify install.sh -R alchristleo/agentic-warden` works on a downloaded copy. `install.sh` is still not listed in `checksums.txt`, so read it before you run it.
+
+To install an archive you verified yourself:
+
+```sh
+tar -xzf <archive>
+install -m 0755 aw aw-policy aw-sync awd \
+  ~/.local/bin/
+```
 
 ### Install for enforcement
 
-Enforcement needs a root-owned `aw-policy`, so install to a system directory with `sudo`:
+Enforcement needs a root-owned `aw-policy`, so install to a system directory with `sudo`. Download the script, read it, then run it:
 
 ```sh
-curl -fsSL https://github.com/alchristleo/agentic-warden/releases/latest/download/install.sh | sudo env AW_BIN_DIR=/usr/local/bin sh
+REL=https://github.com/alchristleo/agentic-warden/releases
+curl -fsSLO $REL/latest/download/install.sh
+sudo env AW_BIN_DIR=/usr/local/bin sh install.sh
 ```
 
-The script never calls `sudo` itself. Running it as root is your choice.
+The script never calls `sudo` itself. Running it as root is your choice. The directory must be root-owned and not writable by your user. Homebrew makes `/usr/local/bin` user-owned on Intel Macs, so use another root-owned directory there.
 
 ### From source
 
 With Go 1.24 or newer:
 
 ```sh
-go install github.com/alchristleo/agentic-warden/cmd/...@latest
+go install \
+  github.com/alchristleo/agentic-warden/cmd/...@latest
 ```
 
-This builds from the module source. It does not check a release checksum or attestation.
+This builds from the module source. It does not check a release checksum or attestation. The binaries land in `$(go env GOPATH)/bin`, which is often not on your `PATH`. The enforcement guidance above (a root-owned `aw-policy`) does not apply to this path.
+
+Defaults come from `awd help`, `aw help` and `aw-sync help`, and from the code that reads them.
 
 ## Control plane (`awd`)
 
