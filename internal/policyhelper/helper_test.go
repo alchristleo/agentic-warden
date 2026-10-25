@@ -226,7 +226,7 @@ func TestASchemaViolationIsNeverEmitted(t *testing.T) {
 
 func TestRequireBundleFailsClosedWithoutABundle(t *testing.T) {
 	cfg := config(t, filepath.Join(t.TempDir(), "absent.json"))
-	cfg.RequireBundle = true
+	cfg.RequireBundle = boolPtr(true)
 
 	r := policyhelper.Run(cfg)
 
@@ -240,7 +240,7 @@ func TestRequireBundleFailsClosedWithoutABundle(t *testing.T) {
 
 func TestRequireBundleIsSatisfiedByAUsableBundle(t *testing.T) {
 	cfg := config(t, writeBundle(t, bundle))
-	cfg.RequireBundle = true
+	cfg.RequireBundle = boolPtr(true)
 
 	if r := policyhelper.Run(cfg); r.ExitCode != 0 {
 		t.Errorf("exit = %d, want 0; notes %q", r.ExitCode, r.Notes)
@@ -330,6 +330,7 @@ func TestRunRefusesATamperedBundle(t *testing.T) {
 	tamperByte(t, filepath.Join(stateDir, sync.BundleFile))
 	cfg := config(t, filepath.Join(t.TempDir(), "unused-fallback.json"))
 	cfg.StateDir = stateDir
+	cfg.RequireBundle = boolPtr(false) // explicit opt-out: these check the open path
 
 	r := policyhelper.Run(cfg)
 
@@ -351,6 +352,7 @@ func TestRunRefusesAMissingSignature(t *testing.T) {
 	}
 	cfg := config(t, filepath.Join(t.TempDir(), "unused-fallback.json"))
 	cfg.StateDir = stateDir
+	cfg.RequireBundle = boolPtr(false) // explicit opt-out: these check the open path
 
 	r := policyhelper.Run(cfg)
 
@@ -370,7 +372,7 @@ func TestRequireBundleTurnsAFailureIntoAnError(t *testing.T) {
 	tamperByte(t, filepath.Join(stateDir, sync.BundleFile))
 	cfg := config(t, filepath.Join(t.TempDir(), "unused-fallback.json"))
 	cfg.StateDir = stateDir
-	cfg.RequireBundle = true
+	cfg.RequireBundle = boolPtr(true)
 
 	r := policyhelper.Run(cfg)
 
@@ -395,6 +397,7 @@ func TestRunRefusesAnUnreadableTrustFile(t *testing.T) {
 	t.Cleanup(func() { os.Chmod(trustPath, 0o644) }) // TempDir cleanup needs to read it back
 	cfg := config(t, filepath.Join(t.TempDir(), "unused-fallback.json"))
 	cfg.StateDir = stateDir
+	cfg.RequireBundle = boolPtr(false) // explicit opt-out: these check the open path
 
 	r := policyhelper.Run(cfg)
 
@@ -469,5 +472,75 @@ func TestVerifyBundleReturnsNoBytesForAnUnsignedDeployment(t *testing.T) {
 	}
 	if verified != nil {
 		t.Errorf("VerifyBundle returned %d bytes for a deployment it verified nothing in", len(verified))
+	}
+}
+
+func boolPtr(b bool) *bool { return &b }
+
+// pinnedRun runs against a pinned state directory damaged by mutate.
+func pinnedRun(t *testing.T, mutate func(dir string)) policyhelper.Result {
+	t.Helper()
+	stateDir := writeSignedState(t, bundle)
+	mutate(stateDir)
+	cfg := config(t, filepath.Join(t.TempDir(), "unused-fallback.json"))
+	cfg.StateDir = stateDir
+	return policyhelper.Run(cfg)
+}
+
+func TestFailsClosedWhenAKeyIsPinned(t *testing.T) {
+	cases := map[string]func(dir string){
+		"missing":  func(dir string) { os.Remove(filepath.Join(dir, sync.BundleFile)) },
+		"bad":      func(dir string) { writeStateFile(t, dir, sync.BundleFile, "not json") },
+		"tampered": func(dir string) { tamperByte(t, filepath.Join(dir, sync.BundleFile)) },
+	}
+	for name, mutate := range cases {
+		t.Run(name, func(t *testing.T) {
+			r := pinnedRun(t, mutate)
+			if r.ExitCode == 0 {
+				t.Errorf("exit = 0, want non-zero; notes %q", r.Notes)
+			}
+			if string(r.Output) != "{}\n" {
+				t.Errorf("output = %q, want a valid empty envelope", r.Output)
+			}
+		})
+	}
+}
+
+func TestFailsOpenWhenUnsigned(t *testing.T) {
+	cfg := config(t, filepath.Join(t.TempDir(), "absent.json"))
+	cfg.StateDir = t.TempDir() // no trust file
+	if r := policyhelper.Run(cfg); r.ExitCode != 0 {
+		t.Errorf("exit = %d, want 0: no key is pinned", r.ExitCode)
+	}
+}
+
+func TestUnreadableTrustFileFailsClosed(t *testing.T) {
+	r := pinnedRun(t, func(dir string) {
+		p := filepath.Join(dir, sync.TrustFile)
+		os.Chmod(p, 0o000)
+		t.Cleanup(func() { os.Chmod(p, 0o644) })
+	})
+	if r.ExitCode == 0 {
+		t.Errorf("exit = 0, want non-zero; notes %q", r.Notes)
+	}
+}
+
+func TestExplicitRequireBundleFalseFailsOpen(t *testing.T) {
+	stateDir := writeSignedState(t, bundle)
+	tamperByte(t, filepath.Join(stateDir, sync.BundleFile))
+	cfg := config(t, filepath.Join(t.TempDir(), "unused-fallback.json"))
+	cfg.StateDir = stateDir
+	cfg.RequireBundle = boolPtr(false)
+	if r := policyhelper.Run(cfg); r.ExitCode != 0 {
+		t.Errorf("exit = %d, want 0: explicit opt-out", r.ExitCode)
+	}
+}
+
+func TestRequireBundleTrueFailsClosed(t *testing.T) {
+	cfg := config(t, filepath.Join(t.TempDir(), "absent.json"))
+	cfg.StateDir = t.TempDir() // unpinned, but explicitly required
+	cfg.RequireBundle = boolPtr(true)
+	if r := policyhelper.Run(cfg); r.ExitCode == 0 {
+		t.Error("exit = 0, want non-zero")
 	}
 }

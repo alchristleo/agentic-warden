@@ -294,7 +294,7 @@ func TestASignedStateDirectoryIsCompiledInsteadOfTheFallback(t *testing.T) {
 	}
 }
 
-func TestATamperedSignedBundleProducesAnEmptyEnvelope(t *testing.T) {
+func TestATamperedSignedBundleFailsClosedWhenAKeyIsPinned(t *testing.T) {
 	stateDir := writeSignedState(t, signedBundle)
 	raw, err := os.ReadFile(filepath.Join(stateDir, sync.BundleFile))
 	if err != nil {
@@ -311,8 +311,8 @@ func TestATamperedSignedBundleProducesAnEmptyEnvelope(t *testing.T) {
 		"AW_POLICY_CONFIG="+filepath.Join(t.TempDir(), "absent.json"),
 		"AW_SYNC_STATE_DIR="+stateDir)
 
-	if code != 0 {
-		t.Fatalf("exit = %d, want 0; a bad signature must not brick the launch; stderr: %s", code, stderr)
+	if code == 0 {
+		t.Fatalf("exit = 0, want non-zero: a key is pinned and the signature does not check out; stderr: %s", stderr)
 	}
 	if _, has := decode(t, stdout)["managedSettings"]; has {
 		t.Errorf("stdout = %s, want an envelope without managedSettings", stdout)
@@ -361,5 +361,22 @@ func TestAStateDirectoryWithoutATrustFileBehavesExactlyAsBefore(t *testing.T) {
 	if withState != withoutState || withCode != withoutCode {
 		t.Errorf("with an unsigned state directory: stdout = %q code = %d, want byte-identical to no state directory at all: stdout = %q code = %d",
 			withState, withCode, withoutState, withoutCode)
+	}
+}
+
+func TestNullRequireBundleIsAbsent(t *testing.T) {
+	stateDir := writeSignedState(t, signedBundle)
+	if err := os.Remove(filepath.Join(stateDir, sync.BundleFile)); err != nil {
+		t.Fatal(err)
+	}
+	cfg := writeFile(t, "aw-policy.json", `{"requireBundle":null}`)
+
+	_, stderr, code := run(t,
+		"AW_POLICY_BUNDLE="+writeFile(t, "aw-bundle.json", bundle),
+		"AW_POLICY_CONFIG="+cfg,
+		"AW_SYNC_STATE_DIR="+stateDir)
+
+	if code == 0 {
+		t.Fatalf("exit = 0, want non-zero: null reads as absent and a key is pinned; stderr: %s", stderr)
 	}
 }
