@@ -52,6 +52,14 @@ func TestValidateAcceptsNilAndEmpty(t *testing.T) {
 	}
 }
 
+func TestValidateAcceptsAWindowsCACertPath(t *testing.T) {
+	for _, path := range []string{`C:\\ProgramData\\ca.pem`, `C:/ca.pem`} {
+		if err := managed.Validate(decode(t, `{"caCertPath": "`+path+`"}`)); err != nil {
+			t.Errorf("%s: %v", path, err)
+		}
+	}
+}
+
 func TestValidateRejects(t *testing.T) {
 	tests := []struct {
 		name string
@@ -74,6 +82,9 @@ func TestValidateRejects(t *testing.T) {
 		{"empty modelId", `{"models": {"list": [{"modelId": ""}]}}`, "modelId"},
 		{"list not array", `{"models": {"list": "a"}}`, "list"},
 		{"header value not string", `{"gateway": {"customHeaders": {"X-A": 1}}}`, "X-A"},
+		{"drive-relative caCertPath", `{"caCertPath": "C:ca.pem"}`, "caCertPath"},
+		{"empty defaultModelId", `{"models": {"defaultModelId": ""}}`, "defaultModelId"},
+		{"defaultModelId not string", `{"models": {"defaultModelId": 5}}`, "defaultModelId"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
