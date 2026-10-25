@@ -144,7 +144,9 @@ func (c *Client) Finish(ctx context.Context, a Attempt, code string) (string, er
 	if err := idt.Claims(&claims); err != nil {
 		return "", fmt.Errorf("%w: %v", ErrInvalidToken, err)
 	}
-	if v, present := claims["email_verified"]; present && !truthy(v) {
+	// The verification claims attest the email only. Entra ID cannot send
+	// email_verified; its equivalent is the optional claim xms_edov.
+	if c.cfg.UserClaim == "email" && !truthy(claims["email_verified"]) && !truthy(claims["xms_edov"]) {
 		return "", ErrUnverified
 	}
 	user, _ := claims[c.cfg.UserClaim].(string)
@@ -156,7 +158,7 @@ func (c *Client) Finish(ctx context.Context, a Attempt, code string) (string, er
 }
 
 // truthy accepts the boolean true and the string "true": some IdPs send
-// email_verified as a string.
+// email_verified as a string. A missing claim (nil) is not verified.
 func truthy(v any) bool {
 	switch x := v.(type) {
 	case bool:

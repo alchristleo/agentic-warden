@@ -24,8 +24,12 @@ first:
   `openid email profile`.
 - **Entra ID**: register a web platform app with the same redirect URI. Set
   `AWD_CONSOLE_USER_CLAIM=preferred_username`, since Entra ID's ID token
-  does not carry `email` by default; if you would rather use `email`, add
-  it as an optional ID token claim on the app registration instead.
+  does not carry `email` by default; this setup needs no further change. If
+  you would rather use `email`, add `email` and `xms_edov` as optional ID
+  token claims (Token configuration, Add optional claim). Entra ID cannot
+  send `email_verified`; `xms_edov` is its equivalent, and the console
+  accepts it in its place. The portal may flag `xms_edov` as unrecognized;
+  that is expected. See [Upgrading](./upgrading.md).
 
 | Variable | Purpose |
 |---|---|

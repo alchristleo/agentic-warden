@@ -125,6 +125,17 @@ func (c *Client) Enroll(ctx context.Context, token, name, goos string) (Enrollme
 	if e.MachineID == "" || e.Credential == "" {
 		return Enrollment{}, errors.New("sync: the control plane returned an incomplete enrollment")
 	}
+	// A token minted by a signing control plane ends in ".<keyId>". The token
+	// travelled out of band, so it, not the response, decides which key is
+	// trusted: the key the server presents must hash to the token's id.
+	if i := strings.LastIndex(token, "."); i >= 0 {
+		want := token[i+1:]
+		key, err := signing.ParsePublic(e.PublicKey)
+		if err != nil || signing.KeyID(key) != want {
+			return Enrollment{}, fmt.Errorf("sync: the enrollment token names signing key %q but the control plane presented a different or unusable key; not pinning it. The control plane has already recorded a machine for this token; an admin can remove it with `awd revoke`. Mint a new token from the control plane you mean to trust", want)
+		}
+		e.KeyID = want
+	}
 	return e, nil
 }
 
@@ -255,5 +266,7 @@ func (c *Client) client() *http.Client {
 	if c.HTTP != nil {
 		return c.HTTP
 	}
-	return &http.Client{Timeout: defaultTimeout}
+	return &http.Client{Timeout: defaultTimeout, CheckRedirect: func(r *http.Request, _ []*http.Request) error {
+		return CheckTransport(r.URL.String())
+	}}
 }

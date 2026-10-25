@@ -47,6 +47,112 @@ func TestEnrollPostsTheTokenAndReturnsTheCredential(t *testing.T) {
 	}
 }
 
+// enrollServer answers every enrollment with the given body.
+func enrollServer(t *testing.T, body string) *sync.Client {
+	t.Helper()
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusCreated)
+		_, _ = w.Write([]byte(body))
+	}))
+	t.Cleanup(srv.Close)
+	return &sync.Client{Server: srv.URL}
+}
+
+// enrollKey makes a real signing key and returns its published form and id.
+func enrollKey(t *testing.T) (string, string) {
+	t.Helper()
+	priv, err := signing.Generate()
+	if err != nil {
+		t.Fatal(err)
+	}
+	pub := priv.Public().(ed25519.PublicKey)
+	return signing.FormatPublic(pub), signing.KeyID(pub)
+}
+
+func enrollBody(pub, keyID string) string {
+	return fmt.Sprintf(`{"machineId":"m1","credential":"c1","user":"u","publicKey":%q,"keyId":%q}`, pub, keyID)
+}
+
+func TestEnrollRefusesAKeyIDMismatch(t *testing.T) {
+	pub, id := enrollKey(t)
+	c := enrollServer(t, enrollBody(pub, id))
+
+	_, err := c.Enroll(context.Background(), "secret.aaaa", "h", "linux")
+
+	if err == nil || !strings.Contains(err.Error(), "aaaa") || !strings.Contains(err.Error(), "awd revoke") {
+		t.Fatalf("err = %v, want a key id mismatch naming the token's key and awd revoke", err)
+	}
+}
+
+func TestEnrollRefusesAMissingKeyWhenTokenNamesOne(t *testing.T) {
+	c := enrollServer(t, `{"machineId":"m1","credential":"c1","user":"u"}`)
+
+	_, err := c.Enroll(context.Background(), "secret.aaaa", "h", "linux")
+
+	if err == nil {
+		t.Fatal("an enrollment with no key was accepted although the token names one")
+	}
+}
+
+func TestEnrollAcceptsAMatchingKeyID(t *testing.T) {
+	pub, id := enrollKey(t)
+	c := enrollServer(t, enrollBody(pub, id))
+
+	e, err := c.Enroll(context.Background(), "secret."+id, "h", "linux")
+
+	if err != nil || e.KeyID != id || e.PublicKey != pub {
+		t.Fatalf("e = %+v, err = %v", e, err)
+	}
+}
+
+func TestEnrollRefusesAKeyThatDoesNotMatchTheTokensKeyID(t *testing.T) {
+	pubA, _ := enrollKey(t)
+	_, idB := enrollKey(t)
+	// The server presents key A but claims it has B's id.
+	c := enrollServer(t, enrollBody(pubA, idB))
+
+	e, err := c.Enroll(context.Background(), "secret."+idB, "h", "linux")
+
+	if err == nil {
+		t.Fatalf("accepted key A under B's id: %+v", e)
+	}
+	if e.PublicKey != "" || e.KeyID != "" || e.Credential != "" {
+		t.Errorf("state returned alongside the refusal: %+v", e)
+	}
+}
+
+func TestEnrollRefusesAnUnparseableKeyWhenTokenNamesOne(t *testing.T) {
+	c := enrollServer(t, enrollBody("pk", "aaaa"))
+
+	if _, err := c.Enroll(context.Background(), "secret.aaaa", "h", "linux"); err == nil {
+		t.Fatal("an unparseable key was accepted")
+	}
+}
+
+func TestEnrollWithoutKeyIDSuffixStillPins(t *testing.T) {
+	c := enrollServer(t, `{"machineId":"m1","credential":"c1","user":"u","publicKey":"pk","keyId":"bbbb"}`)
+
+	e, err := c.Enroll(context.Background(), "secret", "h", "linux")
+
+	if err != nil || e.KeyID != "bbbb" || e.PublicKey != "pk" {
+		t.Fatalf("e = %+v, err = %v", e, err)
+	}
+}
+
+func TestRedirectToPlainHTTPIsRefused(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, "http://evil.example/steal", http.StatusTemporaryRedirect)
+	}))
+	defer srv.Close()
+	c := &sync.Client{Server: srv.URL}
+
+	_, err := c.Enroll(context.Background(), "tok", "h", "linux")
+
+	if err == nil || !strings.Contains(err.Error(), "https") {
+		t.Fatalf("err = %v, want a refusal naming https", err)
+	}
+}
+
 func TestEnrollDecodesASuccessBodyLargerThanTheErrorCap(t *testing.T) {
 	// maxErrorBody is 4096 bytes; the enrollment payload itself is small,
 	// so pad it past that with a long unknown field to prove the 201 path

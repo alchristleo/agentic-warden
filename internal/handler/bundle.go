@@ -17,14 +17,16 @@ import (
 // group targeting resolved here, repository targeting left for the client.
 //
 // An organization with no policy yet gets an empty bundle and a 200, for
-// the same reason /v1/policy does: a client that falls back on error must
+// the same reason the /v1/policy preview does: a client that falls back on error must
 // not be pushed there by the ordinary case.
 func (h *Handler) getBundle(w http.ResponseWriter, r *http.Request, machine model.Machine) {
 	var ruleSet *policy.RuleSet
+	var revisedAt int64
 	revision, err := h.store.CurrentRuleSet(r.Context())
 	switch {
 	case err == nil:
 		ruleSet = &revision.RuleSet
+		revisedAt = revision.CreatedAt.UnixMilli()
 	case errors.Is(err, model.ErrNotFound):
 		ruleSet = &policy.RuleSet{}
 	default:
@@ -42,6 +44,7 @@ func (h *Handler) getBundle(w http.ResponseWriter, r *http.Request, machine mode
 	}
 	bundle := ruleSet.Slice(groups.Effective)
 	bundle.User = machine.User
+	bundle.RevisedAt = revisedAt
 	body, err := json.MarshalIndent(bundle, "", "  ")
 	if err != nil {
 		h.fail(w, r, fmt.Errorf("encoding the bundle: %w", err))

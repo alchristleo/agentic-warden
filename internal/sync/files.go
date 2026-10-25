@@ -78,6 +78,10 @@ type State struct {
 	ETag string `json:"etag,omitempty"`
 	// Version is the policy revision last rendered.
 	Version string `json:"version,omitempty"`
+	// RevisedAt is the highest revision time (Unix milliseconds) ever
+	// rendered. A pinned machine refuses a bundle below it, so a replayed
+	// older policy cannot roll the machine back.
+	RevisedAt int64 `json:"revisedAt,omitempty"`
 	// SyncedAt is when the last successful cycle finished, including one the
 	// server answered with 304.
 	SyncedAt time.Time `json:"syncedAt"`

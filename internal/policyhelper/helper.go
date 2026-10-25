@@ -75,8 +75,10 @@ type Config struct {
 	AuditDir string
 	// RequireBundle makes a run without a usable bundle exit non-zero, so
 	// Claude Code refuses to start rather than run ungoverned. It is the
-	// organization's opt-in; the default is to fail safe.
-	RequireBundle bool
+	// organization's choice. Nil decides by whether a key is pinned (a
+	// trust file exists in StateDir): pinned fails closed, otherwise open.
+	// True always fails closed, false always open.
+	RequireBundle *bool
 	// Now supplies the time for the audit log.
 	Now func() time.Time
 }
@@ -105,7 +107,7 @@ func Run(cfg Config) (result Result) {
 		if r := recover(); r != nil {
 			result = Result{Source: SourceNone, Notes: []string{fmt.Sprintf("internal error: %v", r)}}
 			result.Output = envelope(nil)
-			result.ExitCode = exitCode(cfg, result.Source)
+			result.ExitCode = exitCode(cfg, result.Source, isPinned(cfg.StateDir))
 		}
 	}()
 
@@ -147,7 +149,7 @@ func Run(cfg Config) (result Result) {
 		result.Version = ""
 		result.Output = envelope(nil)
 	}
-	result.ExitCode = exitCode(cfg, result.Source)
+	result.ExitCode = exitCode(cfg, result.Source, isPinned(cfg.StateDir))
 	audit(cfg, subject, result)
 	return result
 }
@@ -156,10 +158,24 @@ func (r *Result) note(format string, args ...any) {
 	r.Notes = append(r.Notes, fmt.Sprintf(format, args...))
 }
 
-// exitCode is zero unless the organization requires a bundle and this run
-// did not get a usable one.
-func exitCode(cfg Config, source Source) int {
-	if cfg.RequireBundle && source != SourceBundle {
+// isPinned reports whether a key is pinned in stateDir. A trust file that
+// cannot be examined counts as pinned: failing open there is the wrong way.
+func isPinned(stateDir string) bool {
+	if stateDir == "" {
+		return false
+	}
+	_, err := os.Stat(filepath.Join(stateDir, sync.TrustFile))
+	return !errors.Is(err, os.ErrNotExist)
+}
+
+// exitCode is non-zero when this run did not get a usable bundle and the
+// organization requires one: explicitly, or by default once a key is pinned.
+func exitCode(cfg Config, source Source, pinned bool) int {
+	require := pinned
+	if cfg.RequireBundle != nil {
+		require = *cfg.RequireBundle
+	}
+	if require && source != SourceBundle {
 		return 1
 	}
 	return 0

@@ -43,6 +43,7 @@ import (
 	"github.com/alchristleo/agentic-warden/internal/signing"
 	"github.com/alchristleo/agentic-warden/internal/signing/awskms"
 	"github.com/alchristleo/agentic-warden/internal/store"
+	"github.com/alchristleo/agentic-warden/internal/sync"
 	"github.com/alchristleo/agentic-warden/internal/termcolor"
 	"github.com/alchristleo/agentic-warden/internal/version"
 	"sigs.k8s.io/yaml"
@@ -363,6 +364,9 @@ func apply(argv []string) error {
 	if url == "" {
 		url = envOr("AWD_URL", "http://localhost:8080")
 	}
+	if err := sync.CheckTransport(url); err != nil {
+		return err
+	}
 
 	// Validating locally first means an author sees the problem with their
 	// file rather than a status code from a server.
@@ -389,7 +393,9 @@ func apply(argv []string) error {
 		req.Header.Set("X-Applied-By", who)
 	}
 
-	client := &http.Client{Timeout: 30 * time.Second}
+	client := &http.Client{Timeout: 30 * time.Second, CheckRedirect: func(r *http.Request, _ []*http.Request) error {
+		return sync.CheckTransport(r.URL.String())
+	}}
 	resp, err := client.Do(req)
 	if err != nil {
 		return fmt.Errorf("reaching the control plane at %s: %w", url, err)
@@ -478,6 +484,9 @@ func parseAdminArgs(argv []string) (adminArgs, error) {
 // adminRequest sends one authenticated request and returns the decoded
 // JSON body, or an error naming the status and the server's message.
 func adminRequest(method, url, path string, body any, out any) error {
+	if err := sync.CheckTransport(url); err != nil {
+		return err
+	}
 	var reader io.Reader
 	if body != nil {
 		encoded, err := json.Marshal(body)
@@ -497,7 +506,9 @@ func adminRequest(method, url, path string, body any, out any) error {
 	if who := appliedBy(); who != "" {
 		req.Header.Set("X-Applied-By", who)
 	}
-	client := &http.Client{Timeout: 30 * time.Second}
+	client := &http.Client{Timeout: 30 * time.Second, CheckRedirect: func(r *http.Request, _ []*http.Request) error {
+		return sync.CheckTransport(r.URL.String())
+	}}
 	resp, err := client.Do(req)
 	if err != nil {
 		return fmt.Errorf("reaching the control plane at %s: %w", url, err)

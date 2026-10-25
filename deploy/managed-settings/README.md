@@ -23,7 +23,9 @@ Three files live there:
    identical.
 2. `aw-bundle.json` — the enrolled user's bundle, written by `aw-sync`,
    mode 0644. It is the organization's policy, not a secret.
-3. `aw-policy.json` — the helper's own configuration. Optional. One key:
+3. `aw-policy.json` — the helper's own configuration. Optional. One key,
+   `requireBundle`: `true` always fails closed, `false` always fails open,
+   absent fails closed once a key is pinned:
 
        {"requireBundle": false}
 
@@ -72,8 +74,11 @@ I/O, so the 5000 in the template is generous.
 On a machine `aw-sync` has not reached, or whose bundle does not parse, the
 helper emits an envelope with no `managedSettings` and exits 0, which tells
 Claude Code to fall back to whatever `managed-settings.json` and the other
-drop-ins say. Set `"requireBundle": true` to refuse to start instead; that
-is an organization's call, and the default is to keep developers working.
+drop-ins say. That holds only while no signing key is pinned on the machine
+(no `aw-trust.pub` in the state directory). Once one is pinned, the helper
+exits non-zero instead and Claude Code refuses to start. Set
+`"requireBundle": false` to keep the fall-back, or `true` to refuse to start
+on every machine.
 A bundle that compiles to settings this helper's schema rejects is treated
 the same way and noted on stderr.
 

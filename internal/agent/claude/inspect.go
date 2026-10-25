@@ -81,7 +81,7 @@ func (a *Adapter) Inspect(env []string) []agent.Finding {
 		}
 	}
 
-	findings = append(findings, inspectBundle(systemDir))
+	findings = append(findings, inspectBundle(systemDir, a.StateDir))
 	findings = append(findings, inspectSignature(a.StateDir))
 	if warn := inspectPin(a.StateDir); warn != nil {
 		findings = append(findings, *warn)
@@ -174,26 +174,39 @@ func checkHelperBuild(helper, source string) (agent.Finding, bool) {
 		Message: fmt.Sprintf("policyHelper %s (from %s) was built with -tags awtest: a developer can point it at their own bundle; rebuild without the tag", helper, source)}, true
 }
 
+// emptyEffect says what a missing or unusable bundle does to a launch. A
+// trust file that is there, or cannot be statted, means a key is pinned and
+// aw-policy fails closed; with none it emits nothing and exits 0.
+func emptyEffect(stateDir string) string {
+	if stateDir != "" {
+		if _, err := os.Stat(filepath.Join(stateDir, stateTrustFile)); !errors.Is(err, os.ErrNotExist) {
+			return "aw-policy refuses to start: a key is pinned"
+		}
+	}
+	return "aw-policy emits no settings"
+}
+
 // inspectBundle reports the bundle aw-sync leaves for aw-policy. Without
 // it the helper emits no settings and every launch runs on the static
 // managed-settings files alone, which is silent; with one that does not
 // parse, the same happens for a worse reason. Age and last error are
 // aw-sync's to report, from its state directory; `aw doctor` shows both.
-func inspectBundle(systemDir string) agent.Finding {
+func inspectBundle(systemDir, stateDir string) agent.Finding {
+	noSettings := emptyEffect(stateDir)
 	path := filepath.Join(systemDir, BundleFile)
 	raw, err := os.ReadFile(path)
 	switch {
 	case errors.Is(err, os.ErrNotExist):
 		return agent.Finding{Level: agent.Warn,
-			Message: fmt.Sprintf("no bundle at %s: aw-policy emits no settings until aw-sync has run", path)}
+			Message: fmt.Sprintf("no bundle at %s yet: %s", path, noSettings)}
 	case err != nil:
 		return agent.Finding{Level: agent.Error,
-			Message: fmt.Sprintf("bundle %s is unreadable, so aw-policy emits no settings: %v", path, err)}
+			Message: fmt.Sprintf("bundle %s is unreadable, so %s: %v", path, noSettings, err)}
 	}
 	var bundle policy.Bundle
 	if err := json.Unmarshal(raw, &bundle); err != nil {
 		return agent.Finding{Level: agent.Error,
-			Message: fmt.Sprintf("bundle %s is not valid JSON, so aw-policy emits no settings: %v", path, err)}
+			Message: fmt.Sprintf("bundle %s is not valid JSON, so %s: %v", path, noSettings, err)}
 	}
 	version := bundle.Version
 	if version == "" {

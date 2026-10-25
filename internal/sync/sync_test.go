@@ -23,6 +23,7 @@ import (
 	"github.com/alchristleo/agentic-warden/internal/model"
 	"github.com/alchristleo/agentic-warden/internal/policy"
 	"github.com/alchristleo/agentic-warden/internal/signing"
+	"github.com/alchristleo/agentic-warden/internal/store"
 	"github.com/alchristleo/agentic-warden/internal/sync"
 )
 
@@ -1002,5 +1003,294 @@ func writeFile(t *testing.T, path, body string) {
 	}
 	if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
 		t.Fatal(err)
+	}
+}
+
+// revisedFixture is a real handler behind a proxy that can replay a recorded
+// response or serve a chosen body, so a test can act as the network attacker
+// who hands a pinned machine an older (still validly signed) bundle.
+type revisedFixture struct {
+	h      *handler.Handler
+	srv    *httptest.Server
+	cfg    sync.Config
+	now    time.Time
+	last   *httptest.ResponseRecorder
+	replay *httptest.ResponseRecorder
+	key    ed25519.PrivateKey
+	body   []byte // when set, served signed with key instead of the handler's answer
+}
+
+func newRevisedFixture(t *testing.T) *revisedFixture {
+	t.Helper()
+	key, err := signing.Generate()
+	if err != nil {
+		t.Fatal(err)
+	}
+	f := &revisedFixture{key: key, now: time.Date(2026, 9, 20, 12, 0, 0, 0, time.UTC)}
+	f.h = handler.New(store.NewMemory(), nil)
+	f.h.AdminToken = testAdminToken
+	f.h.Signer = &handler.Signer{Current: signing.NewSeedSigner(key)}
+	f.h.Now = func() time.Time { return f.now }
+	routes := f.h.Routes()
+	f.srv = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/v1/bundle" {
+			routes.ServeHTTP(w, r)
+			return
+		}
+		switch {
+		case f.body != nil:
+			w.Header().Set("X-AW-Signature", signing.Sign(key, f.body))
+			w.Header().Set("X-AW-Key-Id", signing.KeyID(key.Public().(ed25519.PublicKey)))
+			w.Header().Set("ETag", `"custom"`)
+			_, _ = w.Write(f.body)
+		case f.replay != nil:
+			for k, v := range f.replay.Header() {
+				w.Header()[k] = v
+			}
+			_, _ = w.Write(f.replay.Body.Bytes())
+		default:
+			rec := httptest.NewRecorder()
+			routes.ServeHTTP(rec, r)
+			for k, v := range rec.Header() {
+				w.Header()[k] = v
+			}
+			w.WriteHeader(rec.Code)
+			_, _ = w.Write(rec.Body.Bytes())
+			if rec.Code == http.StatusOK {
+				f.last = rec
+			}
+		}
+	}))
+	t.Cleanup(f.srv.Close)
+	e := mintAndEnroll(t, f.srv, testAdminToken, "alice@acme.com")
+	stateDir := filepath.Join(t.TempDir(), "state")
+	m := sync.Machine{Server: f.srv.URL, MachineID: e.MachineID, Credential: e.Credential, Agents: []string{"claude"}, PublicKey: e.PublicKey, KeyID: e.KeyID}
+	if err := sync.SaveMachine(stateDir, m); err != nil {
+		t.Fatal(err)
+	}
+	f.cfg = sync.Config{
+		StateDir: stateDir,
+		GOOS:     "linux",
+		Roots:    map[string]string{"claude": filepath.Join(t.TempDir(), "claude-root")},
+		Registry: claudeRegistry(t),
+		Now:      func() time.Time { return f.now },
+	}
+	return f
+}
+
+// apply stores a revision at the fixture's current clock.
+func (f *revisedFixture) apply(t *testing.T, version string) {
+	t.Helper()
+	body := `{"version":"` + version + `","rules":[{"name":"baseline","agents":{"claude":{"managed":{"model":"opus"}}}}]}`
+	req, _ := http.NewRequest(http.MethodPost, f.srv.URL+"/v1/policy/revisions", strings.NewReader(body))
+	req.Header.Set("Authorization", "Bearer "+testAdminToken)
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusCreated {
+		t.Fatalf("applying %s: status %d", version, resp.StatusCode)
+	}
+}
+
+func (f *revisedFixture) revisedAt(t *testing.T) int64 {
+	t.Helper()
+	state, err := sync.LoadState(f.cfg.StateDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return state.RevisedAt
+}
+
+const (
+	revisedT1 = int64(1789905600000) // 2026-09-20T12:00:00Z
+	revisedT2 = revisedT1 + 60000
+)
+
+// twoRevisions leaves the machine synced to the second revision, with the
+// first revision's signed response recorded for replay.
+func (f *revisedFixture) twoRevisions(t *testing.T) *httptest.ResponseRecorder {
+	t.Helper()
+	f.apply(t, "v1")
+	if res := sync.Run(context.Background(), f.cfg); res.Err != nil {
+		t.Fatal(res.Err)
+	}
+	old := f.last
+	f.now = f.now.Add(time.Minute)
+	f.apply(t, "v2")
+	if res := sync.Run(context.Background(), f.cfg); res.Err != nil {
+		t.Fatal(res.Err)
+	}
+	if got := f.revisedAt(t); got != revisedT2 {
+		t.Fatalf("state.RevisedAt = %d, want %d", got, revisedT2)
+	}
+	return old
+}
+
+func TestRunRefusesAnOlderRevision(t *testing.T) {
+	f := newRevisedFixture(t)
+	old := f.twoRevisions(t)
+	before := f.snapshot(t)
+
+	f.replay = old
+	res := sync.Run(context.Background(), f.cfg)
+
+	if res.Err == nil || !strings.Contains(res.Err.Error(), "policy revision time 2026-09-20T12:00:00Z is older than last rendered 2026-09-20T12:01:00Z; apply the policy again on the control plane") {
+		t.Fatalf("err = %v, want the older-revision refusal", res.Err)
+	}
+	after := f.snapshot(t)
+	for path, content := range before {
+		if got, ok := after[path]; !ok || got != content {
+			t.Errorf("%s changed or vanished after the refusal", path)
+		}
+	}
+	for path := range after {
+		if _, ok := before[path]; !ok {
+			t.Errorf("%s appeared after the refusal", path)
+		}
+	}
+	if got := f.revisedAt(t); got != revisedT2 {
+		t.Errorf("state.RevisedAt = %d, want it unchanged at %d", got, revisedT2)
+	}
+}
+
+// snapshot reads every file under the state directory and the rendered root.
+// state.json and the audit log are left out: a refused cycle records its
+// error in them by design.
+func (f *revisedFixture) snapshot(t *testing.T) map[string]string {
+	t.Helper()
+	out := map[string]string{}
+	for _, dir := range []string{f.cfg.StateDir, f.cfg.Roots["claude"]} {
+		err := filepath.WalkDir(dir, func(path string, d os.DirEntry, err error) error {
+			if err != nil || d.IsDir() || d.Name() == sync.StateFile || d.Name() == sync.AuditFile {
+				return err
+			}
+			raw, err := os.ReadFile(path)
+			out[path] = string(raw)
+			return err
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	return out
+}
+
+// An unpinned machine has no signature to trust, so the revision time is not
+// checked: an older bundle is rendered. The stored value is still max(), so
+// it stays at the higher time it already held.
+func TestRunDoesNotCheckRevisedAtWithoutAPinnedKey(t *testing.T) {
+	f := newRevisedFixture(t)
+	old := f.twoRevisions(t)
+	machine, err := sync.LoadMachine(f.cfg.StateDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	machine.PublicKey, machine.KeyID = "", ""
+	if err := sync.SaveMachine(f.cfg.StateDir, machine); err != nil {
+		t.Fatal(err)
+	}
+
+	f.replay = old
+	res := sync.Run(context.Background(), f.cfg)
+
+	if res.Err != nil {
+		t.Fatalf("an unpinned machine refused an older revision: %v", res.Err)
+	}
+	if res.Version != "v1" {
+		t.Errorf("version = %q, want the older v1 rendered", res.Version)
+	}
+	if got := f.revisedAt(t); got != revisedT2 {
+		t.Errorf("state.RevisedAt = %d, want max() to keep %d", got, revisedT2)
+	}
+}
+
+func TestRunAcceptsSameOrNewerRevision(t *testing.T) {
+	f := newRevisedFixture(t)
+	f.apply(t, "v1")
+	if res := sync.Run(context.Background(), f.cfg); res.Err != nil {
+		t.Fatal(res.Err)
+	}
+	same := f.last
+
+	// The same revision served again; the replayed 200 is rendered as is.
+	f.replay = same
+	if res := sync.Run(context.Background(), f.cfg); res.Err != nil {
+		t.Fatalf("an equal revision time was refused: %v", res.Err)
+	}
+	if got := f.revisedAt(t); got != revisedT1 {
+		t.Errorf("state.RevisedAt = %d, want %d", got, revisedT1)
+	}
+
+	f.replay = nil
+	f.now = f.now.Add(time.Minute)
+	f.apply(t, "v2")
+	if res := sync.Run(context.Background(), f.cfg); res.Err != nil {
+		t.Fatalf("a newer revision was refused: %v", res.Err)
+	}
+	if got := f.revisedAt(t); got != revisedT2 {
+		t.Errorf("state.RevisedAt = %d, want %d", got, revisedT2)
+	}
+}
+
+func TestRunRefusesMissingRevisedAtOnceStored(t *testing.T) {
+	f := newRevisedFixture(t)
+	f.apply(t, "v1")
+	if res := sync.Run(context.Background(), f.cfg); res.Err != nil {
+		t.Fatal(res.Err)
+	}
+
+	// What an older control plane would sign: a bundle with no revisedAt.
+	f.body = []byte(`{"version":"v0","user":"alice@acme.com","groups":[],"rules":[]}`)
+	res := sync.Run(context.Background(), f.cfg)
+
+	if res.Err == nil || !strings.Contains(res.Err.Error(), "policy revision time (none) is older than last rendered 2026-09-20T12:00:00Z") {
+		t.Fatalf("err = %v, want the older-revision refusal", res.Err)
+	}
+	if got := f.revisedAt(t); got != revisedT1 {
+		t.Errorf("state.RevisedAt = %d, want %d", got, revisedT1)
+	}
+}
+
+func TestRolloverKeepsRevisedAt(t *testing.T) {
+	f := newRevisedFixture(t)
+	f.apply(t, "v1")
+	if res := sync.Run(context.Background(), f.cfg); res.Err != nil {
+		t.Fatal(res.Err)
+	}
+
+	next, err := signing.Generate()
+	if err != nil {
+		t.Fatal(err)
+	}
+	f.h.Signer = &handler.Signer{Current: signing.NewSeedSigner(next), Previous: signing.NewSeedSigner(f.key)}
+
+	// A 304 cycle that repins keeps the stored value ...
+	res := sync.Run(context.Background(), f.cfg)
+	if res.Err != nil || !res.Unchanged {
+		t.Fatalf("res = %+v, want an unchanged cycle", res)
+	}
+	machine, err := sync.LoadMachine(f.cfg.StateDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if machine.KeyID != signing.KeyID(next.Public().(ed25519.PublicKey)) {
+		t.Fatalf("machine.KeyID = %q, want it repinned", machine.KeyID)
+	}
+	if got := f.revisedAt(t); got != revisedT1 {
+		t.Errorf("after the 304 rollover state.RevisedAt = %d, want %d", got, revisedT1)
+	}
+
+	// ... and so does one that renders a newer revision under the new key.
+	f.h.Signer = &handler.Signer{Current: signing.NewSeedSigner(next)}
+	f.now = f.now.Add(time.Minute)
+	f.apply(t, "v2")
+	if res := sync.Run(context.Background(), f.cfg); res.Err != nil {
+		t.Fatal(res.Err)
+	}
+	if got := f.revisedAt(t); got != revisedT2 {
+		t.Errorf("after the rendering cycle state.RevisedAt = %d, want %d", got, revisedT2)
 	}
 }

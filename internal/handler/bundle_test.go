@@ -535,3 +535,51 @@ func TestRolloverOn304UsesCacheAndFailsClosedWhenUncached(t *testing.T) {
 		t.Fatalf("uncached rollover failure = %d, want 503", resp.StatusCode)
 	}
 }
+
+func TestBundleCarriesRevisedAt(t *testing.T) {
+	key, _ := signing.Generate()
+	srv := newSignedServer(t, &handler.Signer{Current: signing.NewSeedSigner(key)})
+	post(t, srv, "/v1/policy/revisions", baselineRuleSet)
+	_, alice := enroll(t, srv, mintToken(t, srv, "alice@acme.com"))
+
+	resp := fetchBundle(t, srv, alice, nil)
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// 2026-09-20T12:00:00Z, the handler's fixed clock, in Unix milliseconds.
+	if !strings.Contains(string(body), `"revisedAt": 1789905600000`) {
+		t.Errorf("the bundle lacks revisedAt 1789905600000:\n%s", body)
+	}
+	if !signing.Verify(key.Public().(ed25519.PublicKey), body, resp.Header.Get("X-AW-Signature")) {
+		t.Error("the signature does not cover the body that carries revisedAt")
+	}
+}
+
+func TestRollbackApplyMovesRevisedAtForward(t *testing.T) {
+	h := handler.New(store.NewMemory(), nil)
+	h.AdminToken = adminToken
+	now := time.Date(2026, 9, 20, 12, 0, 0, 0, time.UTC)
+	h.Now = func() time.Time { return now }
+	srv := httptest.NewServer(h.Routes())
+	t.Cleanup(srv.Close)
+	_, alice := enroll(t, srv, mintToken(t, srv, "alice@acme.com"))
+	revisedAt := func() int64 {
+		return decodeBundle(t, fetchBundle(t, srv, alice, nil)).RevisedAt
+	}
+
+	post(t, srv, "/v1/policy/revisions", baselineRuleSet)
+	first := revisedAt()
+	now = now.Add(time.Minute)
+	post(t, srv, "/v1/policy/revisions", strings.Replace(baselineRuleSet, `"v1"`, `"v2"`, 1))
+	second := revisedAt()
+	// Rolling back is applying the old rules again, as a new revision.
+	now = now.Add(time.Minute)
+	post(t, srv, "/v1/policy/revisions", strings.Replace(baselineRuleSet, `"v1"`, `"v1-again"`, 1))
+	third := revisedAt()
+
+	if first != 1789905600000 || second != first+60000 || third != second+60000 {
+		t.Errorf("revisedAt = %d, %d, %d; want 1789905600000 then +60000 each", first, second, third)
+	}
+}

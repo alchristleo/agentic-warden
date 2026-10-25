@@ -166,6 +166,9 @@ func enroll(argv []string, stdout io.Writer, on bool) error {
 	if *server == "" {
 		return errors.New("--server is required")
 	}
+	if err := sync.CheckTransport(*server); err != nil {
+		return err
+	}
 	if *token == "" {
 		return errors.New("--token or AW_SYNC_TOKEN is required")
 	}
