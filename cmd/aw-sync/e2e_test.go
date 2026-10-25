@@ -789,3 +789,42 @@ func TestInstallTimerRefusesABinaryAUserCanReplace(t *testing.T) {
 		t.Errorf("state dir changed: %v", entries)
 	}
 }
+
+// TestForceReenrollResetsRevisedAt: the stored revision time describes the
+// old enrollment's control plane; --force starts over, which is the recovery
+// after a database restore.
+func TestForceReenrollResetsRevisedAt(t *testing.T) {
+	s := startAwd(t)
+	applyPolicy(t, s)
+	stateDir := filepath.Join(t.TempDir(), "state")
+	root := "claude=" + filepath.Join(t.TempDir(), "claude-root")
+	enrollArgs := []string{"enroll", "--server", s.url, "--agents", "claude", "--state-dir", stateDir}
+	revisedAt := func() int64 {
+		raw, err := os.ReadFile(filepath.Join(stateDir, "state.json"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		var st struct{ RevisedAt int64 }
+		if err := json.Unmarshal(raw, &st); err != nil {
+			t.Fatal(err)
+		}
+		return st.RevisedAt
+	}
+
+	if _, stderr, code := runSync(t, []string{"AW_SYNC_TOKEN=" + mintToken(t, s, "alice@acme.com")}, enrollArgs...); code != 0 {
+		t.Fatalf("enroll: %s", stderr)
+	}
+	if _, stderr, code := runSync(t, nil, "once", "--state-dir", stateDir, "--root", root); code != 0 {
+		t.Fatalf("once: %s", stderr)
+	}
+	if revisedAt() == 0 {
+		t.Fatal("state.json holds no revisedAt after a sync")
+	}
+
+	if _, stderr, code := runSync(t, []string{"AW_SYNC_TOKEN=" + mintToken(t, s, "alice@acme.com")}, append(enrollArgs, "--force")...); code != 0 {
+		t.Fatalf("enroll --force: %s", stderr)
+	}
+	if got := revisedAt(); got != 0 {
+		t.Errorf("revisedAt after enroll --force = %d, want 0", got)
+	}
+}

@@ -205,6 +205,14 @@ func Run(ctx context.Context, cfg Config) Result {
 		return res
 	}
 
+	// A pinned machine never goes back to an older policy: the revision time
+	// is signed with the bundle, so a replay of an old signed bundle is
+	// caught here, before anything is rendered or written.
+	if pinned != nil && fetched.Bundle.RevisedAt < state.RevisedAt {
+		return cfg.fail(state, notes, nil, nil, fmt.Errorf("policy revision time %s is older than last rendered %s; apply the policy again on the control plane",
+			revisionTime(fetched.Bundle.RevisedAt), revisionTime(state.RevisedAt)))
+	}
+
 	// Render every agent before writing any file, so one agent's bad
 	// bundle cannot leave another's half applied.
 	var planned []plannedFile
@@ -300,6 +308,7 @@ func Run(ctx context.Context, cfg Config) Result {
 		Agents:    machine.Agents,
 		ETag:      fetched.ETag,
 		Version:   version,
+		RevisedAt: max(state.RevisedAt, fetched.Bundle.RevisedAt),
 		SyncedAt:  cfg.Now().UTC(),
 		Files:     files,
 		Notes:     notes,
@@ -366,6 +375,15 @@ func (cfg Config) root(agentName string) (string, error) {
 		return dir, nil
 	}
 	return AgentRoot(cfg.GOOS, agentName)
+}
+
+// revisionTime renders a revision time for the refusal message; zero is a
+// bundle from a control plane that sent none.
+func revisionTime(ms int64) string {
+	if ms == 0 {
+		return "(none)"
+	}
+	return time.UnixMilli(ms).UTC().Format(time.RFC3339Nano)
 }
 
 // revisionLine is the content of an .aw-revision sibling.

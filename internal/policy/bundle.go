@@ -8,6 +8,10 @@ package policy
 type Bundle struct {
 	// Version is the policy revision the bundle was cut from.
 	Version string `json:"version,omitempty"`
+	// RevisedAt is when that revision was stored, in Unix milliseconds. It is
+	// inside the signed body, so a pinned client can refuse an older bundle
+	// replayed to it. Zero means the control plane did not say.
+	RevisedAt int64 `json:"revisedAt,omitempty"`
 	// User is who the bundle was resolved for, for diagnostics.
 	User string `json:"user,omitempty"`
 	// Groups are the memberships the bundle was resolved with.

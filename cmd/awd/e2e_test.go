@@ -3,6 +3,7 @@ package main_test
 import (
 	"bufio"
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"io"
@@ -15,7 +16,10 @@ import (
 	"testing"
 	"time"
 
+	"github.com/alchristleo/agentic-warden/internal/agent"
+	"github.com/alchristleo/agentic-warden/internal/agent/claude"
 	"github.com/alchristleo/agentic-warden/internal/signing"
+	"github.com/alchristleo/agentic-warden/internal/sync"
 )
 
 var built string
@@ -817,5 +821,74 @@ func TestSCIMProvisionedGroupReachesTheBundle(t *testing.T) {
 	warned, _ := runAwd(t, "groups", "resolve", "bob@acme.com", "--url", s.url)
 	if !strings.Contains(warned, `"Bob@acme.com"`) {
 		t.Errorf("no near-match warning: %s", warned)
+	}
+}
+
+// TestRestartThenApplyIsAccepted: a memory-store awd forgets every revision
+// and machine when it restarts. After one apply, a pinned client that kept
+// its state (a new credential, the same pinned key) takes the new bundle
+// rather than refusing it as older.
+func TestRestartThenApplyIsAccepted(t *testing.T) {
+	keyPath := filepath.Join(t.TempDir(), "signing.key")
+	if out, code := runAwd(t, "keygen", "--out", keyPath); code != 0 {
+		t.Fatalf("keygen exited %d: %s", code, out)
+	}
+	env := []string{"AWD_SIGNING_KEY=" + keyPath}
+	enrollAt := func(s *server) sync.Enrollment {
+		out, code := runAwd(t, "enroll-token", "alice@acme.com", "--url", s.url)
+		if code != 0 {
+			t.Fatalf("enroll-token exited %d: %s", code, out)
+		}
+		e, err := (&sync.Client{Server: s.url}).Enroll(context.Background(), strings.TrimSpace(out), "e2e-host", "linux")
+		if err != nil {
+			t.Fatal(err)
+		}
+		return e
+	}
+	apply := func(s *server) {
+		if out, code := runAwd(t, "apply", writePolicy(t, policyYAML), "--url", s.url); code != 0 {
+			t.Fatalf("apply: %s", out)
+		}
+	}
+	reg := &agent.Registry{}
+	if err := reg.Register(claude.New()); err != nil {
+		t.Fatal(err)
+	}
+	stateDir := filepath.Join(t.TempDir(), "state")
+	cfg := sync.Config{StateDir: stateDir, GOOS: "linux", Roots: map[string]string{"claude": filepath.Join(t.TempDir(), "claude-root")}, Registry: reg}
+
+	first := startServerEnv(t, env)
+	apply(first)
+	e := enrollAt(first)
+	machine := sync.Machine{Server: first.url, MachineID: e.MachineID, Credential: e.Credential, Agents: []string{"claude"}, PublicKey: e.PublicKey, KeyID: e.KeyID}
+	if err := sync.SaveMachine(stateDir, machine); err != nil {
+		t.Fatal(err)
+	}
+	if res := sync.Run(context.Background(), cfg); res.Err != nil {
+		t.Fatalf("first sync: %v", res.Err)
+	}
+	before, err := sync.LoadState(stateDir)
+	if err != nil || before.RevisedAt == 0 {
+		t.Fatalf("state after the first sync = %+v, %v; want a revisedAt", before, err)
+	}
+
+	// Restart: stop the first process (handing its done value back so the
+	// cleanup does not wait on it) and start a fresh, empty one.
+	_ = first.cmd.Process.Signal(syscall.SIGTERM)
+	first.done <- <-first.done
+	second := startServerEnv(t, env)
+	apply(second)
+	e2 := enrollAt(second)
+	machine.Server, machine.MachineID, machine.Credential = second.url, e2.MachineID, e2.Credential
+	if err := sync.SaveMachine(stateDir, machine); err != nil {
+		t.Fatal(err)
+	}
+
+	if res := sync.Run(context.Background(), cfg); res.Err != nil {
+		t.Fatalf("the sync after the restart and one apply was refused: %v", res.Err)
+	}
+	after, err := sync.LoadState(stateDir)
+	if err != nil || after.RevisedAt <= before.RevisedAt {
+		t.Errorf("revisedAt %d -> %d, want it to move forward", before.RevisedAt, after.RevisedAt)
 	}
 }
