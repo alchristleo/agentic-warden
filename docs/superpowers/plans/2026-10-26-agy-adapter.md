@@ -51,6 +51,7 @@ Copy the shape of `internal/agent/gemini` (renderer, managed/, Inspect) and its 
 - One shared `agent.DroppedRepoRules` helper (codex, gemini, agy copies) (panel-design).
 - aw-sync removes files of agents no longer enrolled (panel-correctness).
 - README: say `aw agy` is a thin launcher (panel-design nit).
+- Inspect test: match a specific Error message, not any (reviewer-lite nit). Header value check: TrimSpace, more schemes (Token, Digest) (panel-correctness nit).
 - README:82 drop inner "(end of life)" in compare cell; how-it-works:90 move hooks-bullet parenthetical below list (panel-cdo nits).
 - awd apply validates merged docs per subject for every agent, not just per rule (agy fixed by dropping cross-field checks).
 
@@ -92,3 +93,6 @@ TRIAGE fixed=20 dismissed=2 backlog=3
 FIX wave 6a360c6 sdd-implementer 20 items: cross-field checks dropped, url/header secret rejects, empty list, Inspect warn, probe CA moved + rerun, docs CDO items
 PANEL cdo a2936f6 must=0 should=0 nit=2
 SEAT panel-cdo pass a2936f6 AC10 re-run on fix diff
+PANEL correctness a2936f6 must=0 should=1 nit=1
+SEAT panel-correctness pass a2936f6 AC9 re-run on fix diff
+COORD f06608d probe copies unparseable/no-gateway inputs raw (tested), spec list[] wording; Gemini retired-for-most-users + source link
