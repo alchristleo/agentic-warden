@@ -37,7 +37,7 @@ curl -fsSL $REL/download/<version>/install.sh \
 
 ### Verify a download
 
-Save the archive and `checksums.txt` from the same release in one directory, then run:
+Download the archive (`agentic-warden_<version>_<os>_<arch>.tar.gz`) and `checksums.txt` from the same release on the [Releases page](https://github.com/alchristleo/agentic-warden/releases) into one directory, then run:
 
 ```sh
 sha256sum --ignore-missing -c checksums.txt   # Linux
@@ -60,6 +60,7 @@ To install an archive you verified yourself:
 
 ```sh
 tar -xzf <archive>
+mkdir -p ~/.local/bin
 install -m 0755 aw aw-policy aw-sync awd \
   ~/.local/bin/
 ```
@@ -71,10 +72,11 @@ Enforcement needs a root-owned `aw-policy`, so install to a system directory wit
 ```sh
 REL=https://github.com/alchristleo/agentic-warden/releases
 curl -fsSLO $REL/latest/download/install.sh
+less install.sh
 sudo env AW_BIN_DIR=/usr/local/bin sh install.sh
 ```
 
-The script never calls `sudo` itself. Running it as root is your choice. The directory must be root-owned and not writable by your user. Homebrew makes `/usr/local/bin` user-owned on Intel Macs, so use another root-owned directory there.
+The script never calls `sudo` itself. Running it as root is your choice. The directory must be root-owned and not writable by your user. Check with `ls -ld /usr/local/bin`; if your user owns it, use another root-owned directory.
 
 ### From source
 

@@ -62,12 +62,10 @@ jobs:
           TAG: ${{ github.ref_name }}
         run: scripts/test-release-build.sh dist "$TAG"
       - run: scripts/test-install.sh dist
+      - run: cp install.sh dist/
       - uses: actions/attest-build-provenance@e8998f949152b193b063cb0ec769d69d929409be # v2.4.0
         with:
-          subject-path: |
-            dist/*.tar.gz
-            dist/checksums.txt
-            install.sh
+          subject-path: dist/*
       - name: Create release
         env:
           GH_TOKEN: ${{ github.token }}
@@ -78,4 +76,4 @@ jobs:
             *) pre= ;;
           esac
           # shellcheck disable=SC2086
-          gh release create "$TAG" dist/* install.sh --verify-tag --generate-notes $pre
+          gh release create "$TAG" dist/* --verify-tag --generate-notes $pre
