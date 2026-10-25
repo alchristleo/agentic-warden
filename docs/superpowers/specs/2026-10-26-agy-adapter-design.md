@@ -34,7 +34,7 @@ place, `aw agy` launches agy with the policy's env, and the docs say plainly wha
   So `aw agy` cannot scope it per launch.
 - F5 Unknown: what agy does with an unparseable file, an unknown key, `{}`, or a bad field
   (the binary has "invalid admin settings: %w" and "json: unknown field %q"), and when it ignores the
-  file ("admin controls not applicable" exists: maybe under non-enterprise sign-in). `pending: T1`.
+  file ("admin controls not applicable" exists: maybe under non-enterprise sign-in). Settled: see `## T1 findings`.
 - F6 The binary also reads `AGY_LLM_GATEWAY_{HEADERS,CA_CERT,MODELS,PROXY_URL,TIER_PRO,TIER_FLASH,WIRE_PROTOCOL}`;
   the documented admin keys are only F2. Undocumented admin keys are not supported.
 
@@ -58,7 +58,7 @@ place, `aw agy` launches agy with the policy's env, and the docs say plainly wha
   from several rules accumulate, a later rule winning per header name.
 - D5 Render: one file, `admin_settings.json`, mode 0644, owned whole by aw-sync, revision in the
   `.aw-revision` sibling (JSON has no comments). Empty policy → `{}` (stale file never outlives its policy).
-  Settled by T1: agy 1.4.7 starts with `{}` and applies no controls, same as no file.
+  Settled by T1: agy 1.4.7 starts with `{}`; no admin warning in the log.
 - D6 `aw agy`: passthrough. Merge policy env (same `merge.Env` as other agents), pass args, note
   `agy: enforcement is machine-wide (admin_settings.json via aw-sync); nothing is pinned per launch` (owner).
 - D7 `aw doctor agy` (Inspector): admin file missing → warn; unparseable or fails Validate → error;
