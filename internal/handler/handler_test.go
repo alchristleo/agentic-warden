@@ -60,6 +60,16 @@ func postAs(t *testing.T, srv *httptest.Server, path, body, token string) *http.
 	return resp
 }
 
+// getAdmin is get with the admin bearer token.
+func getAdmin(t *testing.T, srv *httptest.Server, path string, header http.Header) *http.Response {
+	t.Helper()
+	h := http.Header{"Authorization": {"Bearer " + adminToken}}
+	for k, v := range header {
+		h[k] = v
+	}
+	return get(t, srv, path, h)
+}
+
 func get(t *testing.T, srv *httptest.Server, path string, header http.Header) *http.Response {
 	t.Helper()
 	req, err := http.NewRequest(http.MethodGet, srv.URL+path, nil)
@@ -144,7 +154,7 @@ func TestReadyzReportsTheStoreIsReachable(t *testing.T) {
 func TestPolicyBeforeAnyRevisionIsAnEmptyDocumentRatherThanAnError(t *testing.T) {
 	srv := newServer(t)
 
-	resp := get(t, srv, "/v1/policy", nil)
+	resp := getAdmin(t, srv, "/v1/policy", nil)
 
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("status = %d, want 200: a client must never be pushed into its fail-safe path by an org that has no policy yet", resp.StatusCode)
@@ -158,7 +168,7 @@ func TestApplyingARuleSetThenFetchingItCompilesTheBaseline(t *testing.T) {
 	srv := newServer(t)
 	applyBaseline(t, srv)
 
-	doc := decodeDocument(t, get(t, srv, "/v1/policy", nil))
+	doc := decodeDocument(t, getAdmin(t, srv, "/v1/policy", nil))
 
 	managed := doc.Agent("claude").Managed
 	permissions, _ := managed["permissions"].(map[string]any)
@@ -175,7 +185,7 @@ func TestPolicyAppliesGroupTargeting(t *testing.T) {
 	srv := newServer(t)
 	applyBaseline(t, srv)
 
-	doc := decodeDocument(t, get(t, srv, "/v1/policy?group=platform", nil))
+	doc := decodeDocument(t, getAdmin(t, srv, "/v1/policy?group=platform", nil))
 
 	if got := doc.Agent("claude").Managed["model"]; got != "opus" {
 		t.Errorf("model = %v, want the platform rule to apply", got)
@@ -186,7 +196,7 @@ func TestPolicyAppliesRepositoryTargeting(t *testing.T) {
 	srv := newServer(t)
 	applyBaseline(t, srv)
 
-	doc := decodeDocument(t, get(t, srv, "/v1/policy?repo=github.com/acme/payments-api", nil))
+	doc := decodeDocument(t, getAdmin(t, srv, "/v1/policy?repo=github.com/acme/payments-api", nil))
 
 	permissions, _ := doc.Agent("claude").Managed["permissions"].(map[string]any)
 	deny, _ := permissions["deny"].([]any)
@@ -199,7 +209,7 @@ func TestPolicyNamesTheRulesThatApplied(t *testing.T) {
 	srv := newServer(t)
 	applyBaseline(t, srv)
 
-	doc := decodeDocument(t, get(t, srv, "/v1/policy?group=platform", nil))
+	doc := decodeDocument(t, getAdmin(t, srv, "/v1/policy?group=platform", nil))
 
 	if len(doc.AppliedRules) != 2 || doc.AppliedRules[0] != "baseline" {
 		t.Errorf("AppliedRules = %v, want the audit trail of applied rules", doc.AppliedRules)
@@ -210,13 +220,13 @@ func TestPolicyIsCacheableWithAnETag(t *testing.T) {
 	srv := newServer(t)
 	applyBaseline(t, srv)
 
-	first := get(t, srv, "/v1/policy?group=platform", nil)
+	first := getAdmin(t, srv, "/v1/policy?group=platform", nil)
 	etag := first.Header.Get("ETag")
 	if etag == "" {
 		t.Fatal("no ETag on the response, want one so a client can revalidate cheaply")
 	}
 
-	again := get(t, srv, "/v1/policy?group=platform", http.Header{"If-None-Match": {etag}})
+	again := getAdmin(t, srv, "/v1/policy?group=platform", http.Header{"If-None-Match": {etag}})
 
 	if again.StatusCode != http.StatusNotModified {
 		t.Errorf("status = %d, want 304 for a matching ETag", again.StatusCode)
@@ -227,8 +237,8 @@ func TestADifferentSubjectGetsADifferentETag(t *testing.T) {
 	srv := newServer(t)
 	applyBaseline(t, srv)
 
-	platform := get(t, srv, "/v1/policy?group=platform", nil).Header.Get("ETag")
-	design := get(t, srv, "/v1/policy?group=design", nil).Header.Get("ETag")
+	platform := getAdmin(t, srv, "/v1/policy?group=platform", nil).Header.Get("ETag")
+	design := getAdmin(t, srv, "/v1/policy?group=design", nil).Header.Get("ETag")
 
 	if platform == design {
 		t.Errorf("both subjects got ETag %q; a cached policy for one group would be served to another", platform)
@@ -318,7 +328,7 @@ func TestTheWrongMethodIsRejected(t *testing.T) {
 func TestResponsesAreJSON(t *testing.T) {
 	srv := newServer(t)
 
-	resp := get(t, srv, "/v1/policy", nil)
+	resp := getAdmin(t, srv, "/v1/policy", nil)
 
 	if got := resp.Header.Get("Content-Type"); got != "application/json" {
 		t.Errorf("Content-Type = %q, want %q", got, "application/json")
