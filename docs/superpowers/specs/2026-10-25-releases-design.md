@@ -74,6 +74,16 @@ builds, checksums and attests a GitHub release. The module path matches the repo
   `sha256sum -c` and `gh attestation verify` commands, the sudo form for enforcement, and
   `go install github.com/alchristleo/agentic-warden/cmd/...@latest` as the from-source path.
 
+## Phase 2 decisions (owner, 2026-10-25)
+
+- Quickstart step 1 keeps `git clone` (example policy, later `cd ../agentic-warden`) and replaces
+  `go build` with `install.sh`; Go leaves the quickstart prerequisites (from-source path only).
+- `check-quickstart.sh` installs the PR's own build: CI builds a dist, serves it locally, rewrites the
+  doc's release base URL to it and sets `AW_BASE_URL`. Doc commands stay literal.
+- Tape 01 re-recorded with the same local-dist redirect (no live network).
+- Folded in: Install links from home and enforce-plain-claude.md (sudo form instead of `bin/`), and the
+  6 panel-cdo Reference nits from the releases Backlog.
+
 ## Acceptance criteria
 
 1. **No old module path.** `git grep -n "github.com/acme/agent-wrapper" -- ':!docs/superpowers'`
