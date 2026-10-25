@@ -33,7 +33,7 @@ jobs:
           go-version-file: go.mod
       - run: scripts/release-build.sh v0.0.0-ci dist
       - run: scripts/test-release-build.sh
-      - run: scripts/test-install.sh
+      - run: scripts/test-install.sh dist
       - run: shellcheck -s sh install.sh
 
   publish:
@@ -52,10 +52,12 @@ jobs:
         with:
           go-version-file: go.mod
       - run: go test ./...
+      - run: scripts/test-release-build.sh
       - name: Build
         env:
           TAG: ${{ github.ref_name }}
         run: scripts/release-build.sh "$TAG" dist
+      - run: scripts/test-install.sh dist
       - uses: actions/attest-build-provenance@e8998f949152b193b063cb0ec769d69d929409be # v2.4.0
         with:
           subject-path: dist/*.tar.gz
@@ -63,4 +65,4 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ github.ref_name }}
-        run: gh release create "$TAG" dist/* install.sh --verify-tag --generate-notes --title "$TAG"
+        run: gh release create "$TAG" dist/* install.sh --verify-tag --generate-notes
