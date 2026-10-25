@@ -101,6 +101,8 @@ rules:
               - modelId: gemini-3.8-pro
 ```
 
+The model IDs are examples. Use the models your gateway serves, which `agy models` lists.
+
 `managed` for agy is the admin settings file, so it applies to every developer on the machine.
 `awd apply` refuses a `launch` block for agy. Set `AGY_LLM_GATEWAY_API_KEY` on each developer machine, not in
 `env`. [How it works](./how-it-works.md) lists what agy does not enforce.
