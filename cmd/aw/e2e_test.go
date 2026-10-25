@@ -90,7 +90,7 @@ func TestAgentsListsWhatTheBinaryCanLaunch(t *testing.T) {
 	if code != 0 {
 		t.Fatalf("exit code = %d, want 0. output:\n%s", code, out)
 	}
-	for _, name := range []string{"claude", "codex", "gemini"} {
+	for _, name := range []string{"claude", "codex", "gemini", "agy"} {
 		if !strings.Contains(out, name) {
 			t.Errorf("output %q does not list %s", out, name)
 		}
@@ -133,7 +133,11 @@ func TestDoctorJSONIsMachineReadable(t *testing.T) {
 	if err := json.Unmarshal([]byte(out), &report); err != nil {
 		t.Fatalf("doctor --json is not valid JSON: %v\n%s", err, out)
 	}
-	if len(report.Agents) == 0 || report.Agents[0].Binary == "" {
+	located := false
+	for _, a := range report.Agents {
+		located = located || a.Binary != ""
+	}
+	if !located {
 		t.Errorf("report does not locate any agent: %+v", report)
 	}
 }
@@ -300,6 +304,7 @@ func TestDoctorCompilesTheBundleForTheRepositoryItRunsIn(t *testing.T) {
 	fakeAgent(t, binDir, "claude", "exit 0")
 	fakeAgent(t, binDir, "codex", "exit 0")
 	fakeAgent(t, binDir, "gemini", "exit 0")
+	fakeAgent(t, binDir, "agy", "exit 0")
 	stateDir := t.TempDir()
 	if err := os.WriteFile(filepath.Join(stateDir, "aw-bundle.json"), []byte(e2eBundle), 0o644); err != nil {
 		t.Fatal(err)
@@ -365,7 +370,7 @@ func TestDoctorCompilesTheBundleForTheRepositoryItRunsIn(t *testing.T) {
 			t.Errorf("%s notes %q lack the compiled-for note", a.Name, a.Launch.Notes)
 		}
 	}
-	if strings.Join(names, ",") != "claude,codex,gemini" {
+	if strings.Join(names, ",") != "agy,claude,codex,gemini" {
 		t.Errorf("agents = %v", names)
 	}
 }
@@ -599,4 +604,42 @@ func TestDoctorChecksOnlyEnrolledAgents(t *testing.T) {
 	if !strings.Contains(out, "agent claude") {
 		t.Errorf("doctor dropped the enrolled agent:\n%s", out)
 	}
+}
+
+func TestDoctorReportsTheAgyAdminFile(t *testing.T) {
+	binDir := t.TempDir()
+	fakeAgent(t, binDir, "agy", "exit 0")
+
+	out, code := run(t, baseEnv(t, binDir), "doctor", "--json")
+
+	if code != 0 {
+		t.Fatalf("exit code = %d, want 0. output:\n%s", code, out)
+	}
+	var report struct {
+		Agents []struct {
+			Name     string `json:"name"`
+			Binary   string `json:"binary"`
+			Findings []struct {
+				Message string `json:"message"`
+			} `json:"findings"`
+		} `json:"agents"`
+	}
+	if err := json.Unmarshal([]byte(out), &report); err != nil {
+		t.Fatalf("doctor --json is not valid JSON: %v\n%s", err, out)
+	}
+	for _, a := range report.Agents {
+		if a.Name != "agy" {
+			continue
+		}
+		if a.Binary == "" {
+			t.Errorf("agy not located: %+v", a)
+		}
+		for _, f := range a.Findings {
+			if strings.Contains(f.Message, "admin_settings.json") {
+				return
+			}
+		}
+		t.Fatalf("agy findings %+v do not mention admin_settings.json", a.Findings)
+	}
+	t.Fatalf("report has no agy entry:\n%s", out)
 }

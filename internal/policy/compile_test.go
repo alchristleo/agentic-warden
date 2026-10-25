@@ -390,3 +390,35 @@ func TestLaunchMergesByKeyAcrossRules(t *testing.T) {
 		t.Errorf("outside the repo launch = %v; the repo rule must not apply", outside)
 	}
 }
+
+func TestCompileAgyModelsListReplaces(t *testing.T) {
+	// models.list is an allowlist, so a later rule's list replaces the
+	// earlier one instead of widening it. gateway.customHeaders is an
+	// object: headers from several rules accumulate and a later rule wins
+	// per header name.
+	rs := &policy.RuleSet{Rules: []policy.Rule{
+		{Name: "baseline", Agents: map[string]policy.AgentConfig{"agy": {Managed: map[string]any{
+			"models": map[string]any{"list": []any{
+				map[string]any{"modelId": "a"}, map[string]any{"modelId": "b"},
+			}},
+			"gateway": map[string]any{"customHeaders": map[string]any{"X-Team": "one", "X-Org": "acme"}},
+		}}}},
+		{Name: "strict", Agents: map[string]policy.AgentConfig{"agy": {Managed: map[string]any{
+			"models":  map[string]any{"list": []any{map[string]any{"modelId": "c"}}},
+			"gateway": map[string]any{"customHeaders": map[string]any{"X-Team": "two"}},
+		}}}},
+	}}
+
+	managed := rs.Compile(policy.Subject{}).Agent("agy").Managed
+
+	models, _ := managed["models"].(map[string]any)
+	list, _ := models["list"].([]any)
+	if len(list) != 1 || list[0].(map[string]any)["modelId"] != "c" {
+		t.Errorf("models.list = %v; want the later rule's list alone", list)
+	}
+	gateway, _ := managed["gateway"].(map[string]any)
+	headers, _ := gateway["customHeaders"].(map[string]any)
+	if len(headers) != 2 || headers["X-Team"] != "two" || headers["X-Org"] != "acme" {
+		t.Errorf("customHeaders = %v; want X-Org kept and X-Team won by the later rule", headers)
+	}
+}
