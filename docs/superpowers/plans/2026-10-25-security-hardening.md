@@ -49,13 +49,9 @@ Branch: `security-hardening`. Constraint for every task: no new env var or CLI f
 ## Group 3
 
 ### T7 — Docs (D7, D8, AC12–13)
-- Files: `docs/site/threat-model.md` (Known issues → only design limits left: no rate limiter, `X-Applied-By` label, with workarounds; STRIDE rows updated with new test names; same-revision group replay and clock-backwards residuals), new `docs/site/upgrading.md` (four behavior changes, each with fix: use https / re-apply policy / add Entra optional claim `email_verified` + admin-token break-glass / `requireBundle: false`), docs nav entry wherever the `/docs` site lists pages, `deploy/aw-sync/README.md` (https rule, `enroll --force` recovery), admin-console doc (Entra claim). Check `docs/site/security-model.md` for statements now false.
+- Files: `docs/site/threat-model.md` (Known issues → only design limits left: no rate limiter, `X-Applied-By` label, with workarounds; STRIDE rows updated with new test names; same-revision group replay and clock-backwards residuals), new `docs/site/upgrading.md` (four behavior changes, each with fix: use https / re-apply policy / add Entra optional claim `email_verified` + admin-token break-glass / `requireBundle: false`), docs nav entry wherever the `/docs` site lists pages, `deploy/aw-sync/README.md` (https rule, `enroll --force` recovery), admin-console doc (Entra claim), `docs/hosting/runbook.md:143` (curl `/v1/policy` needs `Authorization: Bearer $AWD_ADMIN_TOKEN`), `README.md:89,91` (drop "needs no token"; requireBundle default), `deploy/managed-settings/README.md:28,73-76` (new fail-closed default), `internal/sync/client.go` key-id mismatch error adds "mint a new token" (T2 review nit), `internal/agent/claude/inspect.go:188-196` doctor text conditional on trust file present ("refuses to start: a key is pinned") with a test (T6 review nit). Check `docs/site/security-model.md` for statements now false.
 - Constraint: plain short sentences, match existing doc voice; `scripts/check-quickstart.sh` and docs CI must stay green.
-- Agent: sdd-implementer-lite. Depends-on: T1–T6.
-
-## Ledger
-
-USAGE start 61
+- Agent: sdd-implementer (re-tiered: inspect.go change is code). Depends-on: T1–T6.
 
 ## Backlog
 
@@ -65,3 +61,17 @@ USAGE start 61
 - Anti-RE integrity package → paid-skills milestone (short-lived signed skill bundles, per-buyer watermark).
 - Native TLS in awd.
 - Same-revision group-membership replay detection.
+
+## Ledger
+
+USAGE start 61
+T5 done c55226f sdd-implementer strict email_verified; replaced TestMissingEmailVerifiedIsAccepted
+T1 done 83034ea sdd-implementer policy preview admin-only; +console_test case
+T2 done 66634e4 sdd-implementer key id in enroll token; mismatch spends token
+T6 done 49c1d9c sdd-implementer tri-state requireBundle; follow-up: inspect.go:188 doctor says 'emits no settings' but pinned now fails closed
+T3 done 108a0ca sdd-implementer CheckTransport; run re-check in internal/sync/sync.go Run
+T2 review approve 66634e4 sdd-reviewer nit: mismatch error could say re-mint token (backlog/T7 docs)
+T5 review approve c55226f sdd-reviewer 5 mutations caught
+T1 review approve 83034ea sdd-reviewer should: runbook:143 + README:91 → T7; nit bundle.go:20 rewrap
+T6 review approve 49c1d9c sdd-reviewer should: managed-settings README + README:89 → T7; inspect.go → T7 (T7 re-tiered to sdd-implementer)
+T3 review approve 108a0ca sdd-reviewer nits: redact URL userinfo in error (coord), groups case optional
