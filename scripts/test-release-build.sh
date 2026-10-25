@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Builds a release with release-build.sh v0.0.0-test into a temp dir and checks the result:
+# Usage: test-release-build.sh <dist> <version>
+# Checks an already-built release in <dist> (made by release-build.sh <version> <dist>):
 # 4 archives, 5 entries each, right OS/arch per binary, checksums, version stamping, and
 # that a version not starting with v<digit> is refused.
 set -euo pipefail
@@ -7,12 +8,12 @@ set -euo pipefail
 here=$(cd "$(dirname "$0")" && pwd)
 tmp=$(mktemp -d "${TMPDIR:-/tmp}/test-release-build.XXXXXX")
 trap 'rm -rf "$tmp"' EXIT
-out=$tmp/out
-ver=v0.0.0-test
 
 fail() { echo "FAIL: $*" >&2; exit 1; }
 
-"$here/release-build.sh" "$ver" "$out"
+[[ $# -eq 2 ]] || { echo "usage: test-release-build.sh <dist> <version>" >&2; exit 2; }
+out=$1 ver=$2
+[[ -d $out ]] || fail "dist '$out' is not a directory (build it first: release-build.sh $ver $out)"
 
 want_archives=$(for p in linux_amd64 linux_arm64 darwin_amd64 darwin_arm64; do
   echo "agentic-warden_${ver}_$p.tar.gz"; done | sort)

@@ -94,6 +94,7 @@ run_install "$tmp/good" HOME="$home"
 [[ $rc -eq 0 ]] || fail "default install failed: $out"
 check_installed "$home/.local/bin"
 grep -q "$home/.local/bin" <<<"$out" && grep -qi 'PATH' <<<"$out" || fail "no PATH hint in: $out"
+grep -Fq "Installed agentic-warden $ver to $home/.local/bin: aw aw-policy aw-sync awd. Run: aw version" <<<"$out" || fail "success line wrong: $out"
 echo "ok default dir (latest)"
 
 # AC4: custom dir, pinned version, dir on PATH -> no hint
@@ -118,7 +119,7 @@ done
 expect_fail nosum 'checksum' "$tmp/nosum"
 
 expect_fail uname 'unsupported' "$tmp/good" PATH="$shim:$PATH"
-expect_fail notfound 'download failed' "$tmp/good" AW_VERSION=v9.9.9
+expect_fail notfound 'download failed: .*\(does AW_VERSION=v9\.9\.9 exist\?\)' "$tmp/good" AW_VERSION=v9.9.9
 
 # staging failure on the 3rd binary: nothing in AW_BIN_DIR may change (no mixed versions, no residue)
 cshim=$tmp/chmod-shim

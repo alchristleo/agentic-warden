@@ -45,7 +45,12 @@ cleanup() {
 trap cleanup EXIT
 trap 'exit 1' INT TERM
 
-fetch() { curl -fsSL -o "$2" "$1" || die "download failed: $1"; }
+fetch() {
+  curl -fsSL -o "$2" "$1" && return 0
+  hint=
+  [ "$version" = latest ] || hint=" (does AW_VERSION=$version exist?)"
+  die "download failed: $1$hint"
+}
 
 fetch "$url/checksums.txt" "$tmp/checksums.txt"
 line=$(grep "  agentic-warden_[^ /]*_${os}_${arch}\.tar\.gz\$" "$tmp/checksums.txt" | head -n 1) || true
@@ -73,7 +78,9 @@ for b in aw aw-policy aw-sync awd; do
   mv -f "$bindir/.$b.new.$$" "$bindir/$b" || die "cannot write $bindir/$b"
 done
 
-echo "Installed $file to $bindir: aw aw-policy aw-sync awd"
+installed=${file#agentic-warden_}
+installed=${installed%_"${os}_${arch}".tar.gz}
+echo "Installed agentic-warden $installed to $bindir: aw aw-policy aw-sync awd. Run: aw version"
 case ":$PATH:" in
   *":$bindir:"*) ;;
   *) echo "$bindir is not on your PATH. Add it, e.g.: export PATH=\"$bindir:\$PATH\"" ;;
