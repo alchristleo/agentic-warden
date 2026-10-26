@@ -294,3 +294,34 @@ func contains(entries []string, want string) bool {
 	}
 	return false
 }
+
+func TestSettingsFileEndsWithNewline(t *testing.T) {
+	cases := []struct {
+		name     string
+		settings agent.Settings
+		exact    string
+	}{
+		{"with settings", agent.Settings{Managed: map[string]any{"model": "opus"}}, ""},
+		{"empty layers", agent.Settings{}, "{}\n"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			h := newHarness(t)
+			launch := h.build(t, agent.BuildOptions{Settings: tc.settings})
+			raw, err := os.ReadFile(settingsFlagValue(t, launch.Args))
+			if err != nil {
+				t.Fatalf("read merged settings: %v", err)
+			}
+			got := string(raw)
+			if !strings.HasSuffix(got, "}\n") || strings.HasSuffix(got, "\n\n") {
+				t.Errorf("settings file = %q, want it to end with exactly one newline after }", got)
+			}
+			if !json.Valid(raw) {
+				t.Errorf("settings file is not valid JSON: %q", got)
+			}
+			if tc.exact != "" && got != tc.exact {
+				t.Errorf("settings file = %q, want %q", got, tc.exact)
+			}
+		})
+	}
+}
