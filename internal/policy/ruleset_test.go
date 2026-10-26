@@ -288,7 +288,7 @@ func TestValidateRejectsRemovedAgent(t *testing.T) {
 		{Name: "old-gemini", Agents: map[string]policy.AgentConfig{"gemini": {Managed: map[string]any{"x": 1}}}},
 	}}
 	err := set.Validate()
-	if err == nil || !strings.Contains(err.Error(), `rule "old-gemini"`) || !strings.Contains(err.Error(), "agy") {
+	if err == nil || !strings.Contains(err.Error(), `rule "old-gemini"`) || !strings.Contains(err.Error(), "agy") || !strings.Contains(err.Error(), "reference.md#gemini-cli-removed") {
 		t.Fatalf("Validate() error = %v; want the rule name and agy named", err)
 	}
 }

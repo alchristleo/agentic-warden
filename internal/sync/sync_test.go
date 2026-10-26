@@ -1415,13 +1415,20 @@ func TestRunPruneOn304(t *testing.T) {
 	claudeBundle := filepath.Join(root, claude.BundleFile)
 
 	res := sync.Run(context.Background(), cfg)
-	if res.Err != nil || !res.Unchanged {
-		t.Fatalf("res = %+v, want a clean 304 cycle", res)
+	if res.Err != nil || res.Unchanged {
+		t.Fatalf("res = %+v, want a clean full cycle forced by the orphans", res)
+	}
+	if !hasNote(res.Notes, "removed "+settings, "aw-sync no longer manages it") {
+		t.Errorf("notes = %q, want the removal named without blaming the agent", res.Notes)
 	}
 	for _, p := range []string{settings, settings + ".aw-revision", policyToml} {
 		if exists(p) {
-			t.Errorf("%s survived a 304 cycle", p)
+			t.Errorf("%s survived the cycle", p)
 		}
+	}
+	again := sync.Run(context.Background(), cfg)
+	if again.Err != nil || !again.Unchanged {
+		t.Fatalf("second res = %+v, want a 304 once no orphan is left", again)
 	}
 	state, _ := sync.LoadState(cfg.StateDir)
 	if _, ok := state.Files[settings]; ok {
@@ -1570,6 +1577,9 @@ func assertIsolated(t *testing.T, res sync.Result, cfg sync.Config, root, flakyR
 	if res.Err == nil || !strings.Contains(res.Err.Error(), agentName) {
 		t.Errorf("Err = %v, want it to name %s", res.Err, agentName)
 	}
+	if res.Err != nil && strings.Count(res.Err.Error(), "sync:") != 1 {
+		t.Errorf("Err = %q, want a single sync: prefix", res.Err)
+	}
 	if !strings.Contains(string(mustRead(t, filepath.Join(root, claude.BundleFile))), `"v2"`) {
 		t.Error("claude's bundle was not updated")
 	}
@@ -1699,7 +1709,7 @@ func TestRunIsolatesAgentWithoutARoot(t *testing.T) {
 	}
 }
 
-func TestRunPruneSkippedOn304WhenAnAgentHasNoRoot(t *testing.T) {
+func TestRunLeavesRecordedFilesOn304WhenAnAgentHasNoRoot(t *testing.T) {
 	f := newFakeAwd(t, testBundle())
 	cfg, _ := enrolled(t, f, claudeRegistry(t, noRootRenderer{flakyRenderer{&atomic.Bool{}}}), "claude")
 	if res := sync.Run(context.Background(), cfg); res.Err != nil {
@@ -1720,7 +1730,74 @@ func TestRunPruneSkippedOn304WhenAnAgentHasNoRoot(t *testing.T) {
 	if !exists(orphan) || state.Files[orphan] != sha("N") {
 		t.Errorf("recorded file was pruned on 304: on disk %v, state %q", exists(orphan), state.Files[orphan])
 	}
-	if !hasNote(res.Notes, "pruning skipped") {
-		t.Errorf("notes = %q, want a pruning-skipped note", res.Notes)
+}
+
+func TestRunRootChangeNeverLosesAnAgentsFiles(t *testing.T) {
+	f := newFakeAwd(t, testBundle())
+	cfg, root := enrolled(t, f, claudeRegistry(t), "claude")
+	if res := sync.Run(context.Background(), cfg); res.Err != nil {
+		t.Fatal(res.Err)
+	}
+	bundlePath := filepath.Join(root, claude.BundleFile)
+	want := mustRead(t, bundlePath)
+
+	moved := cfg
+	moved.Roots = map[string]string{"claude": filepath.Join(t.TempDir(), "other-root")}
+	if res := sync.Run(context.Background(), moved); res.Err != nil {
+		t.Fatal(res.Err)
+	}
+	for i := 0; i < 2; i++ {
+		if res := sync.Run(context.Background(), cfg); res.Err != nil {
+			t.Fatal(res.Err)
+		}
+	}
+	if got, err := os.ReadFile(bundlePath); err != nil || string(got) != string(want) {
+		t.Errorf("the original root lost its file after a root change and back: %v", err)
+	}
+	state, _ := sync.LoadState(cfg.StateDir)
+	if state.Files[bundlePath] != sha(string(want)) {
+		t.Errorf("state.Files[%s] = %q, want the file recorded", bundlePath, state.Files[bundlePath])
+	}
+}
+
+func TestRunKeepsAFileItCouldNotRemoveRecorded(t *testing.T) {
+	if os.Getuid() == 0 {
+		t.Skip("root can remove from a read-only directory")
+	}
+	dir := t.TempDir()
+	p := filepath.Join(dir, "a.json")
+	writeFile(t, p, "A")
+	if err := os.Chmod(dir, 0o500); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(dir, 0o700) })
+	res, cfg := pruneCycle(t, func(sync.Config) map[string]string { return map[string]string{p: sha("A")} })
+	if !hasNote(res.Notes, "not removing "+p, "will retry") {
+		t.Errorf("notes = %q, want the failed removal named", res.Notes)
+	}
+	state, _ := sync.LoadState(cfg.StateDir)
+	if state.Files[p] != sha("A") {
+		t.Errorf("state.Files[%s] = %q, want it kept so the next cycle retries", p, state.Files[p])
+	}
+}
+
+func TestRunDoesNotPruneWhenARootOverrideShadowsADefaultRoot(t *testing.T) {
+	f := newFakeAwd(t, testBundle())
+	cfg, _ := enrolled(t, f, claudeRegistry(t), "claude")
+	if res := sync.Run(context.Background(), cfg); res.Err != nil {
+		t.Fatal(res.Err)
+	}
+	defaultRoot := claude.SystemDir("linux")
+	recorded := filepath.Join(defaultRoot, "recorded.json")
+	seedFiles(t, cfg, map[string]string{recorded: sha("A")})
+	bumpToV2(f)
+
+	res := sync.Run(context.Background(), cfg)
+	if res.Err != nil || !hasNote(res.Notes, "pruning skipped", "root override") {
+		t.Fatalf("res = %+v, want a clean cycle with a pruning-skipped note", res)
+	}
+	state, _ := sync.LoadState(cfg.StateDir)
+	if state.Files[recorded] != sha("A") {
+		t.Errorf("state.Files[%s] = %q, want it kept", recorded, state.Files[recorded])
 	}
 }

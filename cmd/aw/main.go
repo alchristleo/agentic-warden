@@ -10,8 +10,8 @@
 // through its own managed-settings tier, which applies whether or not the
 // developer goes through the wrapper. What the wrapper adds is launch-time
 // environment injection, compiling the machine bundle for the session's
-// repository and applying per-launch overlays for Codex.
-// doctor shows exactly what would run.
+// repository and applying per-launch overlays for Codex. The doctor
+// subcommand reports what would run without running it.
 package main
 
 import (
@@ -251,8 +251,7 @@ func compiledFor(src policySource) string {
 // settingsFor builds the settings an adapter applies, stamped with the
 // bundle revision they were compiled from (empty for an explicit document,
 // which carries no version of its own), so an adapter that writes a
-// per-session file, such as a policy file, can name the revision it
-// came from.
+// per-session file can name the revision it came from.
 func settingsFor(doc *policy.Document, agentName, version string) agent.Settings {
 	config := doc.Agent(agentName)
 	return agent.Settings{
@@ -265,8 +264,8 @@ func settingsFor(doc *policy.Document, agentName, version string) agent.Settings
 }
 
 func launch(registry *agent.Registry, opts options, agentName string, args []string) error {
-	if hint, removed := policy.RemovedAgents[agentName]; removed {
-		return fmt.Errorf("%s; run it with aw agy", hint)
+	if hint, removed := policy.RemovedHint(agentName); removed {
+		return errors.New(hint)
 	}
 	// Lookup first so an unknown agent reports the agents this binary knows,
 	// rather than whatever the policy happens to be missing.
@@ -356,6 +355,11 @@ func doctor(registry *agent.Registry, opts options, args []string) error {
 	}
 	for _, name := range names {
 		status := agentStatus{Name: name}
+		if hint, removed := policy.RemovedHint(name); removed {
+			status.Error = hint
+			out.Agents = append(out.Agents, status)
+			continue
+		}
 		adapter, err := registry.Lookup(name)
 		if err != nil {
 			status.Error = err.Error()

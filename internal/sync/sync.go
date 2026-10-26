@@ -60,18 +60,18 @@ type Result struct {
 	Written []string
 	// Notes are what the renderers reported.
 	Notes []string
-	// Err is why the cycle failed. Files on disk are untouched when it is
-	// set: a failure keeps the last good policy in force.
+	// Err is why the cycle failed. An agent that failed keeps the files it
+	// had and the other agents are still written. A failure in the state
+	// directory aborts the cycle and keeps the last good policy in force.
 	Err error
 }
 
 // plannedFile is one change to make to the filesystem, resolved to an
-// absolute path and held until every renderer has succeeded: a file to write,
-// or — with remove set, and no content — a file that must no longer be there.
-// A removal is planned alongside the writes rather than done after them so
-// that it obeys the same rule as everything else in a cycle, namely that it
-// happens only once every renderer agreed and that failing it fails the
-// cycle.
+// absolute path: a file to write, or — with remove set, and no content — a
+// file that must no longer be there. Every agent is rendered before any file
+// is written. A removal is planned alongside the writes so it happens at the
+// same point in the cycle. A failed removal fails the cycle, as a failed
+// write of a state-dir file does.
 type plannedFile struct {
 	path    string
 	content []byte
@@ -152,6 +152,28 @@ func Run(ctx context.Context, cfg Config) Result {
 		}
 	}
 
+	// A recorded file no enrolled agent's root holds is an orphan: it belongs
+	// to an agent dropped by a re-enroll or removed from agent-wrapper. Only
+	// a full cycle prunes, after it has written the current roots, so an
+	// orphan forces one. Without a root for every enrolled agent an orphan
+	// cannot be told from that agent's own file.
+	if roots, rootless := cfg.enrolledRoots(machine.Agents); !rootless {
+		keep := pruneKeep(roots, cfg.StateDir, nil)
+		var orphans []string
+		for path := range state.Files {
+			if !keep(path) {
+				orphans = append(orphans, path)
+			}
+		}
+		if len(orphans) > 0 {
+			sort.Strings(orphans)
+			etag = ""
+			for _, path := range orphans {
+				notes = append(notes, fmt.Sprintf("%s belongs to no enrolled agent; running a full cycle to prune it", path))
+			}
+		}
+	}
+
 	client := &Client{Server: machine.Server, HTTP: cfg.HTTP}
 	var pinned ed25519.PublicKey
 	if machine.PublicKey != "" {
@@ -198,31 +220,11 @@ func Run(ctx context.Context, cfg Config) Result {
 		if fetched.Rollover != nil {
 			repinned = cfg.repin(machine, *fetched.Rollover)
 		}
-		// Files recorded for an agent that is no longer synced would
-		// otherwise stay forever on a fleet whose policy never changes.
-		keepRoots := []string{cfg.StateDir}
-		for _, name := range machine.Agents {
-			if _, removed := policy.RemovedAgents[name]; removed {
-				continue
-			}
-			if root, err := cfg.root(name); err == nil {
-				keepRoots = append(keepRoots, root)
-			}
-		}
-		keep := func(path string) bool { return underAny(keepRoots, path) }
-		var removed, pruneNotes []string
-		if cfg.rootless(machine.Agents) {
-			pruneNotes = []string{pruneSkippedNote}
-		} else {
-			removed, pruneNotes = prune(state.Files, keep)
-			state.Files = keptFiles(state.Files, keep)
-		}
 		state.Error = ""
 		state.SyncedAt = cfg.Now().UTC()
 		res := Result{Unchanged: true, Version: state.Version, Written: make([]string, 0), Notes: state.Notes}
-		if len(repinned)+len(removed)+len(pruneNotes) > 0 {
-			res.Notes = append(append(append([]string{}, repinned...), removedNotes(removed)...), pruneNotes...)
-			res.Notes = append(res.Notes, state.Notes...)
+		if len(repinned) > 0 {
+			res.Notes = append(append([]string{}, repinned...), state.Notes...)
 		}
 		if err := SaveState(cfg.StateDir, state); err != nil {
 			res.Err = err
@@ -244,21 +246,14 @@ func Run(ctx context.Context, cfg Config) Result {
 	// others, and the cycle still reports it as failed below.
 	var planned []plannedFile
 	failed := map[string]error{}
-	var failedOrder []string
-	markFailed := func(name string, err error) {
-		if _, dup := failed[name]; !dup {
-			failedOrder = append(failedOrder, name)
-		}
-		failed[name] = err
-	}
 	for _, name := range machine.Agents {
-		if hint, removed := policy.RemovedAgents[name]; removed {
-			notes = append(notes, name+": "+hint)
+		if hint, removed := policy.RemovedHint(name); removed {
+			notes = append(notes, name+": "+hint+removedNextStep(name))
 			continue
 		}
 		agentFiles, agentNotes, err := cfg.renderAgent(name, fetched.Bundle)
 		if err != nil {
-			markFailed(name, err)
+			failed[name] = err
 			continue
 		}
 		notes = append(notes, agentNotes...)
@@ -303,7 +298,7 @@ func Run(ctx context.Context, cfg Config) Result {
 		}
 		if err := cache.ReplaceMode(p.path, p.content, p.mode); err != nil {
 			if p.agent != "" {
-				markFailed(p.agent, fmt.Errorf("sync: writing %s: %w", p.path, err))
+				failed[p.agent] = fmt.Errorf("sync: writing %s: %w", p.path, err)
 				continue
 			}
 			// Each write is atomic, so what landed is whole; the next cycle
@@ -318,7 +313,7 @@ func Run(ctx context.Context, cfg Config) Result {
 		if strings.HasSuffix(p.path, ".json") {
 			if err := cache.ReplaceMode(p.path+revisionSuffix, []byte(revisionLine(version)), 0o644); err != nil {
 				if p.agent != "" {
-					markFailed(p.agent, fmt.Errorf("sync: writing %s: %w", p.path+revisionSuffix, err))
+					failed[p.agent] = fmt.Errorf("sync: writing %s: %w", p.path+revisionSuffix, err)
 					continue
 				}
 				return cfg.fail(state, notes, files, written, fmt.Errorf("sync: writing %s: %w", p.path+revisionSuffix, err))
@@ -335,9 +330,14 @@ func Run(ctx context.Context, cfg Config) Result {
 
 	// A failed agent keeps the files it already had: they are still its policy
 	// in force, so they are recorded and never pruned this cycle.
+	failedNames := make([]string, 0, len(failed))
+	for name := range failed {
+		failedNames = append(failedNames, name)
+	}
+	sort.Strings(failedNames)
 	var failedRoots, failedMsgs []string
-	for _, name := range failedOrder {
-		failedMsgs = append(failedMsgs, fmt.Sprintf("agent %s: %v", name, failed[name]))
+	for _, name := range failedNames {
+		failedMsgs = append(failedMsgs, fmt.Sprintf("agent %s: %s", name, strings.TrimPrefix(failed[name].Error(), "sync: ")))
 		if root, err := cfg.root(name); err == nil {
 			failedRoots = append(failedRoots, root)
 		}
@@ -346,20 +346,16 @@ func Run(ctx context.Context, cfg Config) Result {
 	for _, p := range planned {
 		plannedPaths[p.path] = true
 	}
-	keepRoots := append(failedRoots, cfg.StateDir)
-	keep := func(path string) bool { return plannedPaths[path] || underAny(keepRoots, path) }
-	rootless := cfg.rootless(machine.Agents)
-	if rootless {
-		notes = append(notes, pruneSkippedNote)
-	} else {
-		removed, pruneNotes := prune(state.Files, keep)
-		notes = append(append(notes, removedNotes(removed)...), pruneNotes...)
-	}
+	keep, skipNotes := cfg.fullCycleKeep(machine.Agents, failedRoots, plannedPaths, state.Files)
+	removed, retained, pruneNotes := prune(state.Files, keep)
+	notes = append(append(append(notes, skipNotes...), removedNotes(removed)...), pruneNotes...)
+	// What the cycle leaves recorded: what it wrote, what prune did not
+	// claim, and what prune tried and failed to remove, so it is retried.
 	for path, sum := range state.Files {
 		if _, ok := files[path]; ok || underAny([]string{cfg.StateDir}, path) {
 			continue
 		}
-		if rootless || underAny(failedRoots, path) {
+		if keep(path) || retained[path] {
 			files[path] = sum
 		}
 	}
@@ -429,18 +425,58 @@ func (cfg Config) renderAgent(name string, bundle *policy.Bundle) ([]plannedFile
 // enrolled agent owns.
 const pruneSkippedNote = "pruning skipped: an enrolled agent has no known system directory, so its recorded files cannot be told apart from orphans"
 
-// rootless reports whether an enrolled agent that is still supported has no
-// resolvable root. Its recorded files could then be mistaken for orphans.
-func (cfg Config) rootless(agents []string) bool {
+// removedNextStep is what to do about an enrolled agent that agent-wrapper no
+// longer supports.
+func removedNextStep(name string) string {
+	return "; re-enroll with `aw-sync enroll --force --agents ...` leaving " + name + " out (" + policy.RemovedDocs + ")"
+}
+
+// enrolledRoots returns the roots of the enrolled agents that are still
+// supported. rootless is true when one of them has no resolvable root.
+func (cfg Config) enrolledRoots(agents []string) (roots []string, rootless bool) {
 	for _, name := range agents {
-		if _, removed := policy.RemovedAgents[name]; removed {
+		if _, removed := policy.RemovedHint(name); removed {
 			continue
 		}
-		if _, err := cfg.root(name); err != nil {
-			return true
+		root, err := cfg.root(name)
+		if err != nil {
+			rootless = true
+			continue
+		}
+		roots = append(roots, root)
+	}
+	return roots, rootless
+}
+
+// pruneKeep is the predicate prune uses: a path is kept when it is planned
+// this cycle or sits under one of roots or the state directory.
+func pruneKeep(roots []string, stateDir string, planned map[string]bool) func(string) bool {
+	all := append(append([]string{}, roots...), stateDir)
+	return func(path string) bool { return planned[path] || underAny(all, path) }
+}
+
+// fullCycleKeep is the predicate for the full cycle's one prune call. It keeps
+// everything, with a note, when prune cannot tell an agent's own files from
+// orphans: an enrolled agent has no root, or a Roots override moves an agent
+// away from the default directory that already holds recorded files.
+func (cfg Config) fullCycleKeep(agents, failedRoots []string, planned map[string]bool, prev map[string]string) (func(string) bool, []string) {
+	keepAll := func(string) bool { return true }
+	if _, rootless := cfg.enrolledRoots(agents); rootless {
+		return keepAll, []string{pruneSkippedNote}
+	}
+	for _, name := range agents {
+		dir := cfg.Roots[name]
+		def, err := AgentRoot(cfg.GOOS, name)
+		if dir == "" || err != nil || dir == def {
+			continue
+		}
+		for path := range prev {
+			if underAny([]string{def}, path) {
+				return keepAll, []string{fmt.Sprintf("pruning skipped: a root override replaces %s for %s and files are recorded under it", def, name)}
+			}
 		}
 	}
-	return false
+	return pruneKeep(failedRoots, cfg.StateDir, planned), nil
 }
 
 // underAny reports whether path is inside one of roots, by filepath.Rel and
@@ -454,21 +490,10 @@ func underAny(roots []string, path string) bool {
 	return false
 }
 
-// keptFiles is files restricted to the paths keep accepts.
-func keptFiles(files map[string]string, keep func(string) bool) map[string]string {
-	out := make(map[string]string, len(files))
-	for path, sum := range files {
-		if keep(path) {
-			out[path] = sum
-		}
-	}
-	return out
-}
-
 func removedNotes(removed []string) []string {
 	var notes []string
 	for _, path := range removed {
-		notes = append(notes, "removed "+path+": agent no longer synced")
+		notes = append(notes, "removed "+path+": aw-sync no longer manages it")
 	}
 	return notes
 }
@@ -479,8 +504,10 @@ func removedNotes(removed []string) []string {
 // followed), only content that still hashes to what was written. Anything
 // else stays on disk with a note. The .aw-revision sidecar goes only with its
 // main file. A candidate that is gone is dropped silently. The caller drops
-// every candidate from state.Files whatever happened to it.
-func prune(prev map[string]string, keep func(path string) bool) (removed []string, notes []string) {
+// every candidate from state.Files except those in retained: a file whose
+// removal failed stays recorded so the next cycle tries again.
+func prune(prev map[string]string, keep func(path string) bool) (removed []string, retained map[string]bool, notes []string) {
+	retained = map[string]bool{}
 	paths := make([]string, 0, len(prev))
 	for path := range prev {
 		if !keep(path) {
@@ -515,7 +542,8 @@ func prune(prev map[string]string, keep func(path string) bool) (removed []strin
 			continue
 		}
 		if err := os.Remove(path); err != nil {
-			notes = append(notes, fmt.Sprintf("not removing %s: %v", path, err))
+			notes = append(notes, fmt.Sprintf("not removing %s: %v; will retry", path, err))
+			retained[path] = true
 			continue
 		}
 		removed = append(removed, path)
@@ -525,7 +553,7 @@ func prune(prev map[string]string, keep func(path string) bool) (removed []strin
 			}
 		}
 	}
-	return removed, notes
+	return removed, retained, notes
 }
 
 // repin moves this machine's pinned key to the one a rollover the fetch

@@ -192,8 +192,8 @@ func enroll(argv []string, stdout io.Writer, on bool) error {
 			if selected[i] == "" {
 				return fmt.Errorf("--agents has an empty entry")
 			}
-			if hint, removed := policy.RemovedAgents[selected[i]]; removed {
-				return fmt.Errorf("agent %q: %s", selected[i], hint)
+			if hint, removed := policy.RemovedHint(selected[i]); removed {
+				return fmt.Errorf("agent %q: %s (%s)", selected[i], hint, policy.RemovedDocs)
 			}
 			adapter, err := reg.Lookup(selected[i])
 			if err != nil {
