@@ -90,7 +90,7 @@ func TestAgentsListsWhatTheBinaryCanLaunch(t *testing.T) {
 	if code != 0 {
 		t.Fatalf("exit code = %d, want 0. output:\n%s", code, out)
 	}
-	for _, name := range []string{"claude", "codex", "gemini", "agy"} {
+	for _, name := range []string{"claude", "codex", "agy"} {
 		if !strings.Contains(out, name) {
 			t.Errorf("output %q does not list %s", out, name)
 		}
@@ -289,12 +289,10 @@ const e2eBundle = `{
   "rules": [
     {"name": "baseline", "agents": {
       "claude": {"managed": {"model": "sonnet"}},
-      "codex": {"launch": {"sandbox_mode": "workspace-write"}},
-      "gemini": {"managed": {"settings": {"admin": {"secureModeEnabled": true}}}}
+      "codex": {"launch": {"sandbox_mode": "workspace-write"}}
     }},
     {"name": "payments", "match": {"repos": ["github.com/acme/payments*"]}, "agents": {
-      "codex": {"launch": {"sandbox_mode": "read-only"}},
-      "gemini": {"managed": {"policies": [{"toolName": "run_shell_command", "decision": "deny", "priority": 100}]}}
+      "codex": {"launch": {"sandbox_mode": "read-only"}}
     }}
   ]
 }`
@@ -303,7 +301,6 @@ func TestDoctorCompilesTheBundleForTheRepositoryItRunsIn(t *testing.T) {
 	binDir := t.TempDir()
 	fakeAgent(t, binDir, "claude", "exit 0")
 	fakeAgent(t, binDir, "codex", "exit 0")
-	fakeAgent(t, binDir, "gemini", "exit 0")
 	fakeAgent(t, binDir, "agy", "exit 0")
 	stateDir := t.TempDir()
 	if err := os.WriteFile(filepath.Join(stateDir, "aw-bundle.json"), []byte(e2eBundle), 0o644); err != nil {
@@ -345,32 +342,12 @@ func TestDoctorCompilesTheBundleForTheRepositoryItRunsIn(t *testing.T) {
 			if args := strings.Join(a.Launch.Args, " "); args != `-c sandbox_mode="read-only"` {
 				t.Errorf("codex args = %q; want the payments rule's override", args)
 			}
-		case "gemini":
-			// The bundle's version is the policy revision Gemini's own
-			// session policy file should name in its header, so a reader
-			// of the cache can tell which bundle produced it.
-			policyFile := ""
-			for _, f := range a.Launch.Files {
-				if strings.Contains(f, "policies") {
-					policyFile = f
-				}
-			}
-			if policyFile == "" {
-				t.Fatalf("gemini launch files %v lack a policies file", a.Launch.Files)
-			}
-			raw, err := os.ReadFile(policyFile)
-			if err != nil {
-				t.Fatal(err)
-			}
-			if !strings.HasPrefix(string(raw), "# Written by aw for one session from policy revision 2026-09-22.e2e.") {
-				t.Errorf("policy file %s =\n%s\nwant the header to name the bundle version", policyFile, raw)
-			}
 		}
 		if !strings.Contains(strings.Join(a.Launch.Notes, "\n"), "policy compiled for github.com/acme/payments-api") {
 			t.Errorf("%s notes %q lack the compiled-for note", a.Name, a.Launch.Notes)
 		}
 	}
-	if strings.Join(names, ",") != "agy,claude,codex,gemini" {
+	if strings.Join(names, ",") != "agy,claude,codex" {
 		t.Errorf("agents = %v", names)
 	}
 }
@@ -598,7 +575,7 @@ func TestDoctorChecksOnlyEnrolledAgents(t *testing.T) {
 	env := append(baseEnv(t, binDir), "AW_SYNC_STATE_DIR="+stateDir)
 
 	out, _ := run(t, env, "doctor")
-	if strings.Contains(out, "error:  agent:") || strings.Contains(out, "agent codex") || strings.Contains(out, "agent gemini") {
+	if strings.Contains(out, "error:  agent:") || strings.Contains(out, "agent codex") {
 		t.Errorf("doctor reported agents the machine is not enrolled for:\n%s", out)
 	}
 	if !strings.Contains(out, "agent claude") {
@@ -644,4 +621,15 @@ func TestDoctorListsAgyFindings(t *testing.T) {
 		t.Fatalf("agy findings %+v do not mention admin_settings.json", a.Findings)
 	}
 	t.Fatalf("report has no agy entry:\n%s", out)
+}
+
+func TestLaunchRemovedAgent(t *testing.T) {
+	out, code := run(t, baseEnv(t, t.TempDir()), "gemini")
+
+	if code == 0 {
+		t.Fatalf("exit code = 0, want non-zero. output:\n%s", out)
+	}
+	if !strings.Contains(out, "aw agy") {
+		t.Errorf("output %q does not point at aw agy", out)
+	}
 }

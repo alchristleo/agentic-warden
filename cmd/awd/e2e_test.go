@@ -306,57 +306,23 @@ func TestApplyRejectsCodexRequirementsWithAnUnknownKey(t *testing.T) {
 	}
 }
 
-func TestApplyRejectsAGeminiPolicyRuleWithoutAPriority(t *testing.T) {
-	// A Gemini rule goes through the same gate as a Claude or Codex one.
-	// Gemini's own loader refuses a policy file whose rule lacks a
-	// priority, so the whole file would be ignored on every machine; apply
-	// and the server both stop it in front of the author.
+func TestApplyRejectsARemovedAgentRule(t *testing.T) {
+	// Gemini support was removed. A new rule that still configures it would
+	// do nothing on any machine; apply and the server both say so in front
+	// of the author.
 	s := startServer(t)
-	path := writePolicy(t, "version: v1\nrules:\n  - name: baseline\n    agents:\n      gemini:\n        managed:\n          policies:\n            - toolName: run_shell_command\n              decision: deny\n")
+	path := writePolicy(t, "version: v1\nrules:\n  - name: baseline\n    agents:\n      gemini:\n        managed:\n          x: 1\n")
 
 	out, code := runAwd(t, "apply", path, "--url", s.url)
 
 	if code == 0 {
-		t.Fatalf("apply exited 0, want non-zero for a Gemini rule without a priority: %s", out)
+		t.Fatalf("apply exited 0, want non-zero for a removed agent: %s", out)
 	}
-	if !strings.Contains(out, "policies[0].priority") {
-		t.Errorf("output %q does not name the offending field", out)
-	}
-
-	body := `{"version":"v2","rules":[{"name":"b","agents":{"gemini":{"managed":{"policies":[{"toolName":"*","decision":"deny"}]}}}}]}`
-	req, err := http.NewRequest(http.MethodPost, s.url+"/v1/policy/revisions", strings.NewReader(body))
-	if err != nil {
-		t.Fatal(err)
-	}
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Authorization", "Bearer "+e2eAdminToken)
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusUnprocessableEntity {
-		t.Errorf("server status = %d, want 422", resp.StatusCode)
-	}
-}
-
-func TestApplyRejectsALaunchDocumentForGemini(t *testing.T) {
-	// launch is Codex's per-launch channel; Gemini applies managed at
-	// launch, so a launch entry for it would do nothing. The author hears
-	// that at apply time, from the client and the server alike.
-	s := startServer(t)
-	path := writePolicy(t, "version: v1\nrules:\n  - name: baseline\n    agents:\n      gemini:\n        launch:\n          x: 1\n")
-
-	out, code := runAwd(t, "apply", path, "--url", s.url)
-
-	if code == 0 {
-		t.Fatalf("apply exited 0, want non-zero for launch on gemini: %s", out)
-	}
-	if !strings.Contains(out, "launch") || !strings.Contains(out, "gemini") {
-		t.Errorf("output %q does not name launch and the agent", out)
+	if !strings.Contains(out, "baseline") || !strings.Contains(out, "agy") {
+		t.Errorf("output %q does not name the rule and agy", out)
 	}
 
-	body := `{"version":"v2","rules":[{"name":"b","agents":{"gemini":{"launch":{"x":1}}}}]}`
+	body := `{"version":"v2","rules":[{"name":"b","agents":{"gemini":{"managed":{"x":1}}}}]}`
 	req, err := http.NewRequest(http.MethodPost, s.url+"/v1/policy/revisions", strings.NewReader(body))
 	if err != nil {
 		t.Fatal(err)

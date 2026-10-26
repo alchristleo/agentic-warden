@@ -11,7 +11,7 @@ import (
 
 	"github.com/alchristleo/agentic-warden/internal/agent"
 	"github.com/alchristleo/agentic-warden/internal/agent/claude"
-	"github.com/alchristleo/agentic-warden/internal/agent/gemini"
+	"github.com/alchristleo/agentic-warden/internal/agent/codex"
 	"github.com/alchristleo/agentic-warden/internal/sync"
 )
 
@@ -36,12 +36,12 @@ func TestRunLeavesAgentRootsWorldReadableUnderAStrictUmask(t *testing.T) {
 	if err := reg.Register(&claude.Adapter{GOOS: "linux"}); err != nil {
 		t.Fatal(err)
 	}
-	if err := reg.Register(&gemini.Adapter{}); err != nil {
+	if err := reg.Register(&codex.Adapter{}); err != nil {
 		t.Fatal(err)
 	}
-	cfg, claudeRoot := enrolled(t, f, reg, "claude", "gemini")
-	geminiRoot := filepath.Join(t.TempDir(), "gemini-root")
-	cfg.Roots["gemini"] = geminiRoot
+	cfg, claudeRoot := enrolled(t, f, reg, "claude", "codex")
+	codexRoot := filepath.Join(t.TempDir(), "codex-root")
+	cfg.Roots["codex"] = codexRoot
 
 	res := sync.Run(context.Background(), cfg)
 	if res.Err != nil {
@@ -51,8 +51,7 @@ func TestRunLeavesAgentRootsWorldReadableUnderAStrictUmask(t *testing.T) {
 	dirs := []string{
 		claudeRoot,
 		filepath.Join(claudeRoot, "managed-settings.d"),
-		geminiRoot,
-		filepath.Join(geminiRoot, "policies"),
+		codexRoot,
 	}
 	for _, dir := range dirs {
 		info, err := os.Stat(dir)

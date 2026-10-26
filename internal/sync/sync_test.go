@@ -551,7 +551,7 @@ func TestRunDoesNotAccumulateNotesInStateAcrossFailures(t *testing.T) {
 }
 
 // notingRenderer renders one file and reports a note, standing in for the
-// Codex and Gemini renderers that drop repo-scoped rules.
+// Codex renderer that drops repo-scoped rules.
 type notingRenderer struct{}
 
 func (notingRenderer) Name() string                    { return "noting" }
