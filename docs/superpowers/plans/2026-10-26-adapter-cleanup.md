@@ -70,6 +70,14 @@ and enrollments (gemini skipped with a note; aw-sync removes the Gemini files it
 README says `aw agy` is a thin launcher. README:82 drop inner "(end of life)"; how-it-works:90 hooks parenthetical below the list.
 Checks: AC11 commands; `cd web && pnpm test` if web/ files changed.
 
+## T5 Web meta + diagram leftovers (sdd-implementer-lite, depends-on: none; owner added 2026-10-26)
+
+Files: web/lib/seo.ts, web/app/opengraph-image.tsx, web/lib/demo/schema.ts (+ web tests asserting them),
+docs/assets/architecture-light.svg, docs/assets/architecture-dark.svg.
+Do: drop Gemini CLI as a supported agent; supported set = Claude Code, Codex, agy (Antigravity CLI). SVGs: replace the
+Gemini node/label with agy, keep layout, both themes consistent. If schema.ts gemini is a demo policy key, switch it to agy.
+Checks: `cd web && pnpm test`; `grep -c -i gemini` on the five files prints 0 (except agy model IDs `gemini-3.8-*`).
+
 ## Backlog
 
 - Known-agent allowlist for rule keys (typo'd agent keys are accepted silently).
@@ -82,3 +90,6 @@ Checks: AC11 commands; `cd web && pnpm test` if web/ files changed.
 
 PLAN b477848 spec approved (owner 2026-10-26: hard remove soft landing, prune if unchanged, isolation others proceed, worktrees removed)
 USAGE start 0
+T3 done a0104bd sdd-implementer-lite helper + agy nits; AC9 grep clears after T1 deletes gemini
+T3 review approve a0104bd sdd-reviewer-lite nit: dropped_test compares got[0] only
+T4 done 258071d sdd-implementer-lite docs+site; open: web/lib/seo.ts, opengraph-image.tsx, demo/schema.ts, architecture SVGs still Gemini
