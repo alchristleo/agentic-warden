@@ -132,3 +132,12 @@ COORD fix-wave re-review 210a761 sdd-reviewer-lite approve; nits: threat-model r
 PANEL security(re-run) 210a761 must=0 should=0 nit=1
 SEAT panel-security pass 210a761 AC14 re-run on fix diff
 CONVERGE 743f737 spec-converge AC1-14 VERIFIED
+PR #13 opened https://github.com/alchristleo/agentic-warden/pull/13
+USAGE end 14
+
+## Retro (2026-10-26)
+
+- **Numbers:** tasks=8 fix_rounds=4 coord=2 fix_waves=1 blocked=0 seats pass/fail=2/0 reruns=1 owner=0 panel(must/should/nit)=[design 1/5/4; correctness 1/2/3; security 1/1/2; security(re-run) 0/0/1] triage=[fixed=15 dismissed=3 backlog=2] 5h=52→14 (window reset mid-panel)
+- **A fix-round prescription caused a panel must:** T3 round 1 I amended spec D2 (cc908e2, "reserve in one critical section") from a reviewer suggestion; that capped in-flight requests at 10 and two panel seats flagged it. Mid-build spec amendments skipped the pre-mortem lens. Fix: a mid-build change to a spec Decision gets a panel-correctness pre-mortem on the spec diff before dispatch.
+- **Coord fix committed without its change:** 183c888 sed missed a backticked `429`, so only the ledger was committed; caught by reviewer-lite. Fix: sdd-log.sh refuses a `T<n> coord <sha>` line whose commit touches only the plan doc.
+- **Stale spec in a worktree:** the T3 re-reviewer read the worktree's pre-amendment spec and raised a false must. Fix: covered by the pre-mortem rule (re-review briefs cite `git show <branch>:<spec>`).
