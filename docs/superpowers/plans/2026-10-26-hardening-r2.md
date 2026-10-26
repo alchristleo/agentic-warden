@@ -81,6 +81,8 @@ Parallel group A: T1, T2, T3, T4, T6, T7 (no shared files). T5 after T2, T3, T4,
 - TLS certificate hot reload.
 - Admin tokens in the database with create/revoke API.
 - Custom CA option for `aw-sync` / `awd` CLI.
+- Limiter in-flight overshoot: parallel failures on slow routes all get through (seat measured 500/500 at 2 ms handler, 11 at 0 ms). No exploit today (guessable tokens compared before body read). Bound in-flight per key, and say so in threat-model D row (panel-security re-run nit).
+- Threat-model limiter rows could cite the new limiter tests (reviewer-lite nit).
 - One exported admin-tokens parse function taking the env hash; config exports the name-rule message for `awd admin-token` (panel-design nits).
 - From adapter cleanup: known-agent allowlist for rule keys; merged-document validation per agent; skip-with-note for foreign agy admin file; back-off for always-failing render; prune parent-dir ownership check.
 
@@ -125,3 +127,7 @@ DISMISSED design should LRU->arbitrary eviction: owner chose plain LRU, both O(1
 DISMISSED design should Limit hook->*Limiter: preference, no failure
 DISMISSED design nit statPath global: seat rated acceptable
 TRIAGE fixed=15 dismissed=3 backlog=2
+FIX wave 210a761 sdd-implementer F1-F13; limiter check-not-take, credentialed 401 only, panic not counted, injected client deleted, admin-token stderr, shared ReadConfig
+COORD fix-wave re-review 210a761 sdd-reviewer-lite approve; nits: threat-model rows could cite new limiter tests; aw-policy note 'invalid'->'unusable'
+PANEL security(re-run) 210a761 must=0 should=0 nit=1
+SEAT panel-security pass 210a761 AC14 re-run on fix diff
