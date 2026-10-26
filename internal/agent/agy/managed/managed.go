@@ -20,7 +20,7 @@ var secretHeader = regexp.MustCompile(`(?i)auth|key|token|secret|cookie|password
 
 // secretValuePrefixes start a customHeaders value that is a credential: an
 // auth scheme or a Google API key.
-var secretValuePrefixes = []string{"Bearer ", "Basic ", "AIza"}
+var secretValuePrefixes = []string{"Bearer ", "Basic ", "Token ", "Digest ", "AIza"}
 
 // Validate reports whether doc can be rendered as agy's admin_settings.json.
 // A nil or empty document is valid and renders to {}. Every check looks at one
@@ -105,6 +105,7 @@ func validateGateway(g map[string]any) error {
 			if !isStr {
 				return fmt.Errorf("managed: gateway.customHeaders %q must be a string, not %T", name, v)
 			}
+			val = strings.TrimSpace(val)
 			for _, prefix := range secretValuePrefixes {
 				if len(val) >= len(prefix) && strings.EqualFold(val[:len(prefix)], prefix) {
 					return fmt.Errorf("managed: gateway.customHeaders %q value looks like a credential and does not belong in policy; set AGY_LLM_GATEWAY_API_KEY in each developer's environment", name)
