@@ -64,6 +64,18 @@ expect "links: passing file exits 0" 0 - "$ln" "$data/quickstart-pass.md"
 expect "links: broken relative link exits 1" 1 "does-not-exist.md" "$ln" "$data/links-broken.md"
 expect "links: broken /docs link exits 1" 1 "/docs/nope" "$ln" "$data/links-broken.md"
 
+svg=$dir/check-svg.sh
+root=$(cd "$dir/.." && pwd)
+expect "svg: the tracked SVGs parse" 0 - "$svg"
+svgdir=$(mktemp -d "${TMPDIR:-/tmp}/test-checks-svg.XXXXXX")
+trap 'rm -rf "$out" "$svgdir"' EXIT
+git -C "$svgdir" init -q
+sed '0,/<\/text>/s//<\/tex>/' "$root/docs/assets/architecture-light.svg" >"$svgdir/architecture-light.svg"
+git -C "$svgdir" add architecture-light.svg
+expect "svg: a broken tag exits 1 and names the file" 1 "check-svg: architecture-light.svg:" "$svg" "$svgdir"
+rm -rf "$svgdir"
+trap 'rm -f "$out"' EXIT
+
 if [[ $fail -ne 0 ]]; then
   echo "test-checks: FAILED"
   exit 1
