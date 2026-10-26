@@ -118,30 +118,27 @@ Defaults come from `awd help`, `aw help` and `aw-sync help`, and from the code t
 
 ### Admin tokens, TLS and the failed-auth limiter
 
-Mint a token for each admin. `awd admin-token` reads no configuration and writes no file. It prints two lines.
+Mint a token for each admin. `awd admin-token` reads no configuration and writes no file. It prints the token to stderr and the tokens-file line to stdout. This command appends the line to the file and shows only the token:
 
 ```sh
-awd admin-token alice
+awd admin-token alice >> /etc/awd/admin-tokens
 ```
 
 ```text
 VWNV5V7Lget8lXyM2G_2bdBbyWbnJWzQ8DqtmeCvSCQ
-alice 6b7fcadac4bb0f2dca1285732b04c2639a5ef14123b9466e2df656bc873aee92
 ```
 
-Line 1 is the token. Give it to Alice and keep it out of the file. Line 2 goes into the tokens file. Do not redirect the whole output into the file, because line 1 is the token. This appends only line 2 and prints only the token:
+Give the token to Alice. The file gets only this line, which holds the hash:
 
-```sh
-out=$(awd admin-token alice)
-printf '%s\n' "$out" | tail -n 1 >> /etc/awd/admin-tokens
-printf '%s\n' "$out" | head -n 1
+```text
+alice 6b7fcadac4bb0f2dca1285732b04c2639a5ef14123b9466e2df656bc873aee92
 ```
 
 Set `AWD_ADMIN_TOKENS_FILE=/etc/awd/admin-tokens` and restart `awd`. To revoke an admin, delete the line and restart. A name has 1 to 64 characters from `a-z`, `0-9`, `.`, `_`, `@` and `-`. It starts with a letter or digit. A file entry named `admin` next to `AWD_ADMIN_TOKEN` stops startup. The audit actor is `token:<name>`. The tokens file holds hashes only (`TestAdminTokenCommand` in `cmd/awd/wiring_test.go`, `internal/config/admintokens_test.go`).
 
 For a self-signed certificate on Linux, run `SSL_CERT_FILE=/path/to/awd.pem aw-sync run` and the `awd` subcommands the same way. `aw-sync` and `awd` have no other option for a custom CA.
 
-The limiter counts failed attempts per client IP: 401 on the admin routes, the console and SCIM, and 404 or 409 on enrollment. It does not count 401 on `GET /v1/bundle`. The 11th failure in a row gets `429` with a `Retry-After` header and the body `{"error":"too many failed attempts"}`. After that, one attempt is allowed every 6 seconds. `/healthz` and `/readyz` are exempt. IPv6 clients share a bucket per /64. When `AWD_TRUSTED_PROXIES` is set, a request from a listed address is counted against the rightmost `X-Forwarded-For` entry that is not itself listed. Clients behind one NAT share a bucket. If `awd` sees `X-Forwarded-For` with `AWD_TRUSTED_PROXIES` unset, it logs one warning. Evidence: `internal/handler/limit_test.go` (`TestLimiterBlocksAfterTenFailures`, `TestLimiterRefills`, `TestLimiterCountsEnroll404And409`, `TestLimiterSkipsBundle401`, `TestLimiterKeyTrustedRightmostUntrusted`, `TestLimiterKeyIPv6SharesSlash64`, `TestLimiterKeyWarnsOnceWithoutTrustedProxies`).
+The limiter counts failed attempts per client IP: 401 on the admin routes, the console and SCIM when the request carried a credential (an `Authorization` header or the console session cookie), and 404 or 409 on enrollment. It does not count a 401 with no credential, and it does not count 401 on `GET /v1/bundle`. A handler error that panics does not count. The 11th attempt gets 429 with a `Retry-After` header and the body `{"error":"too many failed attempts"}`. After that, one attempt is allowed every 6 seconds. Requests that are already running when the tenth failure completes still finish, so a burst of parallel failures can overshoot the limit by the number of requests in flight. Slow successful requests never use up attempts. `/healthz` and `/readyz` are exempt. IPv6 clients share a bucket per /64. When `AWD_TRUSTED_PROXIES` is set, a request from a listed address is counted against the rightmost `X-Forwarded-For` entry that is not itself listed. Clients behind one NAT share a bucket. If `awd` sees `X-Forwarded-For` with `AWD_TRUSTED_PROXIES` unset, it logs one warning.
 
 ## Command-line clients
 
