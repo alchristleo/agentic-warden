@@ -107,3 +107,28 @@ aw-sync runs as root and now deletes files. It deletes only paths it recorded in
 regular files (Lstat, no symlink follow), only when content hash matches what it wrote. A changed file is
 evidence of local edit or tamper and is left in place with a note. Isolation must not let a failed agent's
 policy silently go stale: the cycle exits nonzero and refetches next cycle.
+
+## Status (converged 2026-10-26)
+
+Branch `adapter-cleanup` at b852afd against `main` (8567299). No earlier status table existed.
+
+| # | criterion (short) | verdict | evidence |
+|---|---|---|---|
+| 1 | Gemini code gone | VERIFIED | AC1 command, exit 0 |
+| 2 | `awd apply` rejects `gemini` rule, names agy | VERIFIED | `go test ./internal/policy -run '^TestValidateRejectsRemovedAgent$' -v`: PASS |
+| 3 | `enroll --agents gemini` refused | VERIFIED | `go test ./cmd/aw-sync -run '^TestEnrollRejectsRemovedAgent$' -v`: PASS |
+| 4 | `aw gemini` nonzero, mentions `aw agy` | VERIFIED | `go test ./cmd/aw -run '^TestLaunchRemovedAgent$' -v`: PASS |
+| 5 | Removed agent skipped, files pruned | VERIFIED | `go test ./internal/sync -run '^TestRunSkipsRemovedAgentAndPrunes$' -v`: PASS |
+| 6a | Orphans force full cycle; 304 after | VERIFIED | `go test ./internal/sync -run '^TestRunPruneOn304$' -v`: PASS |
+| 6 | Prune rules (D2) | VERIFIED | `go test ./internal/sync -run '^TestRunPrune' -v`: 7 PASS, 0 FAIL |
+| 7 | `enroll --force` keeps Files; next once prunes (e2e) | VERIFIED | `go test ./cmd/aw-sync -run '^TestReenrollDropsAgentFiles$' -v`: PASS |
+| 8 | Per-agent isolation | VERIFIED | `go test ./internal/sync -run '^TestRunIsolat' -v`: 4 PASS, 0 FAIL |
+| 9 | Shared `DroppedRepoRules` helper | VERIFIED | no `func dropped` in render.go; `go test ./internal/agent/... -run 'DroppedRepoRules\|Golden\|Render' -v`: all PASS, exit 0 |
+| 10 | Whole suite | VERIFIED | `go vet ./... && go test ./...`: exit 0, no FAIL |
+| 11 | Docs links/readme/grep; cdo wording | INCONCLUSIVE | owner checks at merge gate. Ran link and readme checks: pass. Ledger: `SEAT panel-cdo fail 4633631 AC11` (re-enroll command in sync note not runnable); owner decision: AC11 owner at gate; no `SEAT owner pass` line |
+| 12 | Prune/isolation cannot remove unrecorded or changed file | INCONCLUSIVE | owner checks at merge gate. Ledger: `SEAT panel-security pass 4633631 AC12`; later commits 158698c, ac7a1d0 touched sync-adjacent files only via wave 2 and reviewer-lite found "AC12 regression none", but the security seat re-run cap is used and no `SEAT owner pass` line exists |
+
+Deviations and notes:
+- AC11 grep: besides the removal entry (docs/site/reference.md, removing.md) and agy-successor mentions (README.md:17, how-it-works.md:69), `docs/site/write-first-policy.md:98-101` lists `gemini-3.8-*` model IDs in an agy sample. These are agy model names, not Gemini CLI support claims; owner to confirm at the gate.
+- AC12: the caveat from the seat (`--root` override prunes an enrolled agent's real files on 304) was narrowed in fix wave 1 (F1) and re-run as pass at 4633631.
+- Open findings: none beyond AC11 (cdo re-enroll wording, owner at gate) and the backlog items named in TRIAGE and the wave-2 COORD line (docs URL).
