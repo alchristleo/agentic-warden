@@ -40,7 +40,13 @@ func limiterFor(trusted ...string) (*Limiter, *fakeClock, *bytes.Buffer) {
 	return NewLimiter(prefixes, clock.now, slog.New(slog.NewTextHandler(logs, nil))), clock, logs
 }
 
+// do sends a request that carries a bearer credential.
 func do(h http.Handler, method, path, remote string, hdr ...string) *httptest.ResponseRecorder {
+	return doRaw(h, method, path, remote, append([]string{"Authorization", "Bearer x"}, hdr...)...)
+}
+
+// doRaw sends a request with exactly the headers given.
+func doRaw(h http.Handler, method, path, remote string, hdr ...string) *httptest.ResponseRecorder {
 	req := httptest.NewRequest(method, path, nil)
 	req.RemoteAddr = remote
 	for i := 0; i+1 < len(hdr); i += 2 {
@@ -338,24 +344,6 @@ func (c *countInner) ServeHTTP(w http.ResponseWriter, _ *http.Request) {
 	w.WriteHeader(c.status)
 }
 
-func TestLimiterConcurrentOneKeyCannotOvershoot(t *testing.T) {
-	l, _, _ := limiterFor()
-	inner := &countInner{status: 401}
-	h := l.Wrap(inner)
-	var wg sync.WaitGroup
-	for i := 0; i < 200; i++ {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			do(h, "GET", "/v1/policy", "192.0.2.1:1")
-		}()
-	}
-	wg.Wait()
-	if got := inner.calls.Load(); got != 10 {
-		t.Fatalf("inner calls = %d, want 10", got)
-	}
-}
-
 func TestLimiterConcurrentDistinctKeys(t *testing.T) {
 	l, _, _ := limiterFor()
 	inner := &countInner{status: 401}
@@ -371,25 +359,13 @@ func TestLimiterConcurrentDistinctKeys(t *testing.T) {
 		}
 	}
 	wg.Wait()
-	if got := inner.calls.Load(); got != 500 {
-		t.Fatalf("inner calls = %d, want 500", got)
+	if got := inner.calls.Load(); got < 500 || got > 750 {
+		t.Fatalf("inner calls = %d, want 500 to 750", got)
 	}
-}
-
-func TestLimiterRefundsUncountedRequests(t *testing.T) {
-	l, _, _ := limiterFor()
-	inner := &statusInner{status: 200}
-	h := l.Wrap(inner)
-	for i := 0; i < 50; i++ {
-		do(h, "GET", "/v1/policy", "192.0.2.1:1")
-	}
-	if inner.calls != 50 {
-		t.Fatalf("inner calls = %d", inner.calls)
-	}
-	l.mu.Lock()
-	defer l.mu.Unlock()
-	if len(l.buckets) != 0 || l.lru.Len() != 0 {
-		t.Fatalf("buckets = %d after only successes", len(l.buckets))
+	for k := 0; k < 50; k++ {
+		if got := do(h, "GET", "/v1/policy", fmt.Sprintf("192.0.2.%d:1", k+1)).Code; got != 429 {
+			t.Fatalf("key %d after its failures: %d, want 429", k, got)
+		}
 	}
 }
 
@@ -415,26 +391,6 @@ func TestLimiterBlockedRequestTakesNoToken(t *testing.T) {
 	}
 }
 
-func TestLimiterRefundNeverExceedsBurst(t *testing.T) {
-	l, clock, _ := limiterFor()
-	inner := &statusInner{status: 401}
-	h := l.Wrap(inner)
-	do(h, "GET", "/v1/policy", "192.0.2.1:1") // 9 tokens
-	clock.advance(limitRefill)                // back to 10 by time alone
-	inner.status = 200
-	do(h, "GET", "/v1/policy", "192.0.2.1:1") // reserve to 9, refund to 10
-	l.mu.Lock()
-	defer l.mu.Unlock()
-	for _, el := range l.buckets {
-		if tk := el.Value.(*bucket).tokens; tk > limitBurst {
-			t.Fatalf("tokens = %v above burst", tk)
-		}
-	}
-	if len(l.buckets) != 0 {
-		t.Fatalf("full bucket kept: %d", len(l.buckets))
-	}
-}
-
 func TestLimiterRefillCapsAtBurst(t *testing.T) {
 	l, clock, _ := limiterFor()
 	inner := &statusInner{status: 401}
@@ -449,26 +405,108 @@ func TestLimiterRefillCapsAtBurst(t *testing.T) {
 	}
 }
 
-func TestLimiterRefundSkipsRecreatedBucket(t *testing.T) {
+func TestLimiterSuccessesTakeNoToken(t *testing.T) {
 	l, _, _ := limiterFor()
-	key := netip.MustParsePrefix("192.0.2.1/32")
-	h := l.Wrap(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		// While this request runs, other clients push its key out of the
-		// cache and the key comes back with a fresh bucket.
-		for i := 0; i < limitMaxKeys; i++ {
-			l.reserve(v4Key(i))
-		}
-		l.reserve(key)
-		w.WriteHeader(http.StatusOK)
-	}))
-	do(h, "GET", "/v1/policy", "192.0.2.1:1")
+	h := l.Wrap(&statusInner{status: 200})
+	for i := 0; i < 50; i++ {
+		do(h, "GET", "/v1/policy", "192.0.2.1:1")
+	}
 	l.mu.Lock()
 	defer l.mu.Unlock()
-	el, ok := l.buckets[key]
-	if !ok {
-		t.Fatal("recreated bucket missing")
+	if len(l.buckets) != 0 {
+		t.Fatalf("buckets = %d after only successes", len(l.buckets))
 	}
-	if tk := el.Value.(*bucket).tokens; tk != limitBurst-1 {
-		t.Fatalf("tokens = %v, want %d: refund credited the new bucket", tk, limitBurst-1)
+}
+
+// TestLimiterSlowSuccessesNotCapped: more than limitBurst slow successful
+// requests from one address are all admitted.
+func TestLimiterSlowSuccessesNotCapped(t *testing.T) {
+	l, _, _ := limiterFor()
+	const n = limitBurst + 5
+	release := make(chan struct{})
+	var started sync.WaitGroup
+	started.Add(n)
+	h := l.Wrap(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		started.Done()
+		<-release
+		w.WriteHeader(http.StatusOK)
+	}))
+	codes := make(chan int, n)
+	for i := 0; i < n; i++ {
+		go func() { codes <- do(h, "GET", "/v1/bundle", "192.0.2.1:1").Code }()
+	}
+	started.Wait() // all n are inside the handler at once
+	close(release)
+	for i := 0; i < n; i++ {
+		if got := <-codes; got != 200 {
+			t.Fatalf("slow request got %d, want 200", got)
+		}
+	}
+}
+
+// TestLimiterFailuresStopAfterTenCompleted: concurrent failures may overshoot
+// while in flight, but once 10 have completed no more are admitted.
+func TestLimiterFailuresStopAfterTenCompleted(t *testing.T) {
+	l, _, _ := limiterFor()
+	inner := &countInner{status: 401}
+	h := l.Wrap(inner)
+	var wg sync.WaitGroup
+	for i := 0; i < 200; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			do(h, "GET", "/v1/policy", "192.0.2.1:1")
+		}()
+	}
+	wg.Wait()
+	if got := inner.calls.Load(); got < 10 || got > 200 {
+		t.Fatalf("inner calls = %d, want at least 10", got)
+	}
+	before := inner.calls.Load()
+	if got := do(h, "GET", "/v1/policy", "192.0.2.1:1").Code; got != 429 {
+		t.Fatalf("after 10 completed failures: %d, want 429", got)
+	}
+	if inner.calls.Load() != before {
+		t.Fatal("blocked request reached the handler")
+	}
+}
+
+func TestLimiterCountsOnlyCredentialed401(t *testing.T) {
+	cases := []struct {
+		name    string
+		hdr     []string
+		counted bool
+	}{
+		{"no credential", nil, false},
+		{"bad bearer", []string{"Authorization", "Bearer bad"}, true},
+		{"session cookie", []string{"Cookie", sessionCookie + "=abc"}, true},
+		{"unrelated cookie", []string{"Cookie", "other=abc"}, false},
+	}
+	for _, c := range cases {
+		l, _, _ := limiterFor()
+		h := l.Wrap(&statusInner{status: 401})
+		for i := 0; i < 10; i++ {
+			doRaw(h, "GET", "/console/api/me", "192.0.2.1:1", c.hdr...)
+		}
+		got := doRaw(h, "GET", "/console/api/me", "192.0.2.1:1", c.hdr...).Code == 429
+		if got != c.counted {
+			t.Errorf("%s: blocked = %v, want %v", c.name, got, c.counted)
+		}
+	}
+}
+
+func TestLimiterPanicCostsNoToken(t *testing.T) {
+	l, _, _ := limiterFor()
+	h := l.Wrap(http.HandlerFunc(func(http.ResponseWriter, *http.Request) { panic("handler bug") }))
+	for i := 0; i < 20; i++ {
+		func() {
+			defer func() { recover() }()
+			do(h, "GET", "/v1/policy", "192.0.2.1:1")
+		}()
+	}
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	if len(l.buckets) != 0 {
+		t.Fatalf("buckets = %d after panics, want 0", len(l.buckets))
 	}
 }

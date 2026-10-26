@@ -20,8 +20,8 @@ const (
 )
 
 // Limiter slows repeated failed authentication per client address. Each
-// client key holds a token bucket: a counted failure takes one token and an
-// empty bucket gets 429 before the wrapped handler runs.
+// client key holds a token bucket: a counted failure takes one token after
+// the wrapped handler returns, and an empty bucket gets 429 before it runs.
 type Limiter struct {
 	trusted []netip.Prefix
 	now     func() time.Time
@@ -53,26 +53,34 @@ func (l *Limiter) Wrap(next http.Handler) http.Handler {
 			return
 		}
 		key := l.key(r)
-		wait, taken := l.reserve(key)
-		if wait > 0 {
+		if wait := l.check(key); wait > 0 {
 			w.Header().Set("Retry-After", strconv.Itoa(int(math.Ceil(wait.Seconds()))))
 			writeError(w, http.StatusTooManyRequests, limitBlockedBody)
 			return
 		}
 		rec := &statusRecorder{ResponseWriter: w, status: http.StatusOK}
+		counted := false // a panic leaves it false: a handler bug costs no token
+		defer func() {
+			if counted {
+				l.take(key)
+			}
+		}()
 		next.ServeHTTP(rec, r)
-		if !countedFailure(r, rec.status) {
-			l.refund(key, taken)
-		}
+		counted = countedFailure(r, rec.status)
 	})
 }
 
 // countedFailure reports whether a response is a failed credential guess.
-// Machine credential 401s do not count: revoked machines poll forever.
+// A 401 counts only when the request carried a credential. Machine
+// credential 401s do not count: revoked machines poll forever.
 func countedFailure(r *http.Request, status int) bool {
 	switch status {
 	case http.StatusUnauthorized:
-		return !(r.Method == http.MethodGet && r.URL.Path == "/v1/bundle")
+		if r.Method == http.MethodGet && r.URL.Path == "/v1/bundle" {
+			return false
+		}
+		_, err := r.Cookie(sessionCookie)
+		return r.Header.Get("Authorization") != "" || err == nil
 	case http.StatusNotFound, http.StatusConflict:
 		return r.Method == http.MethodPost && r.URL.Path == "/v1/machines/enroll"
 	}
@@ -85,11 +93,31 @@ func (l *Limiter) refilled(b *bucket, now time.Time) float64 {
 	return math.Min(t, limitBurst)
 }
 
-// reserve takes one token for key before the request runs. It returns how
-// long until key may try again, or 0 when a token was taken, and the bucket
-// the token came from. Check and take happen under one lock, so concurrent
-// requests cannot overshoot the burst.
-func (l *Limiter) reserve(key netip.Prefix) (time.Duration, *list.Element) {
+// check reports how long until key may try again, or 0 when its bucket has a
+// token. It takes nothing, so slow successful requests never use up tokens.
+// Requests already in flight when the bucket empties still finish and may
+// each take a token afterwards, so the overshoot is bounded by them.
+func (l *Limiter) check(key netip.Prefix) time.Duration {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	el, ok := l.buckets[key]
+	if !ok {
+		return 0
+	}
+	l.lru.MoveToFront(el)
+	b := el.Value.(*bucket)
+	now := l.now()
+	b.tokens = l.refilled(b, now)
+	b.last = now
+	if b.tokens < 1 {
+		return time.Duration((1 - b.tokens) * float64(limitRefill))
+	}
+	return 0
+}
+
+// take charges one counted failure to key. A key with no bucket gets a full
+// one first. The tokens never go below zero.
+func (l *Limiter) take(key netip.Prefix) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	now := l.now()
@@ -107,34 +135,8 @@ func (l *Limiter) reserve(key netip.Prefix) (time.Duration, *list.Element) {
 		l.buckets[key] = el
 	}
 	b := el.Value.(*bucket)
-	b.tokens = l.refilled(b, now)
+	b.tokens = math.Max(l.refilled(b, now)-1, 0)
 	b.last = now
-	if b.tokens < 1 {
-		return time.Duration((1 - b.tokens) * float64(limitRefill)), el
-	}
-	b.tokens--
-	return 0, el
-}
-
-// refund gives back a token reserve took from el when the request was not a
-// counted failure. If el was evicted meanwhile, a new bucket for the same
-// key is not credited. A bucket that is full again is dropped, so the map
-// holds only keys that failed recently.
-func (l *Limiter) refund(key netip.Prefix, taken *list.Element) {
-	l.mu.Lock()
-	defer l.mu.Unlock()
-	el, ok := l.buckets[key]
-	if !ok || el != taken {
-		return
-	}
-	b := el.Value.(*bucket)
-	now := l.now()
-	b.tokens = l.refilled(b, now) + 1
-	b.last = now
-	if b.tokens >= limitBurst {
-		l.lru.Remove(el)
-		delete(l.buckets, key)
-	}
 }
 
 // key names the client: the connection's address, or behind a trusted proxy
