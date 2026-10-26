@@ -13,7 +13,7 @@ export const routes = [
     path: "/product",
     title: "Product — Agentic Warden",
     description:
-      "Group and repository targeting, signed bundles, SCIM provisioning and scheduled sync for Claude Code, Codex and Gemini CLI.",
+      "Group and repository targeting, signed bundles, SCIM provisioning and scheduled sync for Claude Code, Codex and agy (Antigravity CLI).",
   },
   {
     path: "/pricing",

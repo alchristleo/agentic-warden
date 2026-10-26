@@ -6,7 +6,7 @@ const req = {
   email: "ada@acme.com",
   company: "Acme",
   size: "51-500" as const,
-  agents: ["claude-code" as const, "gemini-cli" as const],
+  agents: ["claude-code" as const, "agy" as const],
   deployment: "hosted" as const,
 };
 
@@ -20,7 +20,7 @@ describe("formatEmail", () => {
     expect(text).toContain("Name: Ada");
     expect(text).toContain("Email: ada@acme.com");
     expect(text).toContain("Company size: 51–500");
-    expect(text).toContain("Agents: Claude Code, Gemini CLI");
+    expect(text).toContain("Agents: Claude Code, agy (Antigravity CLI)");
     expect(text).toContain("Deployment: Hosted by us");
     expect(text).toContain("Line one\nLine two");
   });

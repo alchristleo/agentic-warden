@@ -5,5 +5,5 @@ export const size = ogSize;
 export const contentType = "image/png";
 
 export default function Image() {
-  return renderOg("One policy for every coding agent", "Claude Code · Codex · Gemini CLI");
+  return renderOg("One policy for every coding agent", "Claude Code · Codex · agy");
 }
