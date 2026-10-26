@@ -119,6 +119,8 @@ it cites. Plain English, short sentences (asd-ste100 rules in the implementer ag
 
 - Panel nits: 05 doctor output wraps mid-word and dim args lines ~2.5:1 (width 1500 font 14 + re-render); 07 prompt one-space indent after `cd ../payments-api`; architecture SVG unreadable at 358 px (GitHub mobile); prep.sh EXIT trap does not survive SIGKILL.
 
+- Desktop STRIDE Mitigation column breaks long test names mid-name (wrap only at `-`/`/`, or widen column).
+
 ## Ledger
 
 PLAN f70698d spec approved; plan written; group A (T6, T4, T5) next
@@ -164,3 +166,7 @@ PANEL correctness(re-run) 8ee880f must=0 should=0 nit=3
 SEAT panel-correctness pass 8ee880f AC4 fix wave removed only repeats; digest nit: bare claude hedge lost (gate)
 COORD fix-wave re-review 8ee880f sdd-reviewer-lite fail: should desktop table test self-referential; nit test in mobile describe
 T4 coord ebbeb73 desktop describe + table width <= .docs-prose column; red on 430ae94 css, green now
+COORD fix-wave re-review ebbeb73 sdd-reviewer-lite approve; injected overflow goes red; nit desktop-only (mobile covered by table code test)
+PANEL cdo(re-run) 8ee880f must=0 should=1 nit=1
+SEAT panel-cdo pass 8ee880f AC15 tables fit 1280, 0/106 breaks at 390, anchor lands below header, digest first
+SEAT panel-cdo pass 8ee880f AC14 hero tape ~108 cols for 101-char line; committed hero.gif not re-rendered (owner at gate)
