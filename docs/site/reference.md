@@ -213,6 +213,18 @@ Enrollments:
 `~/.cache/agent-wrapper/<agent>/settings-<hash>.json` on Linux, and the platform's equivalent
 elsewhere.
 
+## Codex launch overrides
+
+Codex gets `-c key=value` overrides from the rule's `launch` document (its `config.toml` schema). `managed` stays `requirements.toml`. Because Codex receives them as `-c` overrides, every key in a launch document, including an MCP server name, must use only letters, digits, `_` and `-`. `awd apply` refuses a rule with any other key.
+
+## agy (Antigravity CLI)
+
+The gateway API key stays out of the policy. aw does not distribute this key. Issue it per developer at your gateway and set it through your usual secret or shell-profile channel, as `AGY_LLM_GATEWAY_API_KEY`.
+
+`aw doctor agy` reports whether the admin file is present. It says "admin file present, revision X", not "enforced", because agy may ignore the file. It warns when the file does not pass aw's policy checks (agy may still accept it). It reports an error only when the file is unreadable or not valid JSON, because agy silently ignores a file it cannot parse.
+
+agy has no path override, so `aw agy` cannot scope the admin file to a repository. aw drops repository-scoped agy rules and prints a note. agy's permission rules, MCP servers and hooks live only in each developer's home directory.
+
 ## agy managed keys
 
 `agents.agy.managed` is the content of agy's `admin_settings.json`. `awd apply` and `aw-sync` check it

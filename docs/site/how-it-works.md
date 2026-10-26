@@ -22,12 +22,8 @@ developer who bypasses the wrapper is still governed.
 in, which the machine-wide files cannot carry. `aw` reads the bundle
 `aw-sync` leaves in its state directory, compiles it for the repository
 `.git/config` names, and hands each agent the result through its own
-launch-time channel: Codex gets `-c key=value` overrides from the rule's
-`launch` document (its `config.toml` schema; `managed` stays
-`requirements.toml`). Because Codex receives them as `-c` overrides, every
-key in a launch document — including an MCP server name — must use only
-letters, digits, `_` and `-`; `awd apply` refuses a rule with any other
-key. This layer is advisory: bare `codex` sees the machine-wide files alone. `aw doctor` shows the compiled result per agent and which repository it was compiled for.
+launch-time channel. The Codex details are in [Codex launch overrides](./reference.md#codex-launch-overrides).
+This layer is advisory: bare `codex` sees the machine-wide files alone. `aw doctor` shows the compiled result per agent and which repository it was compiled for.
 
 A release build of the helper reads only the system directory. The
 `AW_POLICY_BUNDLE` and `AW_POLICY_CONFIG` overrides the tests use exist
@@ -67,27 +63,9 @@ detects the collision, and reports the bundle and aw-sync's last cycle.
 ## Antigravity CLI (gateway and models only)
 
 Antigravity CLI (`agy`) is the successor to Gemini CLI ([what changed](./reference.md#gemini-cli-removed)).
-`aw-sync` renders agy only when you enroll with `--agents ...,agy`. Then it writes agy's
-machine-wide admin file, and it owns that whole file. agy reads the gateway, CA bundle and
-model list from that file, and a developer cannot override them. agy has no path override, so
-`aw agy` cannot scope the file to a repository. aw drops repository-scoped agy rules and prints
-a note.
-
-Not enforced:
-
-- agy permissions
-- MCP servers
-- hooks
-- repository-scoped rules
-
-agy's permission rules, MCP servers and hooks live only in each developer's home directory.
-
-The gateway API key stays out of the policy. aw does not distribute this key. Issue it per developer at your
-gateway and set it through your usual secret or shell-profile channel, as `AGY_LLM_GATEWAY_API_KEY`.
-`aw doctor agy` reports whether the admin file is present. It says "admin file present, revision X",
-not "enforced", because agy may ignore the file. It warns when the file does not pass aw's policy checks
-(agy may still accept it). It reports an error only when the file is unreadable or not valid JSON,
-because agy silently ignores a file it cannot parse.
+`aw-sync` renders agy only when you enroll with `--agents` that includes `agy`. It then writes agy's machine-wide admin file and owns that whole file. agy reads the gateway, CA bundle and model list from it, and a developer cannot override them.
+Not enforced: agy permissions, MCP servers, hooks and repository-scoped rules.
+Gateway keys and the `aw doctor agy` report are in [agy (Antigravity CLI)](./reference.md#agy-antigravity-cli).
 
 ## Compared with what you have today
 
