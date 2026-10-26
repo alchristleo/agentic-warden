@@ -94,6 +94,16 @@ it cites. Plain English, short sentences (asd-ste100 rules in the implementer ag
 - **Checks:** spec AC7, AC9 green.
 - **Agent:** sdd-implementer-lite. **Depends-on:** T2.
 
+## T7. aw settings file ends with a newline (added mid-build, owner-approved)
+
+- **Files:** `internal/agent/claude/claude.go`, `internal/agent/claude/claude_test.go` (or the existing test
+  file that covers settings writing), `docs/tapes/lib/prep.sh` (revert ef84d46 only).
+- **Change:** spec Decision 6. Append `\n` to the encoded settings before `cache.Write`.
+- **Test:** `TestSettingsFileEndsWithNewline`: build/launch through the adapter path that writes the file,
+  read it, assert it ends with `}\n` and not `\n\n`, and is still valid JSON. Red first on current code.
+- **Constraints:** run `go test ./...`. Work in the T5 worktree (the GIF re-render depends on both).
+- **ACs:** 16. **Agent:** sdd-implementer. **Depends-on:** T5.
+
 ## Backlog
 
 - README "Bring your rules" link once a public site URL exists.
@@ -123,3 +133,9 @@ T2 done 74bab2c sdd-implementer-lite AC5 AC6 pass, links pass; pointer 3 lines; 
 T2 review approve 74bab2c sdd-reviewer-lite all sentences kept; nit commit body skipped
 T3 done acbb1cf sdd-implementer-lite AC7 red->green, links pass; agy summary 4 lines
 T3 review approve acbb1cf sdd-reviewer-lite all moved sentences kept; nit commit body skipped
+T5 fix 7d56247 coordinator fix-needed owner render: 07 txt has 16 /tmp/tmp. (bash job Done notice) and 162-col error line wraps at 150; 05 clean
+T5 fix 6d6ebcb coordinator fix-needed owner re-render 16:42: wrap fixed (max 162), job Done notice with /tmp/tmp. still shown; set +m ineffective under ble
+T5 coord bdc48f2 ble command_builtin red -> green (wait/echo/cd read as errors)
+T5 coord 384300e EXIT trap kills disowned awd (orphan held 8080, 05 render hung); pty test with ble: SIGHUP kills child
+T5 fix 194c480 sdd-reviewer fix-needed should: stray char line + indented prompt after settings=$( line in 05/07 (main had blank line); nit 07 comment col counts
+COORD owner approved T5 fix round 3 past cap (stray char glitch)

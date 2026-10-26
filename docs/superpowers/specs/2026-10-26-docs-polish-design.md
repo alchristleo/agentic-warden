@@ -62,6 +62,13 @@ finished: no dim or wrapped hero text, no temp paths, no false red highlighting,
      (vhs `Output x.txt`, to the scratchpad, not committed) for the text checks. Hero and 06 need a
      logged-in Claude: see Gate question; default = owner records them by hand.
 
+6. **aw's merged settings file ends with a newline** (added mid-build, owner 2026-10-26). `aw` writes
+   `settings-<hash>.json` (`internal/agent/claude/claude.go:183`, `cache.Write`) without a final newline,
+   so `cat "$settings"` (quickstart steps 6–7, tapes 05/07) leaves the next prompt on the `}` line. In the
+   recordings ble's end-of-line probe hid this and left a stray character. Fix at the call site: the
+   encoded JSON gets a trailing `\n`. The ble probe override (ef84d46) is reverted. The cache key is the
+   content hash, so existing cache files are simply not reused; no migration.
+
 ## Design
 
 One branch `docs-polish`, docs and CSS only, plus one Playwright test and tape/SVG edits. Tasks:
@@ -106,6 +113,11 @@ T1–T3 share README cross-links, so they run in sequence after T6. T4 and T5 ar
     (hero part: `check: owner at gate` if the owner records the hero by hand).
 15. The security-review section reads well for the target reader on desktop and 390 px (one fact,
     one place; nav order security model → threat model → trust statement). `check: seat panel-cdo`
+
+16. aw's merged settings file ends with exactly one newline. Check:
+    `go test ./internal/agent/claude/ -run TestSettingsFileEndsWithNewline -v`
+17. The re-rendered 05 and 07 show no stray line after `settings=$(…)` and the JSON's closing `}` on its
+    own line before the prompt. `check: seat panel-cdo`
 
 ## Gate question
 
