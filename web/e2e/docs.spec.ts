@@ -84,4 +84,15 @@ test.describe("mobile", () => {
     await menu.click();
     await expect(first).toBeVisible();
   });
+
+  test("table code stays on one line", async ({ page }) => {
+    await page.goto("/docs/reference");
+    const cells = page.locator(".docs-prose td code");
+    expect(await cells.count()).toBeGreaterThanOrEqual(5);
+    const rects = await page.$$eval(".docs-prose td code, .docs-prose th code", (els) =>
+      els.map((e) => e.getClientRects().length),
+    );
+    expect(rects.every((n) => n === 1)).toBe(true);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);
+  });
 });
