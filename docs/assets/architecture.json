@@ -13,18 +13,20 @@
     { "id": "admin", "type": "external", "label": "Policy author", "sublabel": "writes policies", "pos": [330, 60], "size": [160, 64], "icon": "person" },
     { "id": "aw-sync", "type": "backend", "label": "aw-sync", "sublabel": "timer on each laptop", "pos": [40, 250], "size": [160, 64] },
     { "id": "agent", "type": "frontend", "label": "Claude Code", "sublabel": "reads via aw-policy", "pos": [330, 250], "size": [160, 64] },
-    { "id": "advisory", "type": "frontend", "label": "Codex, agy", "sublabel": "rendered at launch by aw, advisory", "pos": [330, 370], "size": [260, 64] },
+    { "id": "advisory", "type": "frontend", "label": "Codex", "sublabel": "rendered at launch by aw, advisory", "pos": [330, 370], "size": [260, 64] },
+    { "id": "agy", "type": "frontend", "label": "agy", "sublabel": "machine-wide admin file, gateway and models only", "pos": [330, 470], "size": [260, 64] },
     { "id": "vendor", "type": "external", "label": "Model provider", "sublabel": "vendor API", "pos": [660, 250], "size": [160, 64] }
   ],
   "boundaries": [
     { "kind": "region", "label": "Control plane (yours, or our hosted pilot)", "wraps": ["awd"] },
-    { "kind": "region", "label": "Developer laptop", "wraps": ["aw-sync", "agent", "advisory"] }
+    { "kind": "region", "label": "Developer laptop", "wraps": ["aw-sync", "agent", "advisory", "agy"] }
   ],
   "connections": [
     { "id": "policies", "from": "admin", "to": "awd", "label": "policies" },
     { "id": "fetch-bundle", "from": "awd", "to": "aw-sync", "label": "policy bundle", "fromSide": "bottom", "toSide": "top" },
     { "id": "bundle-file", "from": "aw-sync", "to": "agent", "label": "aw-bundle.json" },
     { "id": "bundle-advisory", "from": "aw-sync", "to": "advisory", "label": "bundle, read by aw" },
+    { "id": "agy-file", "from": "aw-sync", "to": "agy", "label": "admin_settings.json" },
     { "id": "model-calls", "from": "agent", "to": "vendor", "label": "model calls", "variant": "emphasis" }
   ]
 }
