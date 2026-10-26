@@ -58,4 +58,4 @@ Close the gaps a self-hosting admin meets first. `awd` serves TLS itself, slows 
 - The limiter must not become an oracle: a blocked key gets 429 before the handler runs, so no token comparison happens.
 - The tokens file holds hashes only; `credential.Hash` is SHA-256 over a 256-bit random secret, so no salt or slow hash is needed. Startup errors never print a line's hash or a token.
 - Constant-time comparison over all entries; timing reveals neither which name matched nor the entry count beyond the file size the operator controls.
-- Lockout risk: one bad client behind a shared NAT can lock out admin, enroll and SCIM callers on that IP for up to a minute. Machine syncs are not affected (their 401s are not counted, and a blocked IP's bundle fetch waits for the next timer cycle). Documented.
+- Lockout risk: one bad client behind a shared NAT can lock out admin, enroll and SCIM callers on that IP for up to a minute. Machine syncs on that IP also get 429 and catch up on the next timer cycle after the refill. Revoked machines cannot cause a lockout, because their 401s are not counted. Documented.
