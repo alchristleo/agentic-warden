@@ -129,3 +129,5 @@ COORD fix-wave re-review 158698c sdd-reviewer-lite fail: must SVG </text> corrup
 COORD ac7a1d0 repaired </text> in both SVGs, xml.dom parse ok
 COORD review approve ac7a1d0 sdd-reviewer-lite SVGs parse, only agy label lines changed
 CONVERGE 90b3f04 spec-converge AC1-10 VERIFIED; AC11, AC12 INCONCLUSIVE owner at gate
+SEAT owner pass 68bdfeb AC11
+SEAT owner pass 68bdfeb AC12

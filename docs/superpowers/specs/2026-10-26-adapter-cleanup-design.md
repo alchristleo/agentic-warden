@@ -125,8 +125,8 @@ Branch `adapter-cleanup` at b852afd against `main` (8567299). No earlier status 
 | 8 | Per-agent isolation | VERIFIED | `go test ./internal/sync -run '^TestRunIsolat' -v`: 4 PASS, 0 FAIL |
 | 9 | Shared `DroppedRepoRules` helper | VERIFIED | no `func dropped` in render.go; `go test ./internal/agent/... -run 'DroppedRepoRules\|Golden\|Render' -v`: all PASS, exit 0 |
 | 10 | Whole suite | VERIFIED | `go vet ./... && go test ./...`: exit 0, no FAIL |
-| 11 | Docs links/readme/grep; cdo wording | INCONCLUSIVE | owner checks at merge gate. Ran link and readme checks: pass. Ledger: `SEAT panel-cdo fail 4633631 AC11` (re-enroll command in sync note not runnable); owner decision: AC11 owner at gate; no `SEAT owner pass` line |
-| 12 | Prune/isolation cannot remove unrecorded or changed file | INCONCLUSIVE | owner checks at merge gate. Ledger: `SEAT panel-security pass 4633631 AC12`; later commits 158698c, ac7a1d0 touched sync-adjacent files only via wave 2 and reviewer-lite found "AC12 regression none", but the security seat re-run cap is used and no `SEAT owner pass` line exists |
+| 11 | Docs links/readme/grep; cdo wording | VERIFIED | `SEAT owner pass 68bdfeb AC11` (owner at merge gate, 2026-10-26); link and readme checks pass; wave 2 made the re-enroll command runnable |
+| 12 | Prune/isolation cannot remove unrecorded or changed file | VERIFIED | `SEAT owner pass 68bdfeb AC12` (owner at merge gate, 2026-10-26); `SEAT panel-security pass 4633631 AC12`; reviewer-lite on wave 2: AC12 regression none |
 
 Deviations and notes:
 - AC11 grep: besides the removal entry (docs/site/reference.md, removing.md) and agy-successor mentions (README.md:17, how-it-works.md:69), `docs/site/write-first-policy.md:98-101` lists `gemini-3.8-*` model IDs in an agy sample. These are agy model names, not Gemini CLI support claims; owner to confirm at the gate.
