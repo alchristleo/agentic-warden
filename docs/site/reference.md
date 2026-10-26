@@ -107,19 +107,50 @@ Defaults come from `awd help`, `aw help` and `aw-sync help`, and from the code t
 | `AWD_WRITE_TIMEOUT` | Per-request write timeout. Default `30s`. |
 | `AWD_IDLE_TIMEOUT` | Keep-alive idle timeout. Default `120s`. |
 | `AWD_SHUTDOWN_TIMEOUT` | How long in-flight requests may drain. Default `30s`. |
-| `AWD_ADMIN_TOKEN` | Bearer token for `apply` and machine administration. Unset disables them. |
+| `AWD_ADMIN_TOKEN` | Bearer token for `apply` and machine administration, with the audit name `admin`. |
+| `AWD_ADMIN_TOKENS_FILE` | File with one `<name> <sha256-hex>` line per admin. Blank lines and `#` comments are allowed. A bad line stops startup and the error names the line number. Create lines with `awd admin-token <name>`. With neither this nor `AWD_ADMIN_TOKEN` set, the admin routes answer 503. |
+| `AWD_TLS_CERT_FILE`, `AWD_TLS_KEY_FILE` | PEM certificate chain and private key. Set both or neither. Both set: `awd` serves HTTPS, TLS 1.2 and up. Restart `awd` to load a new certificate. |
+| `AWD_TRUSTED_PROXIES` | Comma-separated CIDRs of your proxies or load balancer. The failed-auth limiter reads `X-Forwarded-For` only from these addresses. |
 | `AWD_SCIM_TOKEN` | Bearer token the identity provider presents on `/scim/v2`. Unset disables SCIM. |
 | `AWD_SIGNING_KEY` | Path to a signing key written by `awd keygen`, or `awskms:<key ARN>`. Unset means bundles are not signed. |
 | `AWD_SIGNING_KEY_PREVIOUS` | The key being rotated out, signed over during a rotation. |
 | `AWD_PUBLIC_URL`, `AWD_CONSOLE_*` | Turn on the admin console. All or none; see [Admin console](./admin-console.md). |
 
+### Admin tokens, TLS and the failed-auth limiter
+
+Mint a token for each admin. `awd admin-token` reads no configuration and writes no file. It prints two lines.
+
+```sh
+awd admin-token alice
+```
+
+```text
+VWNV5V7Lget8lXyM2G_2bdBbyWbnJWzQ8DqtmeCvSCQ
+alice 6b7fcadac4bb0f2dca1285732b04c2639a5ef14123b9466e2df656bc873aee92
+```
+
+Line 1 is the token. Give it to Alice and keep it out of the file. Line 2 goes into the tokens file. Do not redirect the whole output into the file, because line 1 is the token. This appends only line 2 and prints only the token:
+
+```sh
+out=$(awd admin-token alice)
+printf '%s\n' "$out" | tail -n 1 >> /etc/awd/admin-tokens
+printf '%s\n' "$out" | head -n 1
+```
+
+Set `AWD_ADMIN_TOKENS_FILE=/etc/awd/admin-tokens` and restart `awd`. To revoke an admin, delete the line and restart. A name has 1 to 64 characters from `a-z`, `0-9`, `.`, `_`, `@` and `-`. It starts with a letter or digit. A file entry named `admin` next to `AWD_ADMIN_TOKEN` stops startup. The audit actor is `token:<name>`. The tokens file holds hashes only (`TestAdminTokenCommand` in `cmd/awd/wiring_test.go`, `internal/config/admintokens_test.go`).
+
+For a self-signed certificate on Linux, run `SSL_CERT_FILE=/path/to/awd.pem aw-sync run` and the `awd` subcommands the same way. `aw-sync` and `awd` have no other option for a custom CA.
+
+The limiter counts failed attempts per client IP: 401 on the admin routes, the console and SCIM, and 404 or 409 on enrollment. It does not count 401 on `GET /v1/bundle`. The 11th failure in a row gets `429` with a `Retry-After` header and the body `{"error":"too many failed attempts"}`. After that, one attempt is allowed every 6 seconds. `/healthz` and `/readyz` are exempt. IPv6 clients share a bucket per /64. When `AWD_TRUSTED_PROXIES` is set, a request from a listed address is counted against the rightmost `X-Forwarded-For` entry that is not itself listed. Clients behind one NAT share a bucket. If `awd` sees `X-Forwarded-For` with `AWD_TRUSTED_PROXIES` unset, it logs one warning. Evidence: `internal/handler/limit_test.go` (`TestLimiterBlocksAfterTenFailures`, `TestLimiterRefills`, `TestLimiterCountsEnroll404And409`, `TestLimiterSkipsBundle401`, `TestLimiterKeyTrustedRightmostUntrusted`, `TestLimiterKeyIPv6SharesSlash64`, `TestLimiterKeyWarnsOnceWithoutTrustedProxies`).
+
 ## Command-line clients
+
 
 | Variable | Read by | Purpose |
 |---|---|---|
 | `AWD_URL` | `awd` subcommands | Control plane URL used by `apply` and the admin commands. Default `http://localhost:8080`. |
-| `AWD_ADMIN_TOKEN` | `awd` subcommands | The same token the server uses. |
-| `AWD_APPLIED_BY` | `awd apply` | Name recorded in the audit log. Falls back to `$USER`, then `$USERNAME`. |
+| `AWD_ADMIN_TOKEN` | `awd` subcommands | One of the tokens the server accepts. |
+| `SSL_CERT_FILE` | `aw-sync`, `awd` subcommands | On Linux, a PEM file of extra trusted certificates. Point it at a self-signed `awd` certificate. This is Go's standard variable. |
 | `AW_SYNC_TOKEN` | `aw-sync enroll` | The enrollment token, so it need not appear on the command line. |
 | `AW_SYNC_STATE_DIR` | `aw` | Where `aw` and `aw doctor` look for aw-sync's state. Overrides the OS default. `aw-sync` itself takes `--state-dir`. |
 | `AW_POLICY` | `aw` | Policy document to apply. The `--policy` flag overrides it. |

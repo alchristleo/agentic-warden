@@ -51,6 +51,7 @@ named.
 `AWD_ADMIN_TOKEN` keeps working as the bearer-token recovery path
 regardless of whether the console is enabled, so a broken IdP integration
 never locks an operator out. Actions taken through the token path are
-attributed in the audit log as `token:<AWD_APPLIED_BY>`, falling back to
-`$USER` then `$USERNAME` when `AWD_APPLIED_BY` is unset, and just `token:`
-when none of those are set, distinct from a console admin's own identity.
+attributed in the audit log as `token:<name>`, where the name belongs to the token
+that matched (`admin` for `AWD_ADMIN_TOKEN`), distinct from a console admin's own
+identity (`TestAdminTokensActorIgnoresAppliedBy`, `TestAdminTokensSingleLegacyIsAdmin` in
+`internal/handler/auth_test.go`).

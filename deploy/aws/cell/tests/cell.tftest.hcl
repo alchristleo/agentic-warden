@@ -40,6 +40,13 @@ override_data {
 }
 
 override_data {
+  target = data.aws_vpc.this
+  values = {
+    cidr_block = "10.0.0.0/16"
+  }
+}
+
+override_data {
   target = data.aws_caller_identity.current
   values = {
     account_id = "123456789012"
@@ -314,8 +321,8 @@ run "environment_values" {
   command = plan
 
   assert {
-    condition     = { for e in jsondecode(aws_ecs_task_definition.this.container_definitions)[0].environment : e.name => e.value } == { AWD_ADDR = ":8080", AWD_SIGNING_KEY = "awskms:${aws_kms_key.signing["k1"].arn}", AWD_LOG_LEVEL = "info" }
-    error_message = "environment must be exactly addr, signing key and log level without a console"
+    condition     = { for e in jsondecode(aws_ecs_task_definition.this.container_definitions)[0].environment : e.name => e.value } == { AWD_ADDR = ":8080", AWD_SIGNING_KEY = "awskms:${aws_kms_key.signing["k1"].arn}", AWD_LOG_LEVEL = "info", AWD_TRUSTED_PROXIES = "10.0.0.0/16" }
+    error_message = "environment must be exactly addr, signing key, log level and trusted proxies (the VPC CIDR) without a console"
   }
   assert {
     condition     = aws_ecs_service.this.desired_count == 1
