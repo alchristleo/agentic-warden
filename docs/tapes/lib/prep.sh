@@ -85,6 +85,8 @@ if [ -n "${BLE_DIR:-}" ]; then
   unset _aw_f
   # An unclosed "$(" and the word typed after it are a syntax error until ")" arrives. Paint them plain, not red.
   ble-face syntax_error=none
+  # Builtins such as wait and echo default to red, which reads as an error; paint them like other commands.
+  ble-face command_builtin=fg=green
   # The default comment colour (256-colour 242, #6c6c6c) is 3.1:1 on #1e1e2e. 246 (#949494) is 5.4:1.
   ble-face syntax_comment=fg=246
   ble-bind -f RET accept-line
