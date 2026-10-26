@@ -123,3 +123,7 @@ SEAT panel-security pass 4633631 AC12 re-run on fix diff
 PANEL cdo 4633631 must=0 should=1 nit=3
 SEAT panel-cdo fail 4633631 AC11 re-enroll command in sync note not runnable (needs --server + new token, literal ...)
 COORD owner approved fix wave 2 past cap; AC11 owner at gate; nits folded: drop aw agy apply/enroll, diagram label; docs URL backlog
+FIX wave 158698c sdd-implementer wave 2 G1-G6; SVGs sed-patched not regenerated
+COORD owner: AC12 after wave 2 = reviewer-lite regression check + owner at gate (security seat re-run cap used)
+COORD fix-wave re-review 158698c sdd-reviewer-lite fail: must SVG </text> corrupted by sed; AC12 regression none
+COORD ac7a1d0 repaired </text> in both SVGs, xml.dom parse ok
