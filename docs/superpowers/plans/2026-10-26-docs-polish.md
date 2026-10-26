@@ -99,8 +99,10 @@ it cites. Plain English, short sentences (asd-ste100 rules in the implementer ag
 - **Files:** `internal/agent/claude/claude.go`, `internal/agent/claude/claude_test.go` (or the existing test
   file that covers settings writing), `docs/tapes/lib/prep.sh` (revert ef84d46 only).
 - **Change:** spec Decision 6. Append `\n` to the encoded settings before `cache.Write`.
-- **Test:** `TestSettingsFileEndsWithNewline`: build/launch through the adapter path that writes the file,
-  read it, assert it ends with `}\n` and not `\n\n`, and is still valid JSON. Red first on current code.
+- **Test:** `TestSettingsFileEndsWithNewline`: through the adapter path that writes the file, read the
+  bytes behind the `--settings` argument (`settingsFlagValue` + `os.ReadFile`, as in `claude_test.go:95`);
+  assert suffix `}\n`, not `\n\n`, valid JSON; table case for empty layers giving exactly `{}\n`.
+  Red first on current code.
 - **Constraints:** run `go test ./...`. Work in the T5 worktree (the GIF re-render depends on both).
 - **ACs:** 16. **Agent:** sdd-implementer. **Depends-on:** T5.
 
@@ -139,3 +141,5 @@ T5 coord bdc48f2 ble command_builtin red -> green (wait/echo/cd read as errors)
 T5 coord 384300e EXIT trap kills disowned awd (orphan held 8080, 05 render hung); pty test with ble: SIGHUP kills child
 T5 fix 194c480 sdd-reviewer fix-needed should: stray char line + indented prompt after settings=$( line in 05/07 (main had blank line); nit 07 comment col counts
 COORD owner approved T5 fix round 3 past cap (stray char glitch)
+T5 fix ef84d46 coordinator fix-needed owner render 17:14: stray line gone but closing } eaten (probe no-op); root cause aw settings file lacks final newline
+COORD owner chose aw final-newline fix: spec D6 + AC16-17, plan T7 (20d093f); pre-mortem on spec diff running

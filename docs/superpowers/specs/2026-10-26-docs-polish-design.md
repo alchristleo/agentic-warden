@@ -67,7 +67,12 @@ finished: no dim or wrapped hero text, no temp paths, no false red highlighting,
    so `cat "$settings"` (quickstart steps 6–7, tapes 05/07) leaves the next prompt on the `}` line. In the
    recordings ble's end-of-line probe hid this and left a stray character. Fix at the call site: the
    encoded JSON gets a trailing `\n`. The ble probe override (ef84d46) is reverted. The cache key is the
-   content hash, so existing cache files are simply not reused; no migration.
+   content hash, so every `settings-<hash>.json` name changes once; old files are not reused and
+   `cache.Prune` removes them after its age limit. No migration. The hashes in `docs/tapes/capture*.log`
+   are dated recordings of past runs and stay as they are. Only this file changes: the aw-sync and agy
+   files (`internal/sync/files.go`, `internal/agent/agy/render.go`) are machine-wide, signed or
+   byte-compared (`sync_test.go`, `e2e_test.go`), so their bytes stay; nothing compares the claude cache
+   file's bytes except `cache.Write`'s own hash, and JSON allows trailing whitespace.
 
 ## Design
 
@@ -114,7 +119,8 @@ T1–T3 share README cross-links, so they run in sequence after T6. T4 and T5 ar
 15. The security-review section reads well for the target reader on desktop and 390 px (one fact,
     one place; nav order security model → threat model → trust statement). `check: seat panel-cdo`
 
-16. aw's merged settings file ends with exactly one newline. Check:
+16. aw's merged settings file (the file the `--settings` argument names) ends with `}\n`, not `\n\n`, for
+    a policy with layers and for the empty-layers case (`{}\n`), and still parses as JSON. Check:
     `go test ./internal/agent/claude/ -run TestSettingsFileEndsWithNewline -v`
 17. The re-rendered 05 and 07 show no stray line after `settings=$(…)` and the JSON's closing `}` on its
     own line before the prompt. `check: seat panel-cdo`
