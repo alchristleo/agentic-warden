@@ -19,6 +19,7 @@ import (
 
 	"github.com/alchristleo/agentic-warden/internal/agent"
 	"github.com/alchristleo/agentic-warden/internal/cache"
+	"github.com/alchristleo/agentic-warden/internal/policy"
 	"github.com/alchristleo/agentic-warden/internal/signing"
 )
 
@@ -76,6 +77,9 @@ type plannedFile struct {
 	content []byte
 	mode    fs.FileMode
 	remove  bool
+	// agent names the agent the file belongs to; empty for state-dir files.
+	// A failing agent skips its own files and no one else's.
+	agent string
 }
 
 // Run performs one cycle: fetch the bundle, render every enrolled agent,
@@ -192,11 +196,26 @@ func Run(ctx context.Context, cfg Config) Result {
 		if fetched.Rollover != nil {
 			repinned = cfg.repin(machine, *fetched.Rollover)
 		}
+		// Files recorded for an agent that is no longer synced would
+		// otherwise stay forever on a fleet whose policy never changes.
+		keepRoots := []string{cfg.StateDir}
+		for _, name := range machine.Agents {
+			if _, removed := policy.RemovedAgents[name]; removed {
+				continue
+			}
+			if root, err := cfg.root(name); err == nil {
+				keepRoots = append(keepRoots, root)
+			}
+		}
+		keep := func(path string) bool { return underAny(keepRoots, path) }
+		removed, pruneNotes := prune(state.Files, keep)
+		state.Files = keptFiles(state.Files, keep)
 		state.Error = ""
 		state.SyncedAt = cfg.Now().UTC()
 		res := Result{Unchanged: true, Version: state.Version, Written: make([]string, 0), Notes: state.Notes}
-		if len(repinned) > 0 {
-			res.Notes = append(repinned, state.Notes...)
+		if len(repinned)+len(removed)+len(pruneNotes) > 0 {
+			res.Notes = append(append(append([]string{}, repinned...), removedNotes(removed)...), pruneNotes...)
+			res.Notes = append(res.Notes, state.Notes...)
 		}
 		if err := SaveState(cfg.StateDir, state); err != nil {
 			res.Err = err
@@ -213,33 +232,30 @@ func Run(ctx context.Context, cfg Config) Result {
 			revisionTime(fetched.Bundle.RevisedAt), revisionTime(state.RevisedAt)))
 	}
 
-	// Render every agent before writing any file, so one agent's bad
-	// bundle cannot leave another's half applied.
+	// Every agent is rendered before any file is written. An agent that
+	// cannot be rendered is recorded and skipped, so it never blocks the
+	// others, and the cycle still reports it as failed below.
 	var planned []plannedFile
+	failed := map[string]error{}
+	var failedOrder []string
+	markFailed := func(name string, err error) {
+		if _, dup := failed[name]; !dup {
+			failedOrder = append(failedOrder, name)
+		}
+		failed[name] = err
+	}
 	for _, name := range machine.Agents {
-		adapter, err := cfg.Registry.Lookup(name)
+		if hint, removed := policy.RemovedAgents[name]; removed {
+			notes = append(notes, name+": "+hint)
+			continue
+		}
+		agentFiles, agentNotes, err := cfg.renderAgent(name, fetched.Bundle)
 		if err != nil {
-			return cfg.fail(state, notes, nil, nil, err)
+			markFailed(name, err)
+			continue
 		}
-		renderer, ok := adapter.(agent.Renderer)
-		if !ok {
-			return cfg.fail(state, notes, nil, nil, fmt.Errorf("sync: agent %q has no renderer", name))
-		}
-		root, err := cfg.root(name)
-		if err != nil {
-			return cfg.fail(state, notes, nil, nil, err)
-		}
-		rendering, err := renderer.Render(fetched.Bundle)
-		if err != nil {
-			return cfg.fail(state, notes, nil, nil, fmt.Errorf("sync: rendering %s: %w", name, err))
-		}
-		notes = append(notes, rendering.Notes...)
-		for _, f := range rendering.Files {
-			if filepath.IsAbs(f.Path) || !filepath.IsLocal(f.Path) {
-				return cfg.fail(state, notes, nil, nil, fmt.Errorf("sync: renderer %s returned an unsafe path %q", name, f.Path))
-			}
-			planned = append(planned, plannedFile{path: filepath.Join(root, f.Path), content: f.Content, mode: f.Mode})
-		}
+		notes = append(notes, agentNotes...)
+		planned = append(planned, agentFiles...)
 	}
 
 	// The signature covers the bytes the server sent, so those bytes go to
@@ -275,7 +291,14 @@ func Run(ctx context.Context, cfg Config) Result {
 			}
 			continue
 		}
+		if _, bad := failed[p.agent]; p.agent != "" && bad {
+			continue
+		}
 		if err := cache.ReplaceMode(p.path, p.content, p.mode); err != nil {
+			if p.agent != "" {
+				markFailed(p.agent, fmt.Errorf("sync: writing %s: %w", p.path, err))
+				continue
+			}
 			// Each write is atomic, so what landed is whole; the next cycle
 			// rewrites the rest. written/files describe only what actually
 			// reached disk this cycle, so fail can merge them into the last
@@ -287,6 +310,10 @@ func Run(ctx context.Context, cfg Config) Result {
 		files[p.path] = hashOf(p.content)
 		if strings.HasSuffix(p.path, ".json") {
 			if err := cache.ReplaceMode(p.path+revisionSuffix, []byte(revisionLine(version)), 0o644); err != nil {
+				if p.agent != "" {
+					markFailed(p.agent, fmt.Errorf("sync: writing %s: %w", p.path+revisionSuffix, err))
+					continue
+				}
 				return cfg.fail(state, notes, files, written, fmt.Errorf("sync: writing %s: %w", p.path+revisionSuffix, err))
 			}
 		}
@@ -299,26 +326,173 @@ func Run(ctx context.Context, cfg Config) Result {
 		notes = append(notes, cfg.repin(machine, *fetched.Rollover)...)
 	}
 
+	// A failed agent keeps the files it already had: they are still its policy
+	// in force, so they are recorded and never pruned this cycle.
+	var failedRoots, failedMsgs []string
+	for _, name := range failedOrder {
+		failedMsgs = append(failedMsgs, fmt.Sprintf("agent %s: %v", name, failed[name]))
+		if root, err := cfg.root(name); err == nil {
+			failedRoots = append(failedRoots, root)
+		}
+	}
+	plannedPaths := make(map[string]bool, len(planned))
+	for _, p := range planned {
+		plannedPaths[p.path] = true
+	}
+	keepRoots := append(failedRoots, cfg.StateDir)
+	keep := func(path string) bool { return plannedPaths[path] || underAny(keepRoots, path) }
+	removed, pruneNotes := prune(state.Files, keep)
+	notes = append(append(notes, removedNotes(removed)...), pruneNotes...)
+	for path, sum := range state.Files {
+		if _, ok := files[path]; !ok && underAny(failedRoots, path) {
+			files[path] = sum
+		}
+	}
+
 	if notes == nil {
 		notes = make([]string, 0)
+	}
+	cycleErr, etagToSave := "", fetched.ETag
+	if len(failedMsgs) > 0 {
+		// No etag: the next cycle must refetch to retry the failed agents
+		// instead of being answered 304.
+		cycleErr, etagToSave = strings.Join(failedMsgs, "; "), ""
 	}
 	state = State{
 		Server:    machine.Server,
 		MachineID: machine.MachineID,
 		Agents:    machine.Agents,
-		ETag:      fetched.ETag,
+		ETag:      etagToSave,
 		Version:   version,
 		RevisedAt: max(state.RevisedAt, fetched.Bundle.RevisedAt),
 		SyncedAt:  cfg.Now().UTC(),
 		Files:     files,
 		Notes:     notes,
+		Error:     cycleErr,
 	}
 	res := Result{Version: version, Written: written, Notes: notes}
+	if cycleErr != "" {
+		res.Err = errors.New("sync: " + cycleErr)
+	}
 	if err := SaveState(cfg.StateDir, state); err != nil {
 		res.Err = err
 	}
 	cfg.audit(state, res)
 	return res
+}
+
+// renderAgent renders one agent and resolves its files under its root. Any
+// error is that agent's alone.
+func (cfg Config) renderAgent(name string, bundle *policy.Bundle) ([]plannedFile, []string, error) {
+	adapter, err := cfg.Registry.Lookup(name)
+	if err != nil {
+		return nil, nil, err
+	}
+	renderer, ok := adapter.(agent.Renderer)
+	if !ok {
+		return nil, nil, fmt.Errorf("sync: agent %q has no renderer", name)
+	}
+	root, err := cfg.root(name)
+	if err != nil {
+		return nil, nil, err
+	}
+	rendering, err := renderer.Render(bundle)
+	if err != nil {
+		return nil, nil, fmt.Errorf("sync: rendering %s: %w", name, err)
+	}
+	var files []plannedFile
+	for _, f := range rendering.Files {
+		if filepath.IsAbs(f.Path) || !filepath.IsLocal(f.Path) {
+			return nil, nil, fmt.Errorf("sync: renderer %s returned an unsafe path %q", name, f.Path)
+		}
+		files = append(files, plannedFile{path: filepath.Join(root, f.Path), content: f.Content, mode: f.Mode, agent: name})
+	}
+	return files, rendering.Notes, nil
+}
+
+// underAny reports whether path is inside one of roots, by filepath.Rel and
+// IsLocal rather than a string prefix.
+func underAny(roots []string, path string) bool {
+	for _, root := range roots {
+		if rel, err := filepath.Rel(root, path); err == nil && filepath.IsLocal(rel) {
+			return true
+		}
+	}
+	return false
+}
+
+// keptFiles is files restricted to the paths keep accepts.
+func keptFiles(files map[string]string, keep func(string) bool) map[string]string {
+	out := make(map[string]string, len(files))
+	for path, sum := range files {
+		if keep(path) {
+			out[path] = sum
+		}
+	}
+	return out
+}
+
+func removedNotes(removed []string) []string {
+	var notes []string
+	for _, path := range removed {
+		notes = append(notes, "removed "+path+": agent no longer synced")
+	}
+	return notes
+}
+
+// prune removes the files aw-sync recorded in prev that keep does not claim.
+// It is the only place aw-sync deletes a rendered file, so it is strict: only
+// an absolute, clean path, only a regular file (Lstat, so a symlink is never
+// followed), only content that still hashes to what was written. Anything
+// else stays on disk with a note. The .aw-revision sidecar goes only with its
+// main file. A candidate that is gone is dropped silently. The caller drops
+// every candidate from state.Files whatever happened to it.
+func prune(prev map[string]string, keep func(path string) bool) (removed []string, notes []string) {
+	paths := make([]string, 0, len(prev))
+	for path := range prev {
+		if !keep(path) {
+			paths = append(paths, path)
+		}
+	}
+	sort.Strings(paths)
+	for _, path := range paths {
+		if !filepath.IsAbs(path) || filepath.Clean(path) != path {
+			notes = append(notes, fmt.Sprintf("not removing %q: not an absolute clean path", path))
+			continue
+		}
+		info, err := os.Lstat(path)
+		if errors.Is(err, fs.ErrNotExist) {
+			continue
+		}
+		if err != nil {
+			notes = append(notes, fmt.Sprintf("not removing %s: %v", path, err))
+			continue
+		}
+		if !info.Mode().IsRegular() {
+			notes = append(notes, fmt.Sprintf("not removing %s: not a regular file", path))
+			continue
+		}
+		data, err := os.ReadFile(path)
+		if err != nil {
+			notes = append(notes, fmt.Sprintf("not removing %s: %v", path, err))
+			continue
+		}
+		if hashOf(data) != prev[path] {
+			notes = append(notes, fmt.Sprintf("not removing %s: changed since aw-sync wrote it", path))
+			continue
+		}
+		if err := os.Remove(path); err != nil {
+			notes = append(notes, fmt.Sprintf("not removing %s: %v", path, err))
+			continue
+		}
+		removed = append(removed, path)
+		if side, err := os.Lstat(path + revisionSuffix); err == nil && side.Mode().IsRegular() {
+			if err := os.Remove(path + revisionSuffix); err != nil {
+				notes = append(notes, fmt.Sprintf("not removing %s: %v", path+revisionSuffix, err))
+			}
+		}
+	}
+	return removed, notes
 }
 
 // repin moves this machine's pinned key to the one a rollover the fetch

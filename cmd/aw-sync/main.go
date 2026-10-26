@@ -258,7 +258,14 @@ func enroll(argv []string, stdout io.Writer, on bool) error {
 	// state.json carries the enrollment's non-secret facts too, so `status`
 	// can report them without reading machine.json (0600) even before the
 	// first `once` has run.
+	// A re-enroll keeps the files the last enrollment recorded, so the first
+	// cycle can remove those of an agent this enrollment drops.
 	initial := sync.State{Server: *server, MachineID: e.MachineID, Agents: selected}
+	if previous, err := sync.LoadState(*stateDir); err != nil {
+		fmt.Fprintf(stdout, "files written before this enrollment are not tracked: %v\n", err)
+	} else {
+		initial.Files = previous.Files
+	}
 	if err := sync.SaveState(*stateDir, initial); err != nil {
 		return fmt.Errorf("%w; the enrollment token was consumed; mint a new one", err)
 	}

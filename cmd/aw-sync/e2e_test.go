@@ -864,3 +864,71 @@ func TestEnrollRejectsRemovedAgent(t *testing.T) {
 		t.Errorf("the fake server saw %d requests, want 0: the token must not be spent", hits)
 	}
 }
+
+// TestEnrollForceKeepsFiles: --force carries the recorded files over, so the
+// first cycle after a re-enroll can prune an agent the new enrollment drops.
+func TestEnrollForceKeepsFiles(t *testing.T) {
+	stub := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusCreated)
+		fmt.Fprint(w, `{"machineId":"m2","credential":"c2","user":"u"}`)
+	}))
+	t.Cleanup(stub.Close)
+	stateDir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(stateDir, "machine.json"), []byte(`{"server":"http://awd","machineId":"m1","credential":"c","agents":["claude","codex"]}`+"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(stateDir, "state.json"), []byte(`{"files":{"/x/old.toml":"abc"},"agents":["claude","codex"]}`+"\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	_, stderr, code := runSync(t, []string{"AW_SYNC_TOKEN=secret"},
+		"enroll", "--server", stub.URL, "--agents", "claude", "--force", "--state-dir", stateDir)
+
+	if code != 0 {
+		t.Fatalf("enroll --force exited %d: %s", code, stderr)
+	}
+	state, err := sync.LoadState(stateDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if state.Files["/x/old.toml"] != "abc" || len(state.Agents) != 1 || state.Agents[0] != "claude" {
+		t.Errorf("state = %+v, want the old files kept and the new agent list", state)
+	}
+}
+
+// TestReenrollDropsAgentFiles: re-enrolling without codex removes the codex
+// file aw-sync wrote, once it is unchanged.
+func TestReenrollDropsAgentFiles(t *testing.T) {
+	s := startAwd(t)
+	applyPolicy(t, s)
+	stateDir := filepath.Join(t.TempDir(), "state")
+	claudeRoot := filepath.Join(t.TempDir(), "claude-root")
+	codexRoot := filepath.Join(t.TempDir(), "codex-root")
+	once := []string{"once", "--state-dir", stateDir, "--root", "claude=" + claudeRoot, "--root", "codex=" + codexRoot}
+
+	if _, stderr, code := runSync(t, []string{"AW_SYNC_TOKEN=" + mintToken(t, s, "alice@acme.com")},
+		"enroll", "--server", s.url, "--agents", "claude,codex", "--state-dir", stateDir); code != 0 {
+		t.Fatalf("enroll: %s", stderr)
+	}
+	if _, stderr, code := runSync(t, nil, once...); code != 0 {
+		t.Fatalf("once: %s", stderr)
+	}
+	codexFile := filepath.Join(codexRoot, "requirements.toml")
+	if _, err := os.Stat(codexFile); err != nil {
+		t.Fatalf("codex file was not written: %v", err)
+	}
+
+	if _, stderr, code := runSync(t, []string{"AW_SYNC_TOKEN=" + mintToken(t, s, "alice@acme.com")},
+		"enroll", "--server", s.url, "--agents", "claude", "--force", "--state-dir", stateDir); code != 0 {
+		t.Fatalf("enroll --force: %s", stderr)
+	}
+	if _, stderr, code := runSync(t, nil, once...); code != 0 {
+		t.Fatalf("once after re-enroll: %s", stderr)
+	}
+	if _, err := os.Stat(codexFile); !errors.Is(err, os.ErrNotExist) {
+		t.Errorf("codex file after re-enroll: err = %v, want it removed", err)
+	}
+	if _, err := os.Stat(filepath.Join(claudeRoot, "aw-bundle.json")); err != nil {
+		t.Errorf("claude file was lost: %v", err)
+	}
+}
