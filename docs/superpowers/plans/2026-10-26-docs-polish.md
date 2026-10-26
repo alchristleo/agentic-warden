@@ -121,3 +121,5 @@ T1 coord 8cdf89a Renderer comment: failing renderer skips only its agent
 T1 done 8cdf89a sdd-reviewer-lite approve coord fixes (Renderer comment matches sync.go)
 T2 done 74bab2c sdd-implementer-lite AC5 AC6 pass, links pass; pointer 3 lines; commit body overclaims 'noted in plan'
 T2 review approve 74bab2c sdd-reviewer-lite all sentences kept; nit commit body skipped
+T3 done acbb1cf sdd-implementer-lite AC7 red->green, links pass; agy summary 4 lines
+T3 review approve acbb1cf sdd-reviewer-lite all moved sentences kept; nit commit body skipped
