@@ -34,8 +34,6 @@ const defaultTimeout = 15 * time.Second
 type Client struct {
 	// Server is the control plane's base URL.
 	Server string
-	// HTTP overrides the client used; nil means one with defaultTimeout.
-	HTTP *http.Client
 }
 
 // Enrollment is what the control plane returns for a consumed token. The
@@ -258,18 +256,9 @@ func (c *Client) endpoint(path string) string {
 	return strings.TrimSuffix(c.Server, "/") + path
 }
 
-// client returns the configured HTTP client, or a fresh one with
-// defaultTimeout when none was set. A timer-driven cycle makes at most one
+// client returns a fresh HTTP client with defaultTimeout. A timer-driven cycle makes at most one
 // or two requests per run, so there is no connection pool worth keeping
 // warm between calls; building one here is cheap enough.
 func (c *Client) client() *http.Client {
-	if c.HTTP != nil {
-		if c.HTTP.CheckRedirect != nil {
-			return c.HTTP
-		}
-		hc := *c.HTTP
-		hc.CheckRedirect = CheckRedirect
-		return &hc
-	}
 	return &http.Client{Timeout: defaultTimeout, CheckRedirect: CheckRedirect}
 }

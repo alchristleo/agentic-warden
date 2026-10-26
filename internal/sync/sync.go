@@ -9,7 +9,6 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
-	"net/http"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -44,8 +43,6 @@ type Config struct {
 	// Registry holds the adapters this binary was compiled with. Only those
 	// implementing agent.Renderer can be synced.
 	Registry *agent.Registry
-	// HTTP overrides the client used to reach the control plane.
-	HTTP *http.Client
 	// Now supplies the time for state.json and the audit log.
 	Now func() time.Time
 }
@@ -176,7 +173,7 @@ func Run(ctx context.Context, cfg Config) Result {
 		}
 	}
 
-	client := &Client{Server: machine.Server, HTTP: cfg.HTTP}
+	client := &Client{Server: machine.Server}
 	var pinned ed25519.PublicKey
 	if machine.PublicKey != "" {
 		key, err := signing.ParsePublic(machine.PublicKey)

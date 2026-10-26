@@ -727,23 +727,3 @@ func TestRedirectCap(t *testing.T) {
 		t.Errorf("10 hops: err = %v, want a refusal naming redirects", err)
 	}
 }
-
-// AC9: an injected client without CheckRedirect still refuses plain http,
-// and the caller's client is not changed.
-func TestInjectedClientChecksRedirect(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		http.Redirect(w, r, "http://evil.example/steal", http.StatusTemporaryRedirect)
-	}))
-	defer srv.Close()
-	hc := &http.Client{}
-	c := &sync.Client{Server: srv.URL, HTTP: hc}
-
-	_, err := c.Enroll(context.Background(), "tok", "h", "linux")
-
-	if err == nil || !strings.Contains(err.Error(), "https") {
-		t.Fatalf("err = %v, want a refusal naming https", err)
-	}
-	if hc.CheckRedirect != nil {
-		t.Error("the caller's client was mutated")
-	}
-}
