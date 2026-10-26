@@ -170,3 +170,4 @@ COORD fix-wave re-review ebbeb73 sdd-reviewer-lite approve; injected overflow go
 PANEL cdo(re-run) 8ee880f must=0 should=1 nit=1
 SEAT panel-cdo pass 8ee880f AC15 tables fit 1280, 0/106 breaks at 390, anchor lands below header, digest first
 SEAT panel-cdo pass 8ee880f AC14 hero tape ~108 cols for 101-char line; committed hero.gif not re-rendered (owner at gate)
+CONVERGE dd328d9 spec-converge AC1-13,15-17 VERIFIED; AC14 INCONCLUSIVE (hero owner at gate)
