@@ -115,6 +115,8 @@ it cites. Plain English, short sentences (asd-ste100 rules in the implementer ag
 
 - check-links anchor nits (T6 review): skip the page's first h1 (site strips it; -N drift if repeated); `_x_` emphasis slug; fixture for `/docs/<page>#frag`.
 
+- 05 GIF: the `cat` prompt after `settings=$(…)` is indented one space (ble redraw at 05's width; 07 clean).
+
 ## Ledger
 
 PLAN f70698d spec approved; plan written; group A (T6, T4, T5) next
@@ -143,3 +145,7 @@ T5 fix 194c480 sdd-reviewer fix-needed should: stray char line + indented prompt
 COORD owner approved T5 fix round 3 past cap (stray char glitch)
 T5 fix ef84d46 coordinator fix-needed owner render 17:14: stray line gone but closing } eaten (probe no-op); root cause aw settings file lacks final newline
 COORD owner chose aw final-newline fix: spec D6 + AC16-17, plan T7 (20d093f); pre-mortem on spec diff running
+T7 done 1f5cb71 sdd-implementer red 2 cases then green; revert ef84d46 as 2eca37b; go test/vet ./... pass
+T7 review approve 1f5cb71 sdd-reviewer red re-verified by removing newline; nit: revert 2eca37b lacks trailer (git revert --no-edit skipped commit-msg hook; not rewritten)
+T5 coord 50089a4 owner-approved: re-apply probe no-op (05 17:21 render stray 'i'; 07 clean)
+T5 done 207d2c9 coordinator owner render 17:25: 0 tmp, 0 notice, no stray line, brace kept, no wrap; residual: 05 cat prompt indented 1 space (gate)
