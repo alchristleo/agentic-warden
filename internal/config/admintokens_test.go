@@ -153,3 +153,19 @@ func TestFromEnvTrustedProxies(t *testing.T) {
 		t.Fatalf("unset: %v, %v", got.TrustedProxies, err)
 	}
 }
+
+func TestAdminTokensFileDuplicateHashRejected(t *testing.T) {
+	_, err := config.ParseAdminTokens(strings.NewReader("alice " + hashA + "\nbob " + hashA + "\n"))
+	if err == nil || !strings.Contains(err.Error(), "line 2") || strings.Contains(err.Error(), hashA) {
+		t.Fatalf("err = %v, want line 2 without the hash", err)
+	}
+}
+
+func TestAdminTokensFileHashSameAsEnvTokenRejected(t *testing.T) {
+	t.Setenv("AWD_ADMIN_TOKENS_FILE", writeTokens(t, "alice "+hashA+"\nbob "+hashLegacy+"\n"))
+	t.Setenv("AWD_ADMIN_TOKEN", "legacy")
+	_, err := config.FromEnv()
+	if err == nil || !strings.Contains(err.Error(), "line 2") || strings.Contains(err.Error(), hashLegacy) {
+		t.Fatalf("err = %v, want line 2 without the hash", err)
+	}
+}

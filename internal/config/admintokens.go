@@ -13,18 +13,22 @@ var (
 	sha256HexRE = regexp.MustCompile(`^[0-9a-f]{64}$`)
 )
 
+// ValidAdminName reports whether name is a legal admin name.
+func ValidAdminName(name string) bool { return adminNameRE.MatchString(name) }
+
 // ParseAdminTokens reads an admin tokens file: one "<name> <sha256-hex>" per
 // line, with "#" comments and blank lines allowed. It returns name to hash.
 // Errors carry the line number and never the line's text, since a line holds
 // credential material.
 func ParseAdminTokens(r io.Reader) (map[string]string, error) {
-	return parseAdminTokens(r, false)
+	return parseAdminTokens(r, "")
 }
 
-// parseAdminTokens is ParseAdminTokens; reserveAdmin refuses the name "admin",
-// which AWD_ADMIN_TOKEN owns.
-func parseAdminTokens(r io.Reader, reserveAdmin bool) (map[string]string, error) {
+// parseAdminTokens is ParseAdminTokens; a non-empty envHash is the hash of
+// AWD_ADMIN_TOKEN, which owns the name "admin" and may not repeat in the file.
+func parseAdminTokens(r io.Reader, envHash string) (map[string]string, error) {
 	tokens := map[string]string{}
+	seen := map[string]bool{}
 	sc := bufio.NewScanner(r)
 	for n := 1; sc.Scan(); n++ {
 		line := sc.Text()
@@ -44,12 +48,16 @@ func parseAdminTokens(r io.Reader, reserveAdmin bool) (map[string]string, error)
 			return nil, fmt.Errorf("config: admin tokens file line %d: name must match %s", n, adminNameRE)
 		case !sha256HexRE.MatchString(hash):
 			return nil, fmt.Errorf("config: admin tokens file line %d: hash must be 64 lowercase hex characters", n)
-		case reserveAdmin && name == "admin":
+		case envHash != "" && name == "admin":
 			return nil, fmt.Errorf("config: admin tokens file line %d: the name admin belongs to AWD_ADMIN_TOKEN", n)
 		}
 		if _, dup := tokens[name]; dup {
 			return nil, fmt.Errorf("config: admin tokens file line %d: duplicate name", n)
 		}
+		if seen[hash] || hash == envHash {
+			return nil, fmt.Errorf("config: admin tokens file line %d: duplicate token hash", n)
+		}
+		seen[hash] = true
 		tokens[name] = hash
 	}
 	if err := sc.Err(); err != nil {

@@ -33,11 +33,8 @@ type Config struct {
 	IdleTimeout  time.Duration
 	// ShutdownTimeout bounds how long in-flight requests may drain.
 	ShutdownTimeout time.Duration
-	// AdminToken is the bearer token for administrative routes. Unset means
-	// those routes are disabled.
-	AdminToken string
 	// AdminTokens maps each admin name to the SHA-256 hex of its token. It
-	// holds AdminToken as "admin" plus the entries of AWD_ADMIN_TOKENS_FILE.
+	// holds AWD_ADMIN_TOKEN as "admin" plus the entries of AWD_ADMIN_TOKENS_FILE.
 	AdminTokens map[string]string
 	// TLSCertFile and TLSKeyFile enable native TLS. Both set or both empty.
 	TLSCertFile string
@@ -80,7 +77,6 @@ func FromEnv() (Config, error) {
 	cfg := Config{
 		Addr:        env("AWD_ADDR", ":8080"),
 		DatabaseURL: os.Getenv("AWD_DATABASE_URL"),
-		AdminToken:  os.Getenv("AWD_ADMIN_TOKEN"),
 		SCIMToken:   os.Getenv("AWD_SCIM_TOKEN"),
 
 		TLSCertFile: os.Getenv("AWD_TLS_CERT_FILE"),
@@ -105,6 +101,10 @@ func FromEnv() (Config, error) {
 		cfg.TrustedProxies = append(cfg.TrustedProxies, p.Masked())
 	}
 
+	envHash := ""
+	if t := os.Getenv("AWD_ADMIN_TOKEN"); t != "" {
+		envHash = credential.Hash(t)
+	}
 	tokens := map[string]string{}
 	if path := os.Getenv("AWD_ADMIN_TOKENS_FILE"); path != "" {
 		f, err := os.Open(path)
@@ -112,13 +112,13 @@ func FromEnv() (Config, error) {
 			return Config{}, fmt.Errorf("config: AWD_ADMIN_TOKENS_FILE: %w", err)
 		}
 		defer f.Close()
-		tokens, err = parseAdminTokens(f, cfg.AdminToken != "")
+		tokens, err = parseAdminTokens(f, envHash)
 		if err != nil {
 			return Config{}, err
 		}
 	}
-	if cfg.AdminToken != "" {
-		tokens["admin"] = credential.Hash(cfg.AdminToken)
+	if envHash != "" {
+		tokens["admin"] = envHash
 	}
 	cfg.AdminTokens = tokens
 
