@@ -14,7 +14,7 @@
 
 ## The problem
 
-Claude Code, Codex and Antigravity CLI each read their own settings, in their own format. Google retired Gemini CLI for most users on 2026-06-18 ([announcement coverage](https://www.theregister.com/ai-ml/2026/05/20/bye-bye-gemini-cli-google-nudges-devs-toward-antigravity/5243605)); Gemini Code Assist Standard and Enterprise licences and paid API keys keep it. Antigravity CLI (`agy`) is its successor, and aw governs only its gateway and models ([how it works](docs/site/how-it-works.md)).
+Claude Code, Codex and Antigravity CLI each read their own settings, in their own format. Antigravity CLI (`agy`) is the successor to Gemini CLI, and aw governs only its gateway and models ([how it works](docs/site/how-it-works.md)).
 Vendor consoles and managed settings files cannot scope a rule to one repository.
 Neither carries a single policy across all three ([how it works](docs/site/how-it-works.md#compared-with-what-you-have-today)).
 

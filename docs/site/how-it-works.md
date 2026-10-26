@@ -66,7 +66,7 @@ detects the collision, and reports the bundle and aw-sync's last cycle.
 
 ## Antigravity CLI (gateway and models only)
 
-Google retired Gemini CLI for most users on 2026-06-18 ([announcement coverage](https://www.theregister.com/ai-ml/2026/05/20/bye-bye-gemini-cli-google-nudges-devs-toward-antigravity/5243605)); Gemini Code Assist Standard and Enterprise licences and paid API keys keep it. Its successor is Antigravity CLI (`agy`).
+Antigravity CLI (`agy`) is the successor to Gemini CLI ([what changed](./reference.md#gemini-cli-removed)).
 `aw-sync` renders agy only when you enroll with `--agents ...,agy`. Then it writes agy's
 machine-wide admin file, and it owns that whole file. agy reads the gateway, CA bundle and
 model list from that file, and a developer cannot override them. agy has no path override, so

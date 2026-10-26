@@ -49,10 +49,13 @@ Share the one repo-scoped-rule note helper that codex and agy copy.
   If any enrolled agent not in `RemovedAgents` has no resolvable root, its files cannot be told apart from
   orphans, so prune is skipped for that whole cycle (removed agents included) with one note; recorded files carry over.
   Sidecar suffix is `.aw-revision`.
-- **D2a Prune on 304 too** (pre-mortem). An upgraded machine with an unchanged policy gets 304 every cycle, so
-  prune also runs on the 304 path, over orphans only: recorded paths not under the root of any enrolled,
-  non-removed agent and not state-dir files. A renderer that stops emitting a file is pruned at the next policy
-  change (a 304 renders nothing).
+- **D2a Orphans force a full cycle** (pre-mortem, revised after the panel). An upgraded machine with an unchanged
+  policy gets 304 every cycle, so a recorded path not under the root of any enrolled, non-removed agent and not a
+  state-dir file (an orphan) sends an empty etag. The full cycle then renders and prunes. Prune runs only in the full
+  cycle, after the current roots are written; a 304 never deletes. No prune when a `Roots` override replaces the
+  default root of an agent that has recorded files under that default root (the `--root` test flag). A file whose
+  removal fails stays in `state.Files` for a retry. A renderer that stops emitting a file is pruned at the next
+  policy change (a 304 renders nothing).
 - **D3 Per-agent isolation = others proceed, cycle fails** (owner, 2026-10-26). Every per-agent error is isolated:
   unknown agent in machine.json (Lookup), no renderer, no root, unsafe rendered path, render error, file-write
   error. Agent X skips X's remaining files; other agents, the bundle and signature files are still written.
@@ -89,7 +92,7 @@ Removed agents in machine.Agents: note and skip before `Registry.Lookup`. Agent 
 3. `aw-sync enroll --agents gemini` refused with the hint: `go test ./cmd/aw-sync -run '^TestEnrollRejectsRemovedAgent$' -v` PASS.
 4. `aw gemini` exits nonzero, message contains `aw agy`: `go test ./cmd/aw -run '^TestLaunchRemovedAgent$' -v` PASS.
 5. Machine enrolled `claude,gemini` with recorded unchanged Gemini files: cycle succeeds, claude files written, note names gemini, both Gemini files and any sidecar removed, state.Files has no Gemini path: `go test ./internal/sync -run '^TestRunSkipsRemovedAgentAndPrunes$' -v` PASS.
-6a. 304 path prunes orphans: machine enrolled `claude,gemini`, server answers 304, unchanged Gemini files removed: `go test ./internal/sync -run '^TestRunPruneOn304$' -v` PASS.
+6a. Orphans force a full cycle: machine enrolled `claude,gemini`, policy unchanged, unchanged Gemini files removed by a full cycle, then a 304 once none is left; a root change and back never loses the default root files (`TestRunRootChangeNeverLosesAnAgentsFiles`): `go test ./internal/sync -run '^TestRunPruneOn304$' -v` PASS.
 6. Prune: dropped agent's unchanged file + sidecar removed; edited file, symlink and missing file handled per D2 (kept+note, kept+note, silently untracked); non-absolute/unclean candidate skipped; state-dir files never removed; sidecar not removed when main file kept; nothing outside candidates touched: `go test ./internal/sync -run '^TestRunPrune' -v` lists ≥ 4 PASS and no FAIL.
 7. `enroll --force` keeps previous state.Files; the next once prunes the dropped agent's file (e2e, real binaries): `go test ./cmd/aw-sync -run '^TestReenrollDropsAgentFiles$' -v` PASS.
 8. Isolation: render failure for one of two agents and a write failure for one of two agents and an unknown agent in machine.json each leave the other agent written, the failed agent's old files on disk and in state.Files, Err naming the agent, ETag empty; the next cycle retries the agent: `go test ./internal/sync -run '^TestRunIsolat' -v` lists ≥ 4 PASS and no FAIL.

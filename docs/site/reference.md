@@ -155,12 +155,16 @@ variable and falls back to `C:\ProgramData`.
 
 agent-wrapper no longer supports Gemini CLI. Google retired Gemini CLI for most users on 2026-06-18 ([announcement coverage](https://www.theregister.com/ai-ml/2026/05/20/bye-bye-gemini-cli-google-nudges-devs-toward-antigravity/5243605)). Use Antigravity CLI (`agy`) instead. aw governs only its gateway and models ([how it works](./how-it-works.md#antigravity-cli-gateway-and-models-only)).
 
+If you still run Gemini CLI under a paid licence, aw no longer governs it. Keep an older agent-wrapper release or move to agy.
+
 Existing rules:
 
 - `awd apply` rejects a rule that still has a `gemini` block. The error names the rule and the block to delete:
 
   ```text
-  rule "payments-repos": agent "gemini" was removed: delete the gemini block from this rule; Gemini CLI is no longer supported by agent-wrapper; use agy (Antigravity CLI)
+  rule "payments-repos": agent "gemini" was removed: delete the gemini block from this rule;
+  Gemini CLI is no longer supported by agent-wrapper;
+  use agy (Antigravity CLI): aw agy (docs/site/reference.md#gemini-cli-removed)
   ```
 
   Delete the block, then apply again. To keep the parts that agy supports, move them to an `agy` block.
