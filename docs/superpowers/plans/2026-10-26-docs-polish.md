@@ -119,3 +119,5 @@ T5 blocked 7d56247 sdd-implementer edits done; GIF re-render blocked: classifier
 T1 fix b8e4474 sdd-reviewer-lite fix-needed should: agent.go Renderer comment repeats old claim
 T1 coord 8cdf89a Renderer comment: failing renderer skips only its agent
 T1 done 8cdf89a sdd-reviewer-lite approve coord fixes (Renderer comment matches sync.go)
+T2 done 74bab2c sdd-implementer-lite AC5 AC6 pass, links pass; pointer 3 lines; commit body overclaims 'noted in plan'
+T2 review approve 74bab2c sdd-reviewer-lite all sentences kept; nit commit body skipped
