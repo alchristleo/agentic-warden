@@ -159,3 +159,8 @@ SEAT panel-cdo pass da0dc24 AC14 05/07 frames clean; hero part owner at gate
 SEAT panel-cdo fail da0dc24 AC15 desktop STRIDE tables clipped by nowrap; in-page repeats; sticky header hides anchor target
 SEAT panel-cdo pass da0dc24 AC17 no stray line, brace on own line
 TRIAGE fixed=10 dismissed=0 backlog=5
+FIX wave 8ee880f sdd-implementer F1-F10; desktop table test red->green; e2e 49/49; no test name lost
+PANEL correctness(re-run) 8ee880f must=0 should=0 nit=3
+SEAT panel-correctness pass 8ee880f AC4 fix wave removed only repeats; digest nit: bare claude hedge lost (gate)
+COORD fix-wave re-review 8ee880f sdd-reviewer-lite fail: should desktop table test self-referential; nit test in mobile describe
+T4 coord ebbeb73 desktop describe + table width <= .docs-prose column; red on 430ae94 css, green now
