@@ -13,7 +13,7 @@
     { "id": "admin", "type": "external", "label": "Policy author", "sublabel": "writes policies", "pos": [330, 60], "size": [160, 64], "icon": "person" },
     { "id": "aw-sync", "type": "backend", "label": "aw-sync", "sublabel": "timer on each laptop", "pos": [40, 250], "size": [160, 64] },
     { "id": "agent", "type": "frontend", "label": "Claude Code", "sublabel": "reads via aw-policy", "pos": [330, 250], "size": [160, 64] },
-    { "id": "advisory", "type": "frontend", "label": "Codex, Gemini CLI", "sublabel": "rendered at launch by aw, advisory", "pos": [330, 370], "size": [260, 64] },
+    { "id": "advisory", "type": "frontend", "label": "Codex, agy", "sublabel": "rendered at launch by aw, advisory", "pos": [330, 370], "size": [260, 64] },
     { "id": "vendor", "type": "external", "label": "Model provider", "sublabel": "vendor API", "pos": [660, 250], "size": [160, 64] }
   ],
   "boundaries": [
