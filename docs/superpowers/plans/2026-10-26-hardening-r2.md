@@ -131,3 +131,4 @@ FIX wave 210a761 sdd-implementer F1-F13; limiter check-not-take, credentialed 40
 COORD fix-wave re-review 210a761 sdd-reviewer-lite approve; nits: threat-model rows could cite new limiter tests; aw-policy note 'invalid'->'unusable'
 PANEL security(re-run) 210a761 must=0 should=0 nit=1
 SEAT panel-security pass 210a761 AC14 re-run on fix diff
+CONVERGE 743f737 spec-converge AC1-14 VERIFIED
