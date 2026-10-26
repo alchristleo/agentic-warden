@@ -95,12 +95,18 @@ test.describe("mobile", () => {
     expect(rects.every((n) => n === 1)).toBe(true);
     expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);
   });
+});
 
-  test("threat-model tables fit the column on desktop", async ({ page }) => {
-    await page.setViewportSize({ width: 1280, height: 800 });
+test.describe("desktop", () => {
+  test.use({ viewport: { width: 1280, height: 800 } });
+
+  test("threat-model tables fit the column", async ({ page }) => {
     await page.goto("/docs/threat-model");
     const fits = await page.$$eval(".docs-prose table", (els) =>
-      els.map((e) => e.scrollWidth <= e.clientWidth + 1),
+      els.map((e) => {
+        const column = e.closest(".docs-prose")!.clientWidth;
+        return e.scrollWidth <= e.clientWidth + 1 && e.scrollWidth <= column + 1;
+      }),
     );
     expect(fits.length).toBeGreaterThan(0);
     expect(fits.every(Boolean)).toBe(true);
