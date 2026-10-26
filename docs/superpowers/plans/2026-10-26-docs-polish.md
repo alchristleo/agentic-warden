@@ -111,3 +111,11 @@ T4 done a98944b sdd-implementer red docs.spec.ts:95 then green; typecheck, 84 un
 T6 done fd9b6d0 sdd-implementer anchors resolve via renderMarkdown slug rule h1-h3; no stale anchors on main; SIGPIPE false-positive fixed
 T4 review approve a98944b sdd-reviewer red re-verified by removing rule; 2 nits skipped (untouched css spacing, trailer info)
 T6 review approve fd9b6d0 sdd-reviewer break-it exit 1 verified; 3 nits -> Backlog
+T1 done 61db48a sdd-implementer-lite AC1-3 pass, links pass; 97 STE hits in moved text left as is (spec: no restyle)
+T1 fix 61db48a sdd-reviewer-lite fix-needed should: lost '(no signer, or an older awd)'; nit: false renderer-failure claim (pre-existing)
+T1 coord 10c0e14 restore no-key-id parenthetical
+T1 coord b8e4474 owner-approved: failing renderer skips only its agent, cites TestRunWritesOtherAgentsWhenOneRendererFails
+T5 blocked 7d56247 sdd-implementer edits done; GIF re-render blocked: classifier denied running downloaded ttyd 1.7.7
+T1 fix b8e4474 sdd-reviewer-lite fix-needed should: agent.go Renderer comment repeats old claim
+T1 coord 8cdf89a Renderer comment: failing renderer skips only its agent
+T1 done 8cdf89a sdd-reviewer-lite approve coord fixes (Renderer comment matches sync.go)
