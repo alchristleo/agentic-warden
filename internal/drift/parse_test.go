@@ -47,38 +47,6 @@ func TestParseCodexKeys(t *testing.T) {
 	}
 }
 
-func TestParseGeminiSettingsKeys(t *testing.T) {
-	src := "const X = {\n  nope: {\n  },\n};\n\nconst SETTINGS_SCHEMA = {\n" +
-		"  mcpServers: {\n    type: 'object',\n    items: {\n  },\n  },\n" +
-		"  policyPaths: pathArraySetting(\n    'x',\n  ),\n" +
-		"  ui: {\n    label: 'UI',\n  },\n} as const satisfies SettingsSchema;\n\n  after: {\n"
-	got, err := parseGeminiSettingsKeys(src)
-	if err != nil {
-		t.Fatal(err)
-	}
-	want := []string{"mcpServers", "policyPaths", "ui"}
-	if !reflect.DeepEqual(got, want) {
-		t.Fatalf("got %v, want %v", got, want)
-	}
-	if _, err := parseGeminiSettingsKeys("nothing"); err == nil {
-		t.Fatal("want an error")
-	}
-}
-
-func TestParseGeminiDecisions(t *testing.T) {
-	src := "export enum PolicyDecision {\n  ALLOW = 'allow',\n  DENY = 'deny',\n  ASK_USER = 'ask_user',\n}\nenum Other {\n  X = 'x',\n}\n"
-	got, err := parseGeminiDecisions(src)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if want := []string{"allow", "ask_user", "deny"}; !reflect.DeepEqual(got, want) {
-		t.Fatalf("got %v, want %v", got, want)
-	}
-	if _, err := parseGeminiDecisions("nothing"); err == nil {
-		t.Fatal("want an error")
-	}
-}
-
 func TestParseClaudeSettingsKeys(t *testing.T) {
 	page := "| Key | Desc |\n| [`model`](#model) | x |\n| [`sandbox.enabled`](#a) | x |\n" +
 		"| [`sandbox.network.allowedDomains`](#b) | x |\n| [`env.FOO`](#c) | x |\n| [`worktree.location`](#d) | x |\n"
@@ -116,11 +84,6 @@ func TestParsersRejectEmptySections(t *testing.T) {
 			_, err := parseCodexKeys("## `requirements.toml`\n\n      key: \"[]\",\n")
 			return err
 		},
-		"gemini keys": func() error {
-			_, err := parseGeminiSettingsKeys("const SETTINGS_SCHEMA = {\n    deep: {\n}\n")
-			return err
-		},
-		"gemini decisions": func() error { _, err := parseGeminiDecisions("enum PolicyDecision {\n}\n"); return err },
 		"claude events": func() error {
 			_, err := parseClaudeHookEvents("## Hook events\n\nprose only\n\n## Next\n")
 			return err
@@ -152,15 +115,5 @@ func TestDiffFetchRetry(t *testing.T) {
 	_, err = get(srv.URL, 3, time.Millisecond)
 	if err == nil || !strings.HasPrefix(err.Error(), "fetch failed:") {
 		t.Fatalf("get error = %v; want a message starting \"fetch failed:\"", err)
-	}
-}
-
-func TestParseLatestTag(t *testing.T) {
-	tag, err := parseLatestTag(`{"tag_name":"v0.9.0","name":"x"}`)
-	if err != nil || tag != "v0.9.0" {
-		t.Fatalf("parseLatestTag = %q, %v; want v0.9.0", tag, err)
-	}
-	if _, err := parseLatestTag(`{}`); err == nil {
-		t.Fatal("parseLatestTag accepted a release without tag_name")
 	}
 }

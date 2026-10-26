@@ -46,8 +46,8 @@ func TestInspectErrorsOnUnparseableJSON(t *testing.T) {
 	a := inspected(t)
 	write(t, filepath.Join(a.SystemDir, agy.AdminFile), `{"gateway":`)
 	f := a.Inspect([]string{quiet})
-	if !findingsWith(f, agent.Error, "not valid JSON, so agy ignores it") {
-		t.Errorf("findings %v", f)
+	if len(f) != 1 || f[0].Level != agent.Error || !strings.HasPrefix(f[0].Message, filepath.Join(a.SystemDir, agy.AdminFile)+" is not valid JSON, so agy ignores it: ") {
+		t.Errorf("findings %v, want one Error naming the file as not valid JSON", f)
 	}
 }
 

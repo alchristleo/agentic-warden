@@ -38,27 +38,16 @@ Administrators right after enrolling:
 
     icacls "C:\ProgramData\agent-wrapper" /inheritance:r /grant:r "SYSTEM:(OI)(CI)F" "BUILTIN\Administrators:(OI)(CI)F"
 
-`--agents claude,codex,gemini` limits the sync to the agents installed here;
-the default is `claude`, `codex` and `gemini`, and the choices are
-`claude`, `codex`, `gemini` and `agy`. List only the agents this machine runs: a file
+`--agents claude,codex` limits the sync to the agents installed here;
+the default is `claude` and `codex`, and the choices are
+`claude`, `codex` and `agy`. List only the agents this machine runs: a file
 rendered for an agent that is not installed is noise for whoever audits the
 box. Codex's file is `/etc/codex/requirements.toml`
 (`%ProgramData%\OpenAI\Codex\requirements.toml` on Windows), and aw-sync owns
 it whole: the next cycle overwrites it, so requirements set by hand belong in
-the policy, not in that file. Gemini's files are `/etc/gemini-cli/settings.json`,
-owned whole, and `/etc/gemini-cli/policies/50-agent-wrapper.toml`, one file in
-a directory other administrators may also use
-(`/Library/Application Support/GeminiCli/...` on macOS,
-`%ProgramData%\gemini-cli\...` on Windows). Gemini ignores the policies
-directory unless it is owned by root and not writable by group or others
-(`chmod 755`), or on Windows denies write to standard users; aw-sync creates
-it that way, so if a policy seems ignored, check the directory's ownership and
-mode first. A user can point `GEMINI_CLI_SYSTEM_SETTINGS_PATH` elsewhere, so
-put the rules that must hold in `policies` and treat `settings` as defaults
-until the launch-time `aw gemini` wrapper pins that variable. Re-enrolling
-needs `--force`.
+the policy, not in that file. Re-enrolling needs `--force`.
 
-`agy` is opt-in: a default enroll leaves it out, and `--agents claude,codex,gemini,agy` adds it.
+`agy` is opt-in: a default enroll leaves it out, and `--agents claude,codex,agy` adds it.
 Its file is `/etc/antigravity/admin_settings.json`
 (`/Library/Application Support/Antigravity/admin_settings.json` on macOS,
 `%ProgramData%\Antigravity\admin_settings.json` on Windows). aw-sync owns the whole file. Each cycle

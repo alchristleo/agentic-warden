@@ -213,17 +213,12 @@ const e2ePolicy = `{
     {"name": "baseline", "agents": {
       "claude": {"managed": {"model": "sonnet"}},
       "codex": {"managed": {"allowed_sandbox_modes": ["read-only", "workspace-write"]}},
-      "gemini": {"managed": {
-        "settings": {"admin": {"secureModeEnabled": true}},
-        "policies": [{"toolName": "run_shell_command", "commandPrefix": "rm -rf", "decision": "deny", "priority": 100}]
-      }},
       "agy": {"managed": {"gateway": {"enabled": true, "url": "https://gw.example.com"}}}
     }},
     {"name": "platform", "match": {"groups": ["platform"]}, "agents": {"claude": {"managed": {"model": "opus"}}}},
     {"name": "payments", "match": {"repos": ["github.com/acme/payments*"]}, "agents": {
       "claude": {"managed": {"permissions": {"deny": ["Bash(curl *)"]}}},
-      "codex": {"managed": {"allowed_sandbox_modes": ["read-only"]}},
-      "gemini": {"managed": {"policies": [{"toolName": "*", "decision": "deny", "priority": 999}]}}
+      "codex": {"managed": {"allowed_sandbox_modes": ["read-only"]}}
     }}
   ]
 }`
@@ -254,13 +249,12 @@ func TestEnrollOnceStatusAndOutage(t *testing.T) {
 	stateDir := filepath.Join(t.TempDir(), "state")
 	claudeRoot := filepath.Join(t.TempDir(), "claude-root")
 	codexRoot := filepath.Join(t.TempDir(), "codex-root")
-	geminiRoot := filepath.Join(t.TempDir(), "gemini-root")
 	agyRoot := filepath.Join(t.TempDir(), "agy-root")
 
 	// Enroll, with the token in the environment so it never hits argv.
 	token := mintToken(t, s, "alice@acme.com")
 	stdout, stderr, code := runSync(t, []string{"AW_SYNC_TOKEN=" + token},
-		"enroll", "--server", s.url, "--name", "e2e-host", "--agents", "claude,codex,gemini,agy", "--state-dir", stateDir)
+		"enroll", "--server", s.url, "--name", "e2e-host", "--agents", "claude,codex,agy", "--state-dir", stateDir)
 	if code != 0 {
 		t.Fatalf("enroll exited %d: %s%s", code, stdout, stderr)
 	}
@@ -293,7 +287,7 @@ func TestEnrollOnceStatusAndOutage(t *testing.T) {
 	if err := json.Unmarshal([]byte(stdout), &freshReport); err != nil {
 		t.Fatalf("status --json is not JSON: %v\n%s", err, stdout)
 	}
-	if !freshReport.Enrolled || freshReport.MachineID == "" || len(freshReport.Agents) != 4 || freshReport.Agents[0] != "claude" || freshReport.Agents[1] != "codex" || freshReport.Agents[2] != "gemini" || freshReport.Agents[3] != "agy" {
+	if !freshReport.Enrolled || freshReport.MachineID == "" || len(freshReport.Agents) != 3 || freshReport.Agents[0] != "claude" || freshReport.Agents[1] != "codex" || freshReport.Agents[2] != "agy" {
 		t.Errorf("status right after enroll = %+v", freshReport)
 	}
 	if runtime.GOOS != "windows" && os.Geteuid() != 0 {
@@ -319,7 +313,7 @@ func TestEnrollOnceStatusAndOutage(t *testing.T) {
 	}
 
 	// The first cycle renders both Claude files.
-	stdout, stderr, code = runSync(t, nil, "once", "--state-dir", stateDir, "--root", "claude="+claudeRoot, "--root", "codex="+codexRoot, "--root", "gemini="+geminiRoot, "--root", "agy="+agyRoot)
+	stdout, stderr, code = runSync(t, nil, "once", "--state-dir", stateDir, "--root", "claude="+claudeRoot, "--root", "codex="+codexRoot, "--root", "agy="+agyRoot)
 	if code != 0 {
 		t.Fatalf("once exited %d: %s%s", code, stdout, stderr)
 	}
@@ -361,29 +355,6 @@ func TestEnrollOnceStatusAndOutage(t *testing.T) {
 		t.Error("a TOML file carries its revision in the header; no .aw-revision sibling is written")
 	}
 
-	// Gemini gets both files: settings.json with its revision sibling, and
-	// the admin policy file with the revision in its header. The repo-scoped
-	// payments rule is absent from both and named in the note.
-	settings, err := os.ReadFile(filepath.Join(geminiRoot, "settings.json"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !strings.Contains(string(settings), `"secureModeEnabled": true`) {
-		t.Errorf("settings.json =\n%s", settings)
-	}
-	if got, _ := os.ReadFile(filepath.Join(geminiRoot, "settings.json.aw-revision")); string(got) != "2026-09-21.e2e\n" {
-		t.Errorf("settings.json.aw-revision = %q; a JSON file carries its revision in a sibling", got)
-	}
-	policies, err := os.ReadFile(filepath.Join(geminiRoot, "policies", "50-agent-wrapper.toml"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !strings.HasPrefix(string(policies), "# Managed by aw-sync from policy revision 2026-09-21.e2e.") ||
-		!strings.Contains(string(policies), "priority = 100\n") ||
-		strings.Contains(string(policies), "priority = 999") {
-		t.Errorf("50-agent-wrapper.toml =\n%s", policies)
-	}
-
 	// agy gets one file, admin_settings.json, with its revision in a sibling.
 	admin, err := os.ReadFile(filepath.Join(agyRoot, "admin_settings.json"))
 	if err != nil {
@@ -420,7 +391,7 @@ func TestEnrollOnceStatusAndOutage(t *testing.T) {
 	}
 
 	// A second cycle is a 304 no-op.
-	stdout, _, code = runSync(t, nil, "once", "--state-dir", stateDir, "--root", "claude="+claudeRoot, "--root", "codex="+codexRoot, "--root", "gemini="+geminiRoot, "--root", "agy="+agyRoot)
+	stdout, _, code = runSync(t, nil, "once", "--state-dir", stateDir, "--root", "claude="+claudeRoot, "--root", "codex="+codexRoot, "--root", "agy="+agyRoot)
 	if code != 0 || !strings.Contains(stdout, "unchanged") {
 		t.Errorf("second once: exit %d, stdout %q; want an unchanged report", code, stdout)
 	}
@@ -441,12 +412,12 @@ func TestEnrollOnceStatusAndOutage(t *testing.T) {
 	if err := json.Unmarshal([]byte(stdout), &report); err != nil {
 		t.Fatalf("status --json is not JSON: %v\n%s", err, stdout)
 	}
-	if !report.Enrolled || report.Version != "2026-09-21.e2e" || report.Drift || report.Error != "" || len(report.Files) != 7 {
+	if !report.Enrolled || report.Version != "2026-09-21.e2e" || report.Drift || report.Error != "" || len(report.Files) != 5 {
 		t.Errorf("report = %+v", report)
 	}
 	if notes := strings.Join(report.Notes, "\n"); !strings.Contains(notes, "repo-scoped rule") || !strings.Contains(notes, "payments") ||
-		!strings.Contains(notes, "codex:") || !strings.Contains(notes, "gemini:") {
-		t.Errorf("report.Notes = %q; want the dropped payments rule reported by both static-file renderers", report.Notes)
+		!strings.Contains(notes, "codex:") {
+		t.Errorf("report.Notes = %q; want the dropped payments rule reported by the static-file renderer", report.Notes)
 	}
 
 	// Drift is reported, then repaired by the next cycle even though the
@@ -460,7 +431,7 @@ func TestEnrollOnceStatusAndOutage(t *testing.T) {
 	if !strings.Contains(stdout, "drift") {
 		t.Errorf("status does not report drift:\n%s", stdout)
 	}
-	stdout, stderr, code = runSync(t, nil, "once", "--state-dir", stateDir, "--root", "claude="+claudeRoot, "--root", "codex="+codexRoot, "--root", "gemini="+geminiRoot, "--root", "agy="+agyRoot)
+	stdout, stderr, code = runSync(t, nil, "once", "--state-dir", stateDir, "--root", "claude="+claudeRoot, "--root", "codex="+codexRoot, "--root", "agy="+agyRoot)
 	if code != 0 {
 		t.Fatalf("once after drift exited %d: %s%s", code, stdout, stderr)
 	}
@@ -480,7 +451,7 @@ func TestEnrollOnceStatusAndOutage(t *testing.T) {
 
 	// The server goes away: the cycle fails, the files stay.
 	s.stop()
-	stdout, stderr, code = runSync(t, nil, "once", "--state-dir", stateDir, "--root", "claude="+claudeRoot, "--root", "codex="+codexRoot, "--root", "gemini="+geminiRoot, "--root", "agy="+agyRoot)
+	stdout, stderr, code = runSync(t, nil, "once", "--state-dir", stateDir, "--root", "claude="+claudeRoot, "--root", "codex="+codexRoot, "--root", "agy="+agyRoot)
 	if code != 1 {
 		t.Errorf("once during an outage exited %d, want 1: %s%s", code, stdout, stderr)
 	}
@@ -489,9 +460,6 @@ func TestEnrollOnceStatusAndOutage(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(codexRoot, "requirements.toml")); err != nil {
 		t.Error("an outage removed requirements.toml")
-	}
-	if _, err := os.Stat(filepath.Join(geminiRoot, "policies", "50-agent-wrapper.toml")); err != nil {
-		t.Error("an outage removed the Gemini policy file")
 	}
 	if _, err := os.Stat(filepath.Join(agyRoot, "admin_settings.json")); err != nil {
 		t.Error("an outage removed the agy admin file")
@@ -876,7 +844,91 @@ func TestEnrollDefaultLeavesAgyOut(t *testing.T) {
 	if err := json.Unmarshal([]byte(stdout), &report); err != nil {
 		t.Fatal(err)
 	}
-	if got := strings.Join(report.Agents, ","); got != "claude,codex,gemini" {
-		t.Errorf("default enrollment agents = %q, want claude,codex,gemini", got)
+	if got := strings.Join(report.Agents, ","); got != "claude,codex" {
+		t.Errorf("default enrollment agents = %q, want claude,codex", got)
+	}
+}
+
+func TestEnrollRejectsRemovedAgent(t *testing.T) {
+	hits := 0
+	fake := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) { hits++ }))
+	defer fake.Close()
+
+	_, stderr, code := runSync(t, []string{"AW_SYNC_TOKEN=x"},
+		"enroll", "--server", fake.URL, "--agents", "claude,gemini", "--state-dir", t.TempDir())
+
+	if code != 1 || !strings.Contains(stderr, `agent "gemini": Gemini CLI is no longer supported`) || !strings.Contains(stderr, "agy") {
+		t.Errorf("exit %d, stderr %q; want a refusal naming gemini and agy", code, stderr)
+	}
+	if hits != 0 {
+		t.Errorf("the fake server saw %d requests, want 0: the token must not be spent", hits)
+	}
+}
+
+// TestEnrollForceKeepsFiles: --force carries the recorded files over, so the
+// first cycle after a re-enroll can prune an agent the new enrollment drops.
+func TestEnrollForceKeepsFiles(t *testing.T) {
+	stub := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusCreated)
+		fmt.Fprint(w, `{"machineId":"m2","credential":"c2","user":"u"}`)
+	}))
+	t.Cleanup(stub.Close)
+	stateDir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(stateDir, "machine.json"), []byte(`{"server":"http://awd","machineId":"m1","credential":"c","agents":["claude","codex"]}`+"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(stateDir, "state.json"), []byte(`{"files":{"/x/old.toml":"abc"},"agents":["claude","codex"]}`+"\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	_, stderr, code := runSync(t, []string{"AW_SYNC_TOKEN=secret"},
+		"enroll", "--server", stub.URL, "--agents", "claude", "--force", "--state-dir", stateDir)
+
+	if code != 0 {
+		t.Fatalf("enroll --force exited %d: %s", code, stderr)
+	}
+	state, err := sync.LoadState(stateDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if state.Files["/x/old.toml"] != "abc" || len(state.Agents) != 1 || state.Agents[0] != "claude" {
+		t.Errorf("state = %+v, want the old files kept and the new agent list", state)
+	}
+}
+
+// TestReenrollDropsAgentFiles: re-enrolling without codex removes the codex
+// file aw-sync wrote, once it is unchanged.
+func TestReenrollDropsAgentFiles(t *testing.T) {
+	s := startAwd(t)
+	applyPolicy(t, s)
+	stateDir := filepath.Join(t.TempDir(), "state")
+	claudeRoot := filepath.Join(t.TempDir(), "claude-root")
+	codexRoot := filepath.Join(t.TempDir(), "codex-root")
+	once := []string{"once", "--state-dir", stateDir, "--root", "claude=" + claudeRoot, "--root", "codex=" + codexRoot}
+
+	if _, stderr, code := runSync(t, []string{"AW_SYNC_TOKEN=" + mintToken(t, s, "alice@acme.com")},
+		"enroll", "--server", s.url, "--agents", "claude,codex", "--state-dir", stateDir); code != 0 {
+		t.Fatalf("enroll: %s", stderr)
+	}
+	if _, stderr, code := runSync(t, nil, once...); code != 0 {
+		t.Fatalf("once: %s", stderr)
+	}
+	codexFile := filepath.Join(codexRoot, "requirements.toml")
+	if _, err := os.Stat(codexFile); err != nil {
+		t.Fatalf("codex file was not written: %v", err)
+	}
+
+	if _, stderr, code := runSync(t, []string{"AW_SYNC_TOKEN=" + mintToken(t, s, "alice@acme.com")},
+		"enroll", "--server", s.url, "--agents", "claude", "--force", "--state-dir", stateDir); code != 0 {
+		t.Fatalf("enroll --force: %s", stderr)
+	}
+	if _, stderr, code := runSync(t, nil, once...); code != 0 {
+		t.Fatalf("once after re-enroll: %s", stderr)
+	}
+	if _, err := os.Stat(codexFile); !errors.Is(err, os.ErrNotExist) {
+		t.Errorf("codex file after re-enroll: err = %v, want it removed", err)
+	}
+	if _, err := os.Stat(filepath.Join(claudeRoot, "aw-bundle.json")); err != nil {
+		t.Errorf("claude file was lost: %v", err)
 	}
 }

@@ -10,6 +10,11 @@ import (
 	"testing"
 	"time"
 
+	"github.com/alchristleo/agentic-warden/internal/agent"
+	"github.com/alchristleo/agentic-warden/internal/agent/agy"
+	"github.com/alchristleo/agentic-warden/internal/agent/claude"
+	"github.com/alchristleo/agentic-warden/internal/agent/codex"
+	"github.com/alchristleo/agentic-warden/internal/policy"
 	"github.com/alchristleo/agentic-warden/internal/policyhelper"
 	"github.com/alchristleo/agentic-warden/internal/signing"
 	"github.com/alchristleo/agentic-warden/internal/sync"
@@ -542,5 +547,43 @@ func TestRequireBundleTrueFailsClosed(t *testing.T) {
 	cfg.RequireBundle = boolPtr(true)
 	if r := policyhelper.Run(cfg); r.ExitCode == 0 {
 		t.Error("exit = 0, want non-zero")
+	}
+}
+
+// oldBundle is a bundle cut before Gemini was removed: its rule still
+// carries a gemini block next to the agents that remain.
+const oldBundle = `{
+  "version": "2026-09-21.old",
+  "groups": [],
+  "rules": [
+    {
+      "name": "baseline",
+      "agents": {
+        "claude": {"managed": {"permissions": {"deny": ["Read(./.env)"]}}},
+        "codex": {"managed": {"allowed_approval_policies": ["on-request"]}},
+        "agy": {"managed": {"caCertPath": "/etc/ssl/certs/example-ca.pem"}},
+        "gemini": {"managed": {"settings": {"admin": {"secureModeEnabled": true}}}}
+      }
+    }
+  ]
+}`
+
+func TestOldBundleGeminiKeyIgnored(t *testing.T) {
+	var b policy.Bundle
+	if err := json.Unmarshal([]byte(oldBundle), &b); err != nil {
+		t.Fatal(err)
+	}
+	if doc := b.Compile(""); doc == nil {
+		t.Fatal("Compile returned nil for a bundle with a gemini rule")
+	}
+	for name, r := range map[string]agent.Renderer{"claude": claude.New(), "codex": codex.New(), "agy": agy.New()} {
+		if _, err := r.Render(&b); err != nil {
+			t.Errorf("%s Render() error = %v; want the gemini block ignored", name, err)
+		}
+	}
+
+	res := policyhelper.Run(config(t, writeBundle(t, oldBundle)))
+	if res.ExitCode != 0 || res.Source != policyhelper.SourceBundle {
+		t.Errorf("helper exit = %d source = %q notes %q; want the bundle emitted", res.ExitCode, res.Source, res.Notes)
 	}
 }

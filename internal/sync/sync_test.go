@@ -383,8 +383,8 @@ func TestRunRecordsWhatItWroteWhenALaterWriteFails(t *testing.T) {
 	if state.Files[bundlePath] != hex.EncodeToString(sum[:]) {
 		t.Errorf("state.Files[%s] = %q, want the sha256 of what is on disk now", bundlePath, state.Files[bundlePath])
 	}
-	if state.Version != "v1" {
-		t.Errorf("state.Version = %q, want the last completed cycle's version", state.Version)
+	if state.Version != "v2" {
+		t.Errorf("state.Version = %q, want the new revision (D3)", state.Version)
 	}
 	if state.Error == "" {
 		t.Error("state.Error is empty, want the write failure recorded")
@@ -417,19 +417,19 @@ func TestRunReportsARevokedCredential(t *testing.T) {
 	}
 }
 
-func TestRunWritesNothingForAnyAgentWhenOneRendererFails(t *testing.T) {
+func TestRunWritesOtherAgentsWhenOneRendererFails(t *testing.T) {
 	f := newFakeAwd(t, testBundle())
 	cfg, root := enrolled(t, f, claudeRegistry(t, brokenRenderer{}), "claude", "broken")
 	res := sync.Run(context.Background(), cfg)
 	if res.Err == nil || !strings.Contains(res.Err.Error(), "broken") {
 		t.Fatalf("err = %v, want the broken renderer's error", res.Err)
 	}
-	if _, err := os.Stat(filepath.Join(root, claude.BundleFile)); !errors.Is(err, os.ErrNotExist) {
-		t.Error("Claude's bundle was written although another agent failed to render")
+	if _, err := os.Stat(filepath.Join(root, claude.BundleFile)); err != nil {
+		t.Errorf("Claude's bundle was not written although only another agent failed: %v", err)
 	}
 	state, _ := sync.LoadState(cfg.StateDir)
-	if state.Error == "" || state.Version != "" {
-		t.Errorf("state = %+v, want the error recorded and no version", state)
+	if state.Error == "" || state.Version != "v1" || state.ETag != "" {
+		t.Errorf("state = %+v, want the error recorded, version v1 and no etag", state)
 	}
 }
 
@@ -551,7 +551,7 @@ func TestRunDoesNotAccumulateNotesInStateAcrossFailures(t *testing.T) {
 }
 
 // notingRenderer renders one file and reports a note, standing in for the
-// Codex and Gemini renderers that drop repo-scoped rules.
+// Codex renderer that drops repo-scoped rules.
 type notingRenderer struct{}
 
 func (notingRenderer) Name() string                    { return "noting" }
@@ -1292,5 +1292,535 @@ func TestRolloverKeepsRevisedAt(t *testing.T) {
 	}
 	if got := f.revisedAt(t); got != revisedT2 {
 		t.Errorf("after the rendering cycle state.RevisedAt = %d, want %d", got, revisedT2)
+	}
+}
+
+// flakyRenderer renders one file naming the bundle version, and fails while
+// fail is set, so a test can watch an agent fail and then recover.
+type flakyRenderer struct{ fail *atomic.Bool }
+
+func (flakyRenderer) Name() string                    { return "flaky" }
+func (flakyRenderer) Locate([]string) (string, error) { return "", errors.New("not installed") }
+func (flakyRenderer) Build(context.Context, agent.BuildOptions) (*agent.Launch, error) {
+	return nil, errors.New("not buildable")
+}
+func (r flakyRenderer) Render(b *policy.Bundle) (agent.Rendering, error) {
+	if r.fail.Load() {
+		return agent.Rendering{}, errors.New("flaky: cannot render")
+	}
+	return agent.Rendering{Files: []agent.File{{Path: "flaky.txt", Content: []byte(b.Version), Mode: 0o644}}}, nil
+}
+
+func sha(s string) string {
+	sum := sha256.Sum256([]byte(s))
+	return hex.EncodeToString(sum[:])
+}
+
+// seedGemini writes the two files the removed Gemini adapter wrote, with the
+// sidecar sync.go wrote beside the JSON one, under a temp root, and records
+// them in state.json as that older aw-sync did.
+func seedGemini(t *testing.T, cfg sync.Config) (settings, policyToml string) {
+	t.Helper()
+	root := t.TempDir()
+	settings = filepath.Join(root, "settings.json")
+	policyToml = filepath.Join(root, "policies", "50-agent-wrapper.toml")
+	writeFile(t, settings, `{"x":1}`)
+	writeFile(t, settings+".aw-revision", "v0\n")
+	writeFile(t, policyToml, "# gemini\n")
+	seedFiles(t, cfg, map[string]string{settings: sha(`{"x":1}`), policyToml: sha("# gemini\n")})
+	return settings, policyToml
+}
+
+// seedFiles adds recorded paths to state.json.
+func seedFiles(t *testing.T, cfg sync.Config, add map[string]string) {
+	t.Helper()
+	state, err := sync.LoadState(cfg.StateDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if state.Files == nil {
+		state.Files = map[string]string{}
+	}
+	for p, h := range add {
+		state.Files[p] = h
+	}
+	if err := sync.SaveState(cfg.StateDir, state); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func exists(path string) bool {
+	_, err := os.Lstat(path)
+	return err == nil
+}
+
+func hasNote(notes []string, parts ...string) bool {
+outer:
+	for _, n := range notes {
+		for _, p := range parts {
+			if !strings.Contains(n, p) {
+				continue outer
+			}
+		}
+		return true
+	}
+	return false
+}
+
+func TestRunSkipsRemovedAgentAndPrunes(t *testing.T) {
+	f := newFakeAwd(t, testBundle())
+	cfg, root := enrolled(t, f, claudeRegistry(t), "claude")
+	if res := sync.Run(context.Background(), cfg); res.Err != nil {
+		t.Fatal(res.Err)
+	}
+	settings, policyToml := seedGemini(t, cfg)
+	if err := sync.SaveMachine(cfg.StateDir, sync.Machine{Server: f.srv.URL, MachineID: "m1", Credential: "cred", Agents: []string{"claude", "gemini"}}); err != nil {
+		t.Fatal(err)
+	}
+	v2 := testBundle()
+	v2.Version = "v2"
+	f.bundle.Store(v2)
+
+	res := sync.Run(context.Background(), cfg)
+	if res.Err != nil {
+		t.Fatalf("cycle failed: %v", res.Err)
+	}
+	if !exists(filepath.Join(root, claude.BundleFile)) {
+		t.Error("claude files were not written")
+	}
+	if !hasNote(res.Notes, "gemini:", "agy") {
+		t.Errorf("notes = %q, want one naming gemini and agy", res.Notes)
+	}
+	for _, p := range []string{settings, settings + ".aw-revision", policyToml} {
+		if exists(p) {
+			t.Errorf("%s was not removed", p)
+		}
+	}
+	state, _ := sync.LoadState(cfg.StateDir)
+	for _, p := range []string{settings, policyToml} {
+		if _, ok := state.Files[p]; ok {
+			t.Errorf("state.Files still lists %s", p)
+		}
+	}
+}
+
+func TestRunPruneOn304(t *testing.T) {
+	f := newFakeAwd(t, testBundle())
+	cfg, root := enrolled(t, f, claudeRegistry(t), "claude", "gemini")
+	if res := sync.Run(context.Background(), cfg); res.Err != nil {
+		t.Fatal(res.Err)
+	}
+	settings, policyToml := seedGemini(t, cfg)
+	before, _ := sync.LoadState(cfg.StateDir)
+	claudeBundle := filepath.Join(root, claude.BundleFile)
+
+	res := sync.Run(context.Background(), cfg)
+	if res.Err != nil || res.Unchanged {
+		t.Fatalf("res = %+v, want a clean full cycle forced by the orphans", res)
+	}
+	if !hasNote(res.Notes, "removed "+settings, "aw-sync no longer manages it") {
+		t.Errorf("notes = %q, want the removal named without blaming the agent", res.Notes)
+	}
+	for _, p := range []string{settings, settings + ".aw-revision", policyToml} {
+		if exists(p) {
+			t.Errorf("%s survived the cycle", p)
+		}
+	}
+	again := sync.Run(context.Background(), cfg)
+	if again.Err != nil || !again.Unchanged {
+		t.Fatalf("second res = %+v, want a 304 once no orphan is left", again)
+	}
+	state, _ := sync.LoadState(cfg.StateDir)
+	if _, ok := state.Files[settings]; ok {
+		t.Error("state.Files still lists the Gemini settings")
+	}
+	if state.Files[claudeBundle] != before.Files[claudeBundle] || !exists(claudeBundle) {
+		t.Error("an enrolled agent's file was touched")
+	}
+	if len(state.Files) != len(before.Files)-2 {
+		t.Errorf("state.Files has %d entries, want %d", len(state.Files), len(before.Files)-2)
+	}
+}
+
+// pruneCycle runs one full cycle for a machine enrolled for claude only whose
+// state.json already records add, and returns the result.
+func pruneCycle(t *testing.T, add func(cfg sync.Config) map[string]string) (sync.Result, sync.Config) {
+	t.Helper()
+	f := newFakeAwd(t, testBundle())
+	cfg, _ := enrolled(t, f, claudeRegistry(t), "claude")
+	if res := sync.Run(context.Background(), cfg); res.Err != nil {
+		t.Fatal(res.Err)
+	}
+	seedFiles(t, cfg, add(cfg))
+	v2 := testBundle()
+	v2.Version = "v2"
+	f.bundle.Store(v2)
+	res := sync.Run(context.Background(), cfg)
+	if res.Err != nil {
+		t.Fatal(res.Err)
+	}
+	return res, cfg
+}
+
+func TestRunPruneRemovesUnchangedFileAndSidecar(t *testing.T) {
+	dir := t.TempDir()
+	p := filepath.Join(dir, "a.json")
+	writeFile(t, p, "A")
+	writeFile(t, p+".aw-revision", "v0\n")
+	res, cfg := pruneCycle(t, func(sync.Config) map[string]string { return map[string]string{p: sha("A")} })
+	if exists(p) || exists(p+".aw-revision") {
+		t.Error("file or sidecar survived")
+	}
+	state, _ := sync.LoadState(cfg.StateDir)
+	if _, ok := state.Files[p]; ok {
+		t.Error("still recorded")
+	}
+	if !hasNote(res.Notes, p) {
+		t.Errorf("notes = %q, want the removal named", res.Notes)
+	}
+}
+
+func TestRunPruneKeepsEditedFileAndItsSidecar(t *testing.T) {
+	dir := t.TempDir()
+	p := filepath.Join(dir, "a.json")
+	writeFile(t, p, "edited")
+	writeFile(t, p+".aw-revision", "v0\n")
+	res, cfg := pruneCycle(t, func(sync.Config) map[string]string { return map[string]string{p: sha("A")} })
+	if !exists(p) || !exists(p+".aw-revision") {
+		t.Error("edited file or its sidecar was removed")
+	}
+	if !hasNote(res.Notes, p) {
+		t.Errorf("notes = %q, want the kept file named", res.Notes)
+	}
+	state, _ := sync.LoadState(cfg.StateDir)
+	if _, ok := state.Files[p]; ok {
+		t.Error("kept file is still tracked")
+	}
+}
+
+func TestRunPruneKeepsSymlink(t *testing.T) {
+	dir := t.TempDir()
+	target := filepath.Join(dir, "target")
+	writeFile(t, target, "A")
+	link := filepath.Join(dir, "link")
+	if err := os.Symlink(target, link); err != nil {
+		t.Skip(err)
+	}
+	res, _ := pruneCycle(t, func(sync.Config) map[string]string { return map[string]string{link: sha("A")} })
+	if !exists(link) || !exists(target) {
+		t.Error("symlink or its target was removed")
+	}
+	if !hasNote(res.Notes, link) {
+		t.Errorf("notes = %q, want the symlink named", res.Notes)
+	}
+}
+
+func TestRunPruneDropsMissingFileSilently(t *testing.T) {
+	p := filepath.Join(t.TempDir(), "gone.json")
+	res, cfg := pruneCycle(t, func(sync.Config) map[string]string { return map[string]string{p: sha("A")} })
+	if hasNote(res.Notes, "removing "+p) || hasNote(res.Notes, "removed "+p) {
+		t.Errorf("notes = %q, want none about a missing file", res.Notes)
+	}
+	state, _ := sync.LoadState(cfg.StateDir)
+	if _, ok := state.Files[p]; ok {
+		t.Error("missing file still tracked")
+	}
+}
+
+func TestRunPruneSkipsNonAbsoluteAndUncleanPaths(t *testing.T) {
+	dir := t.TempDir()
+	victim := filepath.Join(dir, "victim")
+	writeFile(t, victim, "A")
+	if err := os.Mkdir(filepath.Join(dir, "sub"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	unclean := dir + "/sub/../victim"
+	res, _ := pruneCycle(t, func(sync.Config) map[string]string {
+		return map[string]string{unclean: sha("A"), "rel/x": sha("A")}
+	})
+	if !exists(victim) {
+		t.Error("an unclean path removed a file")
+	}
+	if !hasNote(res.Notes, "rel/x") || !hasNote(res.Notes, "sub/../victim") {
+		t.Errorf("notes = %q, want both skipped paths named", res.Notes)
+	}
+}
+
+func TestRunPruneNeverRemovesStateDirFiles(t *testing.T) {
+	var machinePath string
+	pruneCycle(t, func(cfg sync.Config) map[string]string {
+		machinePath = filepath.Join(cfg.StateDir, sync.MachineFile)
+		return map[string]string{machinePath: sha(string(mustRead(t, machinePath)))}
+	})
+	if !exists(machinePath) {
+		t.Error("machine.json was removed")
+	}
+}
+
+func isolationFixture(t *testing.T) (*fakeAwd, sync.Config, string, string, *atomic.Bool) {
+	t.Helper()
+	f := newFakeAwd(t, testBundle())
+	fail := &atomic.Bool{}
+	cfg, root := enrolled(t, f, claudeRegistry(t, flakyRenderer{fail}), "claude", "flaky")
+	flakyRoot := filepath.Join(t.TempDir(), "flaky-root")
+	cfg.Roots["flaky"] = flakyRoot
+	if res := sync.Run(context.Background(), cfg); res.Err != nil {
+		t.Fatal(res.Err)
+	}
+	return f, cfg, root, flakyRoot, fail
+}
+
+// assertIsolated checks one failed cycle: claude got v2, flaky kept its v1
+// file on disk and in state, the error names flaky, and no etag was saved.
+func assertIsolated(t *testing.T, res sync.Result, cfg sync.Config, root, flakyRoot, agentName string) {
+	t.Helper()
+	if res.Err == nil || !strings.Contains(res.Err.Error(), agentName) {
+		t.Errorf("Err = %v, want it to name %s", res.Err, agentName)
+	}
+	if res.Err != nil && strings.Count(res.Err.Error(), "sync:") != 1 {
+		t.Errorf("Err = %q, want a single sync: prefix", res.Err)
+	}
+	if !strings.Contains(string(mustRead(t, filepath.Join(root, claude.BundleFile))), `"v2"`) {
+		t.Error("claude's bundle was not updated")
+	}
+	flakyFile := filepath.Join(flakyRoot, "flaky.txt")
+	if got := string(mustRead(t, flakyFile)); got != "v1" {
+		t.Errorf("flaky.txt = %q, want the old v1 left in place", got)
+	}
+	state, _ := sync.LoadState(cfg.StateDir)
+	if state.Files[flakyFile] != sha("v1") {
+		t.Errorf("state.Files[flaky.txt] = %q, want the v1 hash", state.Files[flakyFile])
+	}
+	if state.ETag != "" || state.Error == "" || state.Version != "v2" {
+		t.Errorf("state = ETag %q Error %q Version %q, want no etag, an error, v2", state.ETag, state.Error, state.Version)
+	}
+}
+
+func bumpToV2(f *fakeAwd) {
+	v2 := testBundle()
+	v2.Version = "v2"
+	f.bundle.Store(v2)
+}
+
+func TestRunIsolatesRenderFailureAndRetries(t *testing.T) {
+	f, cfg, root, flakyRoot, fail := isolationFixture(t)
+	bumpToV2(f)
+	fail.Store(true)
+	res := sync.Run(context.Background(), cfg)
+	assertIsolated(t, res, cfg, root, flakyRoot, "flaky")
+
+	fail.Store(false)
+	res = sync.Run(context.Background(), cfg)
+	if res.Err != nil || res.Unchanged {
+		t.Fatalf("retry res = %+v, want a full clean cycle", res)
+	}
+	if got := string(mustRead(t, filepath.Join(flakyRoot, "flaky.txt"))); got != "v2" {
+		t.Errorf("flaky.txt = %q after the retry, want v2", got)
+	}
+}
+
+func TestRunIsolatesWriteFailureAndRetries(t *testing.T) {
+	f, cfg, root, flakyRoot, _ := isolationFixture(t)
+	bumpToV2(f)
+	// Make the flaky root unwritable by swapping the file for a directory,
+	// which os.Rename-based replacement cannot overwrite.
+	flakyFile := filepath.Join(flakyRoot, "flaky.txt")
+	old := mustRead(t, flakyFile)
+	if err := os.Remove(flakyFile); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(flakyFile, "sub"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	res := sync.Run(context.Background(), cfg)
+	if res.Err == nil || !strings.Contains(res.Err.Error(), "flaky") {
+		t.Fatalf("Err = %v, want it to name flaky", res.Err)
+	}
+	if !strings.Contains(string(mustRead(t, filepath.Join(root, claude.BundleFile))), `"v2"`) {
+		t.Error("claude's bundle was not updated")
+	}
+	state, _ := sync.LoadState(cfg.StateDir)
+	if state.Files[flakyFile] != sha(string(old)) || state.ETag != "" || state.Error == "" {
+		t.Errorf("state = %+v, want the v1 hash kept, no etag, an error", state)
+	}
+
+	if err := os.RemoveAll(flakyFile); err != nil {
+		t.Fatal(err)
+	}
+	res = sync.Run(context.Background(), cfg)
+	if res.Err != nil || res.Unchanged {
+		t.Fatalf("retry res = %+v, want a full clean cycle", res)
+	}
+	if got := string(mustRead(t, flakyFile)); got != "v2" {
+		t.Errorf("flaky.txt = %q after the retry, want v2", got)
+	}
+}
+
+func TestRunIsolatesUnknownAgent(t *testing.T) {
+	f := newFakeAwd(t, testBundle())
+	cfg, root := enrolled(t, f, claudeRegistry(t), "claude", "ghost")
+	ghostRoot := t.TempDir()
+	cfg.Roots["ghost"] = ghostRoot
+	ghostFile := filepath.Join(ghostRoot, "g.txt")
+	writeFile(t, ghostFile, "v1")
+	seedFiles(t, cfg, map[string]string{ghostFile: sha("v1")})
+
+	res := sync.Run(context.Background(), cfg)
+	if res.Err == nil || !strings.Contains(res.Err.Error(), "ghost") {
+		t.Fatalf("Err = %v, want it to name ghost", res.Err)
+	}
+	if !exists(filepath.Join(root, claude.BundleFile)) {
+		t.Error("claude was not written")
+	}
+	state, _ := sync.LoadState(cfg.StateDir)
+	if !exists(ghostFile) || state.Files[ghostFile] != sha("v1") || state.ETag != "" {
+		t.Errorf("ghost file or record lost: state = %+v", state)
+	}
+}
+
+// noRootRenderer is an adapter aw-sync knows no system directory for.
+type noRootRenderer struct{ flakyRenderer }
+
+func (noRootRenderer) Name() string { return "noroot" }
+
+func TestRunIsolatesAgentWithoutARoot(t *testing.T) {
+	f := newFakeAwd(t, testBundle())
+	cfg, root := enrolled(t, f, claudeRegistry(t, noRootRenderer{flakyRenderer{&atomic.Bool{}}}), "claude", "noroot")
+	orphan := filepath.Join(t.TempDir(), "noroot.txt")
+	writeFile(t, orphan, "N")
+	seedFiles(t, cfg, map[string]string{orphan: sha("N")})
+
+	res := sync.Run(context.Background(), cfg)
+	if res.Err == nil || !strings.Contains(res.Err.Error(), "noroot") {
+		t.Fatalf("Err = %v, want it to name noroot", res.Err)
+	}
+	if !exists(filepath.Join(root, claude.BundleFile)) {
+		t.Error("claude was not written")
+	}
+	state, _ := sync.LoadState(cfg.StateDir)
+	if state.ETag != "" {
+		t.Errorf("etag = %q, want none", state.ETag)
+	}
+	if !exists(orphan) || state.Files[orphan] != sha("N") {
+		t.Errorf("the root-less agent's recorded file was pruned: on disk %v, state %q", exists(orphan), state.Files[orphan])
+	}
+	if !hasNote(res.Notes, "pruning skipped") {
+		t.Errorf("notes = %q, want a pruning-skipped note", res.Notes)
+	}
+}
+
+func TestRunLeavesRecordedFilesOn304WhenAnAgentHasNoRoot(t *testing.T) {
+	f := newFakeAwd(t, testBundle())
+	cfg, _ := enrolled(t, f, claudeRegistry(t, noRootRenderer{flakyRenderer{&atomic.Bool{}}}), "claude")
+	if res := sync.Run(context.Background(), cfg); res.Err != nil {
+		t.Fatal(res.Err)
+	}
+	orphan := filepath.Join(t.TempDir(), "noroot.txt")
+	writeFile(t, orphan, "N")
+	seedFiles(t, cfg, map[string]string{orphan: sha("N")})
+	if err := sync.SaveMachine(cfg.StateDir, sync.Machine{Server: f.srv.URL, MachineID: "m1", Credential: "cred", Agents: []string{"claude", "noroot"}}); err != nil {
+		t.Fatal(err)
+	}
+
+	res := sync.Run(context.Background(), cfg)
+	if res.Err != nil || !res.Unchanged {
+		t.Fatalf("res = %+v, want a clean 304 cycle", res)
+	}
+	state, _ := sync.LoadState(cfg.StateDir)
+	if !exists(orphan) || state.Files[orphan] != sha("N") {
+		t.Errorf("recorded file was pruned on 304: on disk %v, state %q", exists(orphan), state.Files[orphan])
+	}
+}
+
+func TestRunRootChangeNeverLosesAnAgentsFiles(t *testing.T) {
+	f := newFakeAwd(t, testBundle())
+	cfg, root := enrolled(t, f, claudeRegistry(t), "claude")
+	if res := sync.Run(context.Background(), cfg); res.Err != nil {
+		t.Fatal(res.Err)
+	}
+	bundlePath := filepath.Join(root, claude.BundleFile)
+	want := mustRead(t, bundlePath)
+
+	moved := cfg
+	moved.Roots = map[string]string{"claude": filepath.Join(t.TempDir(), "other-root")}
+	if res := sync.Run(context.Background(), moved); res.Err != nil {
+		t.Fatal(res.Err)
+	}
+	for i := 0; i < 2; i++ {
+		if res := sync.Run(context.Background(), cfg); res.Err != nil {
+			t.Fatal(res.Err)
+		}
+	}
+	if got, err := os.ReadFile(bundlePath); err != nil || string(got) != string(want) {
+		t.Errorf("the original root lost its file after a root change and back: %v", err)
+	}
+	state, _ := sync.LoadState(cfg.StateDir)
+	if state.Files[bundlePath] != sha(string(want)) {
+		t.Errorf("state.Files[%s] = %q, want the file recorded", bundlePath, state.Files[bundlePath])
+	}
+}
+
+func TestRunKeepsAFileItCouldNotRemoveRecorded(t *testing.T) {
+	if os.Getuid() == 0 {
+		t.Skip("root can remove from a read-only directory")
+	}
+	dir := t.TempDir()
+	p := filepath.Join(dir, "a.json")
+	writeFile(t, p, "A")
+	if err := os.Chmod(dir, 0o500); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(dir, 0o700) })
+	res, cfg := pruneCycle(t, func(sync.Config) map[string]string { return map[string]string{p: sha("A")} })
+	if !hasNote(res.Notes, "not removing "+p, "will retry") {
+		t.Errorf("notes = %q, want the failed removal named", res.Notes)
+	}
+	state, _ := sync.LoadState(cfg.StateDir)
+	if state.Files[p] != sha("A") {
+		t.Errorf("state.Files[%s] = %q, want it kept so the next cycle retries", p, state.Files[p])
+	}
+}
+
+func TestRunDoesNotPruneWhenARootOverrideShadowsADefaultRoot(t *testing.T) {
+	f := newFakeAwd(t, testBundle())
+	cfg, _ := enrolled(t, f, claudeRegistry(t), "claude")
+	if res := sync.Run(context.Background(), cfg); res.Err != nil {
+		t.Fatal(res.Err)
+	}
+	defaultRoot := claude.SystemDir("linux")
+	recorded := filepath.Join(defaultRoot, "recorded.json")
+	seedFiles(t, cfg, map[string]string{recorded: sha("A")})
+	bumpToV2(f)
+
+	res := sync.Run(context.Background(), cfg)
+	if res.Err != nil || !hasNote(res.Notes, "pruning skipped", "root override") {
+		t.Fatalf("res = %+v, want a clean cycle with a pruning-skipped note", res)
+	}
+	state, _ := sync.LoadState(cfg.StateDir)
+	if state.Files[recorded] != sha("A") {
+		t.Errorf("state.Files[%s] = %q, want it kept", recorded, state.Files[recorded])
+	}
+}
+
+func TestRunIsA304WhenARootOverrideShadowsADefaultRootHoldingRecordedFiles(t *testing.T) {
+	// GOOS windows makes the claude default root a relative name, so the
+	// recorded file lives in a temp working directory instead of /etc.
+	t.Chdir(t.TempDir())
+	f := newFakeAwd(t, testBundle())
+	cfg, _ := enrolled(t, f, claudeRegistry(t), "claude")
+	cfg.GOOS = "windows"
+	if res := sync.Run(context.Background(), cfg); res.Err != nil {
+		t.Fatal(res.Err)
+	}
+	recorded := filepath.Join(claude.SystemDir("windows"), "recorded.json")
+	writeFile(t, recorded, "A")
+	seedFiles(t, cfg, map[string]string{recorded: sha("A")})
+
+	res := sync.Run(context.Background(), cfg)
+	if res.Err != nil || !res.Unchanged {
+		t.Fatalf("res = %+v, want a 304 cycle", res)
+	}
+	if hasNote(res.Notes, "belongs to no enrolled agent") {
+		t.Errorf("notes = %q, want no orphan note", res.Notes)
 	}
 }

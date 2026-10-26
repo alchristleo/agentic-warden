@@ -25,7 +25,7 @@ type AgentConfig struct {
 	// agent's launch-time schema, for an agent whose launch channel takes a
 	// different shape from its managed file. Codex's requirements.toml and
 	// its config.toml are two schemas; Launch is the second. Claude and
-	// Gemini apply Managed at launch and have no use for it.
+	// agy apply Managed at launch and have no use for it.
 	Launch map[string]any `json:"launch,omitempty"`
 }
 

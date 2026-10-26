@@ -62,6 +62,9 @@ func (rs *RuleSet) Validate(validators ...ManagedValidator) error {
 			if agentName == "" {
 				return fmt.Errorf("rule %q configures an agent with no name", rule.Name)
 			}
+			if hint, removed := RemovedHint(agentName); removed {
+				return fmt.Errorf("rule %q: agent %q was removed: delete the %s block from this rule; %s (%s)", rule.Name, agentName, agentName, hint, RemovedDocs)
+			}
 			if config.Launch != nil && agentName != "codex" {
 				return fmt.Errorf("rule %q, agent %q: launch is not supported; %s applies managed at launch", rule.Name, agentName, agentName)
 			}

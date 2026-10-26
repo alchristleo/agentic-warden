@@ -3,7 +3,6 @@ package agy
 import (
 	"encoding/json"
 	"fmt"
-	"strings"
 
 	"github.com/alchristleo/agentic-warden/internal/agent"
 	"github.com/alchristleo/agentic-warden/internal/agent/agy/managed"
@@ -29,25 +28,6 @@ func (a *Adapter) Render(bundle *policy.Bundle) (agent.Rendering, error) {
 	}
 	return agent.Rendering{
 		Files: []agent.File{{Path: AdminFile, Content: append(encoded, '\n'), Mode: 0o644}},
-		Notes: dropped(bundle),
+		Notes: agent.DroppedRepoRules(bundle, Name, AdminFile),
 	}, nil
-}
-
-// dropped names the agy rules Compile("") left out because they are scoped
-// to repositories. Rules for other agents are not this renderer's to report.
-func dropped(bundle *policy.Bundle) []string {
-	if bundle == nil {
-		return nil
-	}
-	var names []string
-	for _, rule := range bundle.Rules {
-		if _, forAgy := rule.Agents[Name]; forAgy && len(rule.Match.Repos) > 0 {
-			names = append(names, rule.Name)
-		}
-	}
-	if len(names) == 0 {
-		return nil
-	}
-	return []string{fmt.Sprintf("agy: %d repo-scoped rule(s) not enforceable in %s: %s",
-		len(names), AdminFile, strings.Join(names, ", "))}
 }

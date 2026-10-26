@@ -10,8 +10,8 @@
 // through its own managed-settings tier, which applies whether or not the
 // developer goes through the wrapper. What the wrapper adds is launch-time
 // environment injection, compiling the machine bundle for the session's
-// repository and applying per-launch overlays for Codex and Gemini, and
-// doctor, which shows exactly what would run.
+// repository and applying per-launch overlays for Codex. The doctor
+// subcommand reports what would run without running it.
 package main
 
 import (
@@ -30,7 +30,6 @@ import (
 	"github.com/alchristleo/agentic-warden/internal/agent/agy"
 	"github.com/alchristleo/agentic-warden/internal/agent/claude"
 	"github.com/alchristleo/agentic-warden/internal/agent/codex"
-	"github.com/alchristleo/agentic-warden/internal/agent/gemini"
 	"github.com/alchristleo/agentic-warden/internal/policy"
 	"github.com/alchristleo/agentic-warden/internal/policyhelper"
 	"github.com/alchristleo/agentic-warden/internal/repo"
@@ -79,7 +78,7 @@ func run(argv []string) error {
 	claudeAdapter.StateDir = stateDirFor()
 
 	registry := &agent.Registry{}
-	for _, a := range []agent.Adapter{claudeAdapter, codex.New(), gemini.New(), agy.New()} {
+	for _, a := range []agent.Adapter{claudeAdapter, codex.New(), agy.New()} {
 		if err := registry.Register(a); err != nil {
 			return err
 		}
@@ -252,8 +251,7 @@ func compiledFor(src policySource) string {
 // settingsFor builds the settings an adapter applies, stamped with the
 // bundle revision they were compiled from (empty for an explicit document,
 // which carries no version of its own), so an adapter that writes a
-// per-session file, such as Gemini's policy file, can name the revision it
-// came from.
+// per-session file can name the revision it came from.
 func settingsFor(doc *policy.Document, agentName, version string) agent.Settings {
 	config := doc.Agent(agentName)
 	return agent.Settings{
@@ -266,6 +264,9 @@ func settingsFor(doc *policy.Document, agentName, version string) agent.Settings
 }
 
 func launch(registry *agent.Registry, opts options, agentName string, args []string) error {
+	if hint, removed := policy.RemovedHint(agentName); removed {
+		return errors.New(hint + ": aw agy")
+	}
 	// Lookup first so an unknown agent reports the agents this binary knows,
 	// rather than whatever the policy happens to be missing.
 	if _, err := registry.Lookup(agentName); err != nil {
@@ -354,6 +355,11 @@ func doctor(registry *agent.Registry, opts options, args []string) error {
 	}
 	for _, name := range names {
 		status := agentStatus{Name: name}
+		if hint, removed := policy.RemovedHint(name); removed {
+			status.Error = hint
+			out.Agents = append(out.Agents, status)
+			continue
+		}
 		adapter, err := registry.Lookup(name)
 		if err != nil {
 			status.Error = err.Error()

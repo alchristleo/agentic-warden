@@ -12,7 +12,6 @@ import (
 	"github.com/alchristleo/agentic-warden/internal/agent/agy"
 	"github.com/alchristleo/agentic-warden/internal/agent/claude"
 	"github.com/alchristleo/agentic-warden/internal/agent/codex"
-	"github.com/alchristleo/agentic-warden/internal/agent/gemini"
 )
 
 // StateDir is where aw-sync keeps machine.json and state.json on goos. It is
@@ -40,8 +39,6 @@ func AgentRoot(goos, agentName string) (string, error) {
 		return claude.SystemDir(goos), nil
 	case codex.Name:
 		return codex.SystemDir(goos), nil
-	case gemini.Name:
-		return gemini.SystemDir(goos), nil
 	case agy.Name:
 		return agy.SystemDir(goos), nil
 	}

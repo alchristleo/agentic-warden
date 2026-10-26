@@ -135,7 +135,6 @@ installed.
 | aw-sync state (`machine.json`, `state.json`, `aw-bundle.json`, audit log, lock) | `/var/lib/agent-wrapper` | `/Library/Application Support/agent-wrapper` | `%ProgramData%\agent-wrapper` |
 | Claude Code bundle and drop-in | `/etc/claude-code` | `/Library/Application Support/ClaudeCode` | `C:\Program Files\ClaudeCode` |
 | Codex `requirements.toml` | `/etc/codex` | `/etc/codex` | `%ProgramData%\OpenAI\Codex` |
-| Gemini CLI (retired for most users) `settings.json` and `policies/50-agent-wrapper.toml` | `/etc/gemini-cli` | `/Library/Application Support/GeminiCli` | `%ProgramData%\gemini-cli` |
 | agy `admin_settings.json`, opt-in | `/etc/antigravity` | `/Library/Application Support/Antigravity` | `%ProgramData%\Antigravity` |
 | Helper and sync binaries | `/usr/local/bin` | `/usr/local/bin` | `C:\Program Files\AgentWrapper` |
 
@@ -151,6 +150,34 @@ variable and falls back to `C:\ProgramData`.
 | Linux | `/etc/systemd/system/aw-sync.service` and `aw-sync.timer` |
 | macOS | `/Library/LaunchDaemons/com.agent-wrapper.aw-sync.plist`, logging to `/Library/Logs/agent-wrapper/aw-sync.log` |
 | Windows | the scheduled task `agent-wrapper\aw-sync` |
+
+## Gemini CLI (removed)
+
+agent-wrapper no longer supports Gemini CLI. Google retired Gemini CLI for most users on 2026-06-18 ([announcement coverage](https://www.theregister.com/ai-ml/2026/05/20/bye-bye-gemini-cli-google-nudges-devs-toward-antigravity/5243605)). Use Antigravity CLI (`agy`) instead. aw governs only its gateway and models ([how it works](./how-it-works.md#antigravity-cli-gateway-and-models-only)).
+
+If you still run Gemini CLI under a paid licence, aw no longer governs it. Keep an older agent-wrapper release or move to agy.
+
+Existing rules:
+
+- `awd apply` rejects a rule that still has a `gemini` block. The error names the rule and the block to delete:
+
+  ```text
+  rule "payments-repos": agent "gemini" was removed: delete the gemini block from this rule;
+  Gemini CLI is no longer supported by agent-wrapper;
+  use agy (Antigravity CLI) (docs/site/reference.md#gemini-cli-removed)
+  ```
+
+  Delete the block, then apply again. To keep the parts that agy supports, move them to an `agy` block.
+- A policy stored before the removal keeps working. aw ignores its `gemini` block.
+
+Enrollments:
+
+- `aw-sync enroll --agents gemini` fails with the same hint.
+- An enrolled machine skips `gemini`, prints a note, and syncs the other agents.
+- aw-sync removes the Gemini files it wrote if you have not changed them. It keeps a changed file and prints a note. [Removing](./removing.md) lists the paths.
+- To stop syncing Gemini, re-enroll with `--force`, `--server`, a new enrollment token, and an `--agents` list that leaves out `gemini`, such as `--agents claude,codex`.
+
+`aw gemini` exits with an error that tells you to use `aw agy`.
 
 ## Files written by `aw`
 

@@ -7,7 +7,6 @@
 package drift
 
 import (
-	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
@@ -19,15 +18,12 @@ import (
 
 	"github.com/alchristleo/agentic-warden/internal/agent/claude/schema"
 	"github.com/alchristleo/agentic-warden/internal/agent/codex/requirements"
-	"github.com/alchristleo/agentic-warden/internal/agent/gemini/managed"
 )
 
 const (
-	codexURL        = "https://learn.chatgpt.com/docs/config-file/config-reference.md"
-	geminiLatestURL = "https://api.github.com/repos/google-gemini/gemini-cli/releases/latest"
-	geminiRawURL    = "https://raw.githubusercontent.com/google-gemini/gemini-cli/%s/packages/%s"
-	claudeURL       = "https://code.claude.com/docs/en/settings-reference.md"
-	claudeHooksURL  = "https://code.claude.com/docs/en/hooks.md"
+	codexURL       = "https://learn.chatgpt.com/docs/config-file/config-reference.md"
+	claudeURL      = "https://code.claude.com/docs/en/settings-reference.md"
+	claudeHooksURL = "https://code.claude.com/docs/en/hooks.md"
 )
 
 // claudeKeyedBlocks are the blocks the settings index lists dotted keys for
@@ -83,29 +79,6 @@ func fetch(t *testing.T, url string) string {
 		t.Fatal(err)
 	}
 	return body
-}
-
-// parseLatestTag returns tag_name from a GitHub "latest release" response.
-func parseLatestTag(body string) (string, error) {
-	var rel struct {
-		Tag string `json:"tag_name"`
-	}
-	if err := json.Unmarshal([]byte(body), &rel); err != nil || rel.Tag == "" {
-		return "", fmt.Errorf("no tag_name in the latest release response")
-	}
-	return rel.Tag, nil
-}
-
-// geminiURLs returns the settings schema and policy types URLs at the latest
-// Gemini CLI release tag.
-func geminiURLs(t *testing.T) (settings, types string) {
-	t.Helper()
-	tag, err := parseLatestTag(fetch(t, geminiLatestURL))
-	if err != nil {
-		t.Fatalf("upstream page changed shape: %s: %v", geminiLatestURL, err)
-	}
-	return fmt.Sprintf(geminiRawURL, tag, "cli/src/config/settingsSchema.ts"),
-		fmt.Sprintf(geminiRawURL, tag, "core/src/policy/types.ts")
 }
 
 // diffNames returns the names upstream has that pinned lacks (added) and the
@@ -178,8 +151,6 @@ func section(page, heading, level string) (string, bool) {
 
 var (
 	codexKeyRe    = regexp.MustCompile(`(?m)^\s*key:\s*"([^"]+)"`)
-	geminiKeyRe   = regexp.MustCompile(`(?m)^  (\w+): (?:\{|\w+\()`)
-	geminiEnumRe  = regexp.MustCompile(`(?m)^\s+\w+ = '([^']+)'`)
 	claudeKeyRe   = regexp.MustCompile("(?m)^\\| \\[`([^`]+)`\\]")
 	claudeEventRe = regexp.MustCompile(`(?m)^### (\w+)\s*$`)
 )
@@ -205,49 +176,6 @@ func parseCodexKeys(page string) ([]string, error) {
 		return nil, fmt.Errorf("no key entries in the requirements.toml section")
 	}
 	return sortedUnique(keys), nil
-}
-
-// parseGeminiSettingsKeys returns the top-level keys of SETTINGS_SCHEMA.
-func parseGeminiSettingsKeys(src string) ([]string, error) {
-	const start = "const SETTINGS_SCHEMA = {"
-	i := strings.Index(src, start)
-	if i < 0 {
-		return nil, fmt.Errorf("no SETTINGS_SCHEMA")
-	}
-	body := src[i+len(start):]
-	j := strings.Index(body, "\n}")
-	if j < 0 {
-		return nil, fmt.Errorf("SETTINGS_SCHEMA has no end")
-	}
-	var keys []string
-	for _, m := range geminiKeyRe.FindAllStringSubmatch(body[:j], -1) {
-		keys = append(keys, m[1])
-	}
-	if len(keys) == 0 {
-		return nil, fmt.Errorf("no keys in SETTINGS_SCHEMA")
-	}
-	return sortedUnique(keys), nil
-}
-
-// parseGeminiDecisions returns the values of the PolicyDecision enum.
-func parseGeminiDecisions(src string) ([]string, error) {
-	i := strings.Index(src, "enum PolicyDecision {")
-	if i < 0 {
-		return nil, fmt.Errorf("no PolicyDecision enum")
-	}
-	body := src[i:]
-	j := strings.Index(body, "\n}")
-	if j < 0 {
-		return nil, fmt.Errorf("PolicyDecision has no end")
-	}
-	var vals []string
-	for _, m := range geminiEnumRe.FindAllStringSubmatch(body[:j], -1) {
-		vals = append(vals, m[1])
-	}
-	if len(vals) == 0 {
-		return nil, fmt.Errorf("PolicyDecision has no values")
-	}
-	return sortedUnique(vals), nil
 }
 
 // parseClaudeSettingsKeys returns the dotted keys under the strict blocks
@@ -301,24 +229,6 @@ func TestCodexRequirementsKeys(t *testing.T) {
 		t.Fatalf("upstream page changed shape: %s: %v", codexURL, err)
 	}
 	check(t, "Codex requirements.toml ("+codexURL+")", "internal/agent/codex/requirements/keys.go", keys, requirements.Keys, true)
-}
-
-func TestGeminiSettingsKeys(t *testing.T) {
-	geminiURL, _ := geminiURLs(t)
-	keys, err := parseGeminiSettingsKeys(fetch(t, geminiURL))
-	if err != nil {
-		t.Fatalf("upstream page changed shape: %s: %v", geminiURL, err)
-	}
-	check(t, "Gemini settings.json ("+geminiURL+")", "internal/agent/gemini/managed/keys.go", keys, managed.SettingsKeys, true)
-}
-
-func TestGeminiDecisions(t *testing.T) {
-	_, geminiTypesURL := geminiURLs(t)
-	vals, err := parseGeminiDecisions(fetch(t, geminiTypesURL))
-	if err != nil {
-		t.Fatalf("upstream page changed shape: %s: %v", geminiTypesURL, err)
-	}
-	check(t, "Gemini PolicyDecision ("+geminiTypesURL+")", "internal/agent/gemini/managed/keys.go", vals, managed.Decisions, true)
 }
 
 // TestClaudeNestedKeys reports keys the settings reference documents under a

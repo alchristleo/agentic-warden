@@ -31,7 +31,7 @@ import (
 	"github.com/alchristleo/agentic-warden/internal/agent/agy"
 	"github.com/alchristleo/agentic-warden/internal/agent/claude"
 	"github.com/alchristleo/agentic-warden/internal/agent/codex"
-	"github.com/alchristleo/agentic-warden/internal/agent/gemini"
+	"github.com/alchristleo/agentic-warden/internal/policy"
 	"github.com/alchristleo/agentic-warden/internal/sync"
 	"github.com/alchristleo/agentic-warden/internal/sync/timer"
 	"github.com/alchristleo/agentic-warden/internal/termcolor"
@@ -41,7 +41,7 @@ import (
 const usage = `aw-sync keeps this machine's agent configuration in step with the control plane.
 
 Usage:
-  aw-sync enroll --server URL [--token T] [--name HOST] [--agents claude,codex,gemini,agy] [--force] [--state-dir DIR]
+  aw-sync enroll --server URL [--token T] [--name HOST] [--agents claude,codex,agy] [--force] [--state-dir DIR]
   aw-sync once [--state-dir DIR] [--root agent=DIR ...]
   aw-sync status [--json] [--state-dir DIR]
   aw-sync install-timer [--interval 5m] [--state-dir DIR]
@@ -108,7 +108,7 @@ func helpOr(err error, stdout io.Writer) error {
 // implement agent.Renderer are offered to enroll.
 func newRegistry() (*agent.Registry, error) {
 	reg := &agent.Registry{}
-	for _, a := range []agent.Adapter{claude.New(), codex.New(), gemini.New(), agy.New()} {
+	for _, a := range []agent.Adapter{claude.New(), codex.New(), agy.New()} {
 		if err := reg.Register(a); err != nil {
 			return nil, err
 		}
@@ -192,6 +192,9 @@ func enroll(argv []string, stdout io.Writer, on bool) error {
 			if selected[i] == "" {
 				return fmt.Errorf("--agents has an empty entry")
 			}
+			if hint, removed := policy.RemovedHint(selected[i]); removed {
+				return fmt.Errorf("agent %q: %s (%s)", selected[i], hint, policy.RemovedDocs)
+			}
 			adapter, err := reg.Lookup(selected[i])
 			if err != nil {
 				return fmt.Errorf("agent %q: %w", selected[i], err)
@@ -255,7 +258,14 @@ func enroll(argv []string, stdout io.Writer, on bool) error {
 	// state.json carries the enrollment's non-secret facts too, so `status`
 	// can report them without reading machine.json (0600) even before the
 	// first `once` has run.
+	// A re-enroll keeps the files the last enrollment recorded, so the first
+	// cycle can remove those of an agent this enrollment drops.
 	initial := sync.State{Server: *server, MachineID: e.MachineID, Agents: selected}
+	if previous, err := sync.LoadState(*stateDir); err != nil {
+		fmt.Fprintf(stdout, "files written before this enrollment are not tracked: %v\n", err)
+	} else {
+		initial.Files = previous.Files
+	}
 	if err := sync.SaveState(*stateDir, initial); err != nil {
 		return fmt.Errorf("%w; the enrollment token was consumed; mint a new one", err)
 	}

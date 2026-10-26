@@ -1,7 +1,7 @@
 export const home = {
   hero: {
-    eyebrow: "Claude Code · Codex · Gemini CLI",
-    title: "One policy for every coding agent",
+    eyebrow: "Claude Code · Codex · Antigravity CLI",
+    title: "One policy for your coding agents",
     lede:
       "Write your organization's rules once. Every developer session gets the slice that applies to their groups and the repository they are in. For Claude Code it applies at launch, even when nobody types the wrapper.",
     primaryCta: { href: "/demo", label: "Request demo" },
@@ -43,7 +43,7 @@ export const home = {
       },
       {
         title: "More than one agent",
-        body: "Teams run Claude Code, Codex and Gemini CLI side by side. Each has its own settings format, and none reads the others'.",
+        body: "Teams run Claude Code, Codex and Antigravity CLI side by side. Each has its own settings format, and none reads the others'.",
       },
     ],
   },
@@ -72,7 +72,7 @@ export const home = {
     items: [
       { name: "Claude Code", body: "Managed settings and a policy helper computed per repository at every launch." },
       { name: "Codex", body: "A machine-wide requirements.toml, plus repository rules through aw codex." },
-      { name: "Gemini CLI", body: "System settings and an admin policy file, plus repository rules through aw gemini." },
+      { name: "Antigravity CLI", body: "Gateway and models only, from a machine-wide admin file when you enroll agy." },
     ],
   },
   closing: {

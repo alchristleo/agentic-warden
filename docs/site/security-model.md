@@ -63,8 +63,7 @@ These are choices in how the product works today. Each has a mitigation that is 
 - **A developer with local administrator rights** can edit the managed source or remove the drop-in. Pair Agentic Warden with scheduled MDM redeployment and network-level egress restriction.
 - **Repository-scoped rules key on `.git/config`.** The `origin` remote there is the developer's to edit, so a rule that targets one repository can be avoided by changing it. `internal/repo` reads it (`TestDetectReadsTheOriginRemote`). There is no trusted answer to "which repository is this" on a developer machine.
 - **Server-managed settings from the claude.ai console shadow the helper.** Use one channel or the other. `aw doctor` detects the collision (`TestInspectDetectsServerManagedSettingsShadowingTheHelper`).
-- **`aw codex` and `aw gemini` are advisory.** They apply repository rules at launch. Bare `codex` or `gemini` sees only the machine-wide files `aw-sync` renders.
-- **A machine-wide Gemini rule outranks a repo-scoped rule for the same tool.** Keep machine-wide `policies` to what must hold everywhere. Source: [How it works](./how-it-works.md), which describes the tiers. We have no test for Gemini's tier ordering, because it is Gemini's behavior.
+- **`aw codex` is advisory.** It applies repository rules at launch. Bare `codex` sees only the machine-wide files `aw-sync` renders.
 - **agy permissions, MCP servers, hooks and repository-scoped rules are not enforced.** aw governs only agy's gateway and models. See [How it works](./how-it-works.md#antigravity-cli-gateway-and-models-only).
 
 ## What the control plane sees

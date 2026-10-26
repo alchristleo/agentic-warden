@@ -18,7 +18,7 @@ with the helper).
 That matters because the helper runs on `claude`, not on `aw claude`. A
 developer who bypasses the wrapper is still governed.
 
-`aw codex` and `aw gemini` apply the rules scoped to the repository you are
+`aw codex` applies the rules scoped to the repository you are
 in, which the machine-wide files cannot carry. `aw` reads the bundle
 `aw-sync` leaves in its state directory, compiles it for the repository
 `.git/config` names, and hands each agent the result through its own
@@ -27,21 +27,7 @@ launch-time channel: Codex gets `-c key=value` overrides from the rule's
 `requirements.toml`). Because Codex receives them as `-c` overrides, every
 key in a launch document — including an MCP server name — must use only
 letters, digits, `_` and `-`; `awd apply` refuses a rule with any other
-key. Gemini gets a settings file generated for the
-session with `GEMINI_CLI_SYSTEM_SETTINGS_PATH` pinned to it, repo-scoped
-`policies` included via `policyPaths`. This layer is advisory: bare
-`codex` or `gemini` sees the machine-wide files alone. With no policy
-source, `aw gemini` leaves the system settings path alone rather than
-pinning an empty file over it. `aw doctor` shows the compiled result per
-agent and which repository it was compiled for.
-
-One Gemini limitation: rules delivered through `policyPaths` load at
-Gemini's user tier, below the admin tier where `aw-sync`'s machine-wide
-policy file lives, and Gemini ignores admin-tier supplements once that
-directory has any file. A machine-wide rule that names a tool therefore
-outranks a repo-scoped rule for the same tool. Keep machine-wide
-`policies` to what must hold everywhere and let repo rules tighten the
-rest.
+key. This layer is advisory: bare `codex` sees the machine-wide files alone. `aw doctor` shows the compiled result per agent and which repository it was compiled for.
 
 A release build of the helper reads only the system directory. The
 `AW_POLICY_BUNDLE` and `AW_POLICY_CONFIG` overrides the tests use exist
@@ -80,7 +66,7 @@ detects the collision, and reports the bundle and aw-sync's last cycle.
 
 ## Antigravity CLI (gateway and models only)
 
-Google retired Gemini CLI for most users on 2026-06-18 ([announcement coverage](https://www.theregister.com/ai-ml/2026/05/20/bye-bye-gemini-cli-google-nudges-devs-toward-antigravity/5243605)); Gemini Code Assist Standard and Enterprise licences and paid API keys keep it. Its successor is Antigravity CLI (`agy`).
+Antigravity CLI (`agy`) is the successor to Gemini CLI ([what changed](./reference.md#gemini-cli-removed)).
 `aw-sync` renders agy only when you enroll with `--agents ...,agy`. Then it writes agy's
 machine-wide admin file, and it owns that whole file. agy reads the gateway, CA bundle and
 model list from that file, and a developer cannot override them. agy has no path override, so
@@ -91,8 +77,10 @@ Not enforced:
 
 - agy permissions
 - MCP servers
-- hooks (agy's permission rules, MCP servers and hooks live only in each developer's home directory)
+- hooks
 - repository-scoped rules
+
+agy's permission rules, MCP servers and hooks live only in each developer's home directory.
 
 The gateway API key stays out of the policy. aw does not distribute this key. Issue it per developer at your
 gateway and set it through your usual secret or shell-profile channel, as `AGY_LLM_GATEWAY_API_KEY`.
@@ -105,7 +93,7 @@ because agy silently ignores a file it cannot parse.
 
 As of October 2026. This compares mechanisms only.
 
-| As of October 2026            | Per repository | Per IdP group      | Claude Code, Codex, Gemini CLI, Antigravity CLI |
+| As of October 2026            | Per repository | Per IdP group      | Claude Code, Codex, Antigravity CLI |
 |-------------------------------|----------------|--------------------|-------------------------------------------------|
 | Vendor admin console          | No             | Varies by vendor   | One vendor each                |
 | Managed settings files (MDM)  | No             | No                 | One format per vendor          |
@@ -119,7 +107,7 @@ their own API key or cloud provider. What remains uncovered:
 - Per-repository rules.
 - Per-group policy for Claude Code on claude.ai seats (the console is organization-uniform; the
   gateway needs an upstream API or cloud credential).
-- One policy across Claude Code, Codex, Gemini CLI and Antigravity CLI (gateway and models only).
+- One policy across Claude Code, Codex and Antigravity CLI (gateway and models only).
 
 Codex on ChatGPT plans already has per-group rules in OpenAI's Agent Security, so for Codex this
 project adds per-repository rules, API-key use and self-hosting.
