@@ -29,6 +29,9 @@ const defaultRevisionLimit = 50
 type Handler struct {
 	store store.Store
 	log   *slog.Logger
+	// Limit, when set, wraps the routes inside logging and recovery, so a
+	// refusal it writes is logged and a panic in it is recovered.
+	Limit func(http.Handler) http.Handler
 	// Now supplies the current time. Tests replace it to make stored
 	// revisions deterministic.
 	Now func() time.Time
@@ -104,7 +107,11 @@ func (h *Handler) Routes() http.Handler {
 	mux.HandleFunc("GET /v1/audit", h.requireAdmin(h.getAudit))
 	h.scimRoutes(mux)
 	h.consoleRoutes(mux)
-	return Logging(h.log)(Recovery(h.log)(mux))
+	var inner http.Handler = mux
+	if h.Limit != nil {
+		inner = h.Limit(mux)
+	}
+	return Logging(h.log)(Recovery(h.log)(inner))
 }
 
 func (h *Handler) healthz(w http.ResponseWriter, _ *http.Request) {

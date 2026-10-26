@@ -60,8 +60,8 @@ func writeCertPair(t *testing.T) (certPath, keyPath string, pool *x509.CertPool)
 	return certPath, keyPath, pool
 }
 
-// serveOnce runs `awd serve` to completion and returns stderr and whether it
-// exited with an error. It is for runs expected to fail at startup.
+// serveFailure runs `awd serve` to completion and returns its combined
+// output. It fails the test if awd exits 0.
 func serveFailure(t *testing.T, env ...string) (stderr string) {
 	t.Helper()
 	cmd := exec.Command(built, "serve")
@@ -210,5 +210,13 @@ func TestLimiterAnswers429ToAServedAwd(t *testing.T) {
 	}
 	if got := status(); got != http.StatusTooManyRequests {
 		t.Errorf("attempt 11: %d, want 429", got)
+	}
+	resp, err := http.Get(s.url + "/healthz")
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Errorf("healthz after the 429: %d, want 200", resp.StatusCode)
 	}
 }

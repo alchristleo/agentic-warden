@@ -157,6 +157,7 @@ func serve() error {
 	h := handler.New(backing, log)
 	h.ManagedValidator = managedValidator
 	h.AdminTokens = cfg.AdminTokens
+	h.Limit = handler.NewLimiter(cfg.TrustedProxies, time.Now, log).Wrap
 	if len(cfg.AdminTokens) == 0 {
 		log.Warn("no admin token is set; apply and machine administration are disabled; set AWD_ADMIN_TOKEN or AWD_ADMIN_TOKENS_FILE")
 	}
@@ -239,7 +240,7 @@ func serve() error {
 	}
 
 	srv := &http.Server{
-		Handler:      handler.NewLimiter(cfg.TrustedProxies, time.Now, log).Wrap(h.Routes()),
+		Handler:      h.Routes(),
 		TLSConfig:    tlsConfig,
 		ReadTimeout:  cfg.ReadTimeout,
 		WriteTimeout: cfg.WriteTimeout,
