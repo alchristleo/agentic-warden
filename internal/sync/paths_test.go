@@ -6,7 +6,6 @@ import (
 
 	"github.com/alchristleo/agentic-warden/internal/agent/claude"
 	"github.com/alchristleo/agentic-warden/internal/agent/codex"
-	"github.com/alchristleo/agentic-warden/internal/agent/gemini"
 	"github.com/alchristleo/agentic-warden/internal/sync"
 )
 
@@ -33,9 +32,6 @@ func TestAgentRootTable(t *testing.T) {
 		{"linux", "codex", "/etc/codex"},
 		{"darwin", "codex", "/etc/codex"},
 		{"windows", "codex", `C:\ProgramData\OpenAI\Codex`},
-		{"linux", "gemini", "/etc/gemini-cli"},
-		{"darwin", "gemini", "/Library/Application Support/GeminiCli"},
-		{"windows", "gemini", `C:\ProgramData\gemini-cli`},
 		{"linux", "agy", "/etc/antigravity"},
 		{"darwin", "agy", "/Library/Application Support/Antigravity"},
 		{"windows", "agy", `C:\ProgramData\Antigravity`},
@@ -88,10 +84,10 @@ func TestClaudeRootMatchesTheAdaptersSystemDir(t *testing.T) {
 	}
 }
 
-// TestCodexAndGeminiRootsMatchTheAdapters pins sync.AgentRoot to the
+// TestCodexRootMatchesTheAdapter pins sync.AgentRoot to the
 // adapters' own SystemDir, as the Claude test above does: aw-sync writes
 // where AgentRoot says and `aw doctor` reads where the adapter says.
-func TestCodexAndGeminiRootsMatchTheAdapters(t *testing.T) {
+func TestCodexRootMatchesTheAdapter(t *testing.T) {
 	t.Setenv("ProgramData", "")
 	for _, goos := range []string{"linux", "darwin", "windows"} {
 		got, err := sync.AgentRoot(goos, "codex")
@@ -100,13 +96,6 @@ func TestCodexAndGeminiRootsMatchTheAdapters(t *testing.T) {
 		}
 		if want := codex.SystemDir(goos); got != want {
 			t.Errorf("AgentRoot(%s, codex) = %q, want %q", goos, got, want)
-		}
-		got, err = sync.AgentRoot(goos, "gemini")
-		if err != nil {
-			t.Fatal(err)
-		}
-		if want := gemini.SystemDir(goos); got != want {
-			t.Errorf("AgentRoot(%s, gemini) = %q, want %q", goos, got, want)
 		}
 	}
 }

@@ -213,7 +213,7 @@ func TestLoadRuleSetPassesValidatorsThrough(t *testing.T) {
 }
 
 func TestLaunchIsAcceptedForCodexAlone(t *testing.T) {
-	// Claude and Gemini apply their managed document at launch; a launch
+	// Claude and agy apply their managed document at launch; a launch
 	// entry for them would be silently ignored, which an author must hear.
 	ok := &policy.RuleSet{Version: "v1", Rules: []policy.Rule{
 		{Name: "b", Agents: map[string]policy.AgentConfig{"codex": {Launch: map[string]any{"sandbox_mode": "read-only"}}}},
@@ -221,7 +221,7 @@ func TestLaunchIsAcceptedForCodexAlone(t *testing.T) {
 	if err := ok.Validate(); err != nil {
 		t.Errorf("codex launch: %v; want nil", err)
 	}
-	for _, agentName := range []string{"claude", "gemini", "agy"} {
+	for _, agentName := range []string{"claude", "agy"} {
 		bad := &policy.RuleSet{Version: "v1", Rules: []policy.Rule{
 			{Name: "b", Agents: map[string]policy.AgentConfig{agentName: {Launch: map[string]any{"x": 1}}}},
 		}}
@@ -280,5 +280,15 @@ func TestANullLeafInALaunchDocumentFailsValidate(t *testing.T) {
 
 	if err == nil || !strings.Contains(err.Error(), "launch.sandbox_mode") {
 		t.Errorf("err = %v; want launch.sandbox_mode named", err)
+	}
+}
+
+func TestValidateRejectsRemovedAgent(t *testing.T) {
+	set := &policy.RuleSet{Version: "v1", Rules: []policy.Rule{
+		{Name: "old-gemini", Agents: map[string]policy.AgentConfig{"gemini": {Managed: map[string]any{"x": 1}}}},
+	}}
+	err := set.Validate()
+	if err == nil || !strings.Contains(err.Error(), `rule "old-gemini"`) || !strings.Contains(err.Error(), "agy") {
+		t.Fatalf("Validate() error = %v; want the rule name and agy named", err)
 	}
 }
