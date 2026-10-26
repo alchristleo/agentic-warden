@@ -87,3 +87,14 @@ Parallel group A: T1, T2, T3, T4, T6, T7 (no shared files). T5 after T2, T3, T4,
 
 PLAN 316fbc6 spec approved (owner 2026-10-26: TLS + limiter + per-admin tokens; per-IP opt-in proxy; tokens file; skip machine 401s)
 USAGE start 52
+T1 done 212278f sdd-implementer-lite check-svg.sh + test-checks cases + docs.yml step
+T1 review approve 212278f sdd-reviewer-lite none
+T7 done b81016d sdd-implementer helper ownership + emptyEffect; deviation: aw-policy is main pkg, one-key parse repeated in inspect.go
+T6 done 90600dc sdd-implementer CheckRedirect in transport.go, injected client copy, repin before revisedAt; caller CheckRedirect kept as is
+T2 done b114724 sdd-implementer config TLS/proxies/tokens; Config.AdminToken kept for main; trailing # comment accepted
+T7 review approve b81016d sdd-reviewer nits: cross-ref comment in aw-policy main.go; no sticky-dir test
+T2 review approve b114724 sdd-reviewer nits: trailing # comment undocumented; T5 must drop Config.AdminToken
+T4 done 42d7bd5 sdd-implementer AdminTokens + verified actor; main.go minimal map; internal/sync tests touched (T6 overlap)
+T6 review approve 90600dc sdd-reviewer nits: CLI clients to T5; caller-own CheckRedirect branch untested
+T4 review approve 42d7bd5 sdd-reviewer nits to T5: reject duplicate token hash in config; drop CLI X-Applied-By
+T3 done b18c88d sdd-implementer limiter 17 tests, mutation-checked; eviction O(n) scan at cap
