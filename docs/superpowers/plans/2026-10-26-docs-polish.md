@@ -171,3 +171,14 @@ PANEL cdo(re-run) 8ee880f must=0 should=1 nit=1
 SEAT panel-cdo pass 8ee880f AC15 tables fit 1280, 0/106 breaks at 390, anchor lands below header, digest first
 SEAT panel-cdo pass 8ee880f AC14 hero tape ~108 cols for 101-char line; committed hero.gif not re-rendered (owner at gate)
 CONVERGE dd328d9 spec-converge AC1-13,15-17 VERIFIED; AC14 INCONCLUSIVE (hero owner at gate)
+PR #14 opened https://github.com/alchristleo/agentic-warden/pull/14; owner: merge when CI green
+MERGED PR #14 f0218ba head a9383fa CI green; AC14 hero part -> Backlog (owner merged without re-render)
+USAGE end 72
+
+## Retro (2026-10-26)
+
+- **Numbers:** tasks=7 fix_rounds=6 coord=7 fix_waves=1 blocked=1 seats pass/fail=6/1 reruns=2 panel(must/should/nit)=[design skipped; correctness 0/0/3; cdo 1/5/6; re-runs 0/0/3, 0/1/1] triage=[fixed=10 dismissed=0 backlog=5] 5h=21→72 (51pt).
+- **Wasted: 6 owner render round trips for 05/07.** The classifier blocks agents from running downloaded ttyd, so each tape fix needed an owner `!` command, and each result was checked by hand (tmp paths, max line vs columns, one-char lines, frames). Structure: `docs/tapes/render.sh <tape…>` (ttyd on PATH, txt dump, frame extraction, the three text checks, non-zero on failure) → Backlog; first task of the next tape-touching milestone.
+- **Wasted: glitch chased in the terminal for 3 rounds; the root cause was in the product.** The settings file had no final newline, and ble's end-of-line probe drew the stray character. Rule already exists (CLAUDE.md "red before theory"); the miss was a pty harness that could not go red. Kept as a lesson only.
+- **Wasted: 2 failed merge commands.** Local `gh` lacks `--match-head-commit` and `headRefOid`. Proposed: `~/.claude/scripts/pr-merge.sh <pr> <sha>` (checks the head via `git ls-remote`, then merges) — pending owner.
+- **Kept:** a mid-build product fix (D6) got a pre-mortem on the spec diff and caught the hash and test-scope points before build.
