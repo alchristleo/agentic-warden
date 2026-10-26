@@ -98,3 +98,5 @@ T4 done 42d7bd5 sdd-implementer AdminTokens + verified actor; main.go minimal ma
 T6 review approve 90600dc sdd-reviewer nits: CLI clients to T5; caller-own CheckRedirect branch untested
 T4 review approve 42d7bd5 sdd-reviewer nits to T5: reject duplicate token hash in config; drop CLI X-Applied-By
 T3 done b18c88d sdd-implementer limiter 17 tests, mutation-checked; eviction O(n) scan at cap
+T3 fix b18c88d sdd-reviewer fix-needed O(n) eviction under lock, eviction order untested, wait/fail overshoot, no concurrency test
+MERGE group A a702cd4 T1,T2,T4,T6,T7 clean; go vet+test green; T3 in fix round 1
