@@ -83,9 +83,11 @@ type plannedFile struct {
 }
 
 // Run performs one cycle: fetch the bundle, render every enrolled agent,
-// write everything or nothing, record what happened. It never deletes a
-// rendered file; a machine that cannot reach the control plane keeps the
-// policy it last received.
+// write each agent's files, record what happened. A failing agent is isolated:
+// the others are still written and the cycle reports it as failed. A recorded
+// file no enrolled agent owns any more is removed only if it is unchanged. A
+// machine that cannot reach the control plane keeps the policy it last
+// received.
 func Run(ctx context.Context, cfg Config) Result {
 	if cfg.Now == nil {
 		cfg.Now = time.Now
@@ -208,8 +210,13 @@ func Run(ctx context.Context, cfg Config) Result {
 			}
 		}
 		keep := func(path string) bool { return underAny(keepRoots, path) }
-		removed, pruneNotes := prune(state.Files, keep)
-		state.Files = keptFiles(state.Files, keep)
+		var removed, pruneNotes []string
+		if cfg.rootless(machine.Agents) {
+			pruneNotes = []string{pruneSkippedNote}
+		} else {
+			removed, pruneNotes = prune(state.Files, keep)
+			state.Files = keptFiles(state.Files, keep)
+		}
 		state.Error = ""
 		state.SyncedAt = cfg.Now().UTC()
 		res := Result{Unchanged: true, Version: state.Version, Written: make([]string, 0), Notes: state.Notes}
@@ -341,10 +348,18 @@ func Run(ctx context.Context, cfg Config) Result {
 	}
 	keepRoots := append(failedRoots, cfg.StateDir)
 	keep := func(path string) bool { return plannedPaths[path] || underAny(keepRoots, path) }
-	removed, pruneNotes := prune(state.Files, keep)
-	notes = append(append(notes, removedNotes(removed)...), pruneNotes...)
+	rootless := cfg.rootless(machine.Agents)
+	if rootless {
+		notes = append(notes, pruneSkippedNote)
+	} else {
+		removed, pruneNotes := prune(state.Files, keep)
+		notes = append(append(notes, removedNotes(removed)...), pruneNotes...)
+	}
 	for path, sum := range state.Files {
-		if _, ok := files[path]; !ok && underAny(failedRoots, path) {
+		if _, ok := files[path]; ok || underAny([]string{cfg.StateDir}, path) {
+			continue
+		}
+		if rootless || underAny(failedRoots, path) {
 			files[path] = sum
 		}
 	}
@@ -408,6 +423,24 @@ func (cfg Config) renderAgent(name string, bundle *policy.Bundle) ([]plannedFile
 		files = append(files, plannedFile{path: filepath.Join(root, f.Path), content: f.Content, mode: f.Mode, agent: name})
 	}
 	return files, rendering.Notes, nil
+}
+
+// pruneSkippedNote is the note when prune cannot tell which recorded files an
+// enrolled agent owns.
+const pruneSkippedNote = "pruning skipped: an enrolled agent has no known system directory, so its recorded files cannot be told apart from orphans"
+
+// rootless reports whether an enrolled agent that is still supported has no
+// resolvable root. Its recorded files could then be mistaken for orphans.
+func (cfg Config) rootless(agents []string) bool {
+	for _, name := range agents {
+		if _, removed := policy.RemovedAgents[name]; removed {
+			continue
+		}
+		if _, err := cfg.root(name); err != nil {
+			return true
+		}
+	}
+	return false
 }
 
 // underAny reports whether path is inside one of roots, by filepath.Rel and

@@ -1676,6 +1676,10 @@ func (noRootRenderer) Name() string { return "noroot" }
 func TestRunIsolatesAgentWithoutARoot(t *testing.T) {
 	f := newFakeAwd(t, testBundle())
 	cfg, root := enrolled(t, f, claudeRegistry(t, noRootRenderer{flakyRenderer{&atomic.Bool{}}}), "claude", "noroot")
+	orphan := filepath.Join(t.TempDir(), "noroot.txt")
+	writeFile(t, orphan, "N")
+	seedFiles(t, cfg, map[string]string{orphan: sha("N")})
+
 	res := sync.Run(context.Background(), cfg)
 	if res.Err == nil || !strings.Contains(res.Err.Error(), "noroot") {
 		t.Fatalf("Err = %v, want it to name noroot", res.Err)
@@ -1683,7 +1687,40 @@ func TestRunIsolatesAgentWithoutARoot(t *testing.T) {
 	if !exists(filepath.Join(root, claude.BundleFile)) {
 		t.Error("claude was not written")
 	}
-	if state, _ := sync.LoadState(cfg.StateDir); state.ETag != "" {
+	state, _ := sync.LoadState(cfg.StateDir)
+	if state.ETag != "" {
 		t.Errorf("etag = %q, want none", state.ETag)
+	}
+	if !exists(orphan) || state.Files[orphan] != sha("N") {
+		t.Errorf("the root-less agent's recorded file was pruned: on disk %v, state %q", exists(orphan), state.Files[orphan])
+	}
+	if !hasNote(res.Notes, "pruning skipped") {
+		t.Errorf("notes = %q, want a pruning-skipped note", res.Notes)
+	}
+}
+
+func TestRunPruneSkippedOn304WhenAnAgentHasNoRoot(t *testing.T) {
+	f := newFakeAwd(t, testBundle())
+	cfg, _ := enrolled(t, f, claudeRegistry(t, noRootRenderer{flakyRenderer{&atomic.Bool{}}}), "claude")
+	if res := sync.Run(context.Background(), cfg); res.Err != nil {
+		t.Fatal(res.Err)
+	}
+	orphan := filepath.Join(t.TempDir(), "noroot.txt")
+	writeFile(t, orphan, "N")
+	seedFiles(t, cfg, map[string]string{orphan: sha("N")})
+	if err := sync.SaveMachine(cfg.StateDir, sync.Machine{Server: f.srv.URL, MachineID: "m1", Credential: "cred", Agents: []string{"claude", "noroot"}}); err != nil {
+		t.Fatal(err)
+	}
+
+	res := sync.Run(context.Background(), cfg)
+	if res.Err != nil || !res.Unchanged {
+		t.Fatalf("res = %+v, want a clean 304 cycle", res)
+	}
+	state, _ := sync.LoadState(cfg.StateDir)
+	if !exists(orphan) || state.Files[orphan] != sha("N") {
+		t.Errorf("recorded file was pruned on 304: on disk %v, state %q", exists(orphan), state.Files[orphan])
+	}
+	if !hasNote(res.Notes, "pruning skipped") {
+		t.Errorf("notes = %q, want a pruning-skipped note", res.Notes)
 	}
 }
