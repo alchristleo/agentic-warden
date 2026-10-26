@@ -117,6 +117,8 @@ it cites. Plain English, short sentences (asd-ste100 rules in the implementer ag
 
 - 05 GIF: the `cat` prompt after `settings=$(…)` is indented one space (ble redraw at 05's width; 07 clean).
 
+- Panel nits: 05 doctor output wraps mid-word and dim args lines ~2.5:1 (width 1500 font 14 + re-render); 07 prompt one-space indent after `cd ../payments-api`; architecture SVG unreadable at 358 px (GitHub mobile); prep.sh EXIT trap does not survive SIGKILL.
+
 ## Ledger
 
 PLAN f70698d spec approved; plan written; group A (T6, T4, T5) next
@@ -149,3 +151,11 @@ T7 done 1f5cb71 sdd-implementer red 2 cases then green; revert ef84d46 as 2eca37
 T7 review approve 1f5cb71 sdd-reviewer red re-verified by removing newline; nit: revert 2eca37b lacks trailer (git revert --no-edit skipped commit-msg hook; not rewritten)
 T5 coord 50089a4 owner-approved: re-apply probe no-op (05 17:21 render stray 'i'; 07 clean)
 T5 done 207d2c9 coordinator owner render 17:25: 0 tmp, 0 notice, no stray line, brace kept, no wrap; residual: 05 cat prompt indented 1 space (gate)
+PANEL design skipped <300 lines new non-test code (check-links ~70, css 1, go 1); docs-only otherwise
+PANEL correctness da0dc24 must=0 should=0 nit=3
+SEAT panel-correctness pass da0dc24 AC4 every old claim has a home; slug parity 81/81 ids
+PANEL cdo da0dc24 must=1 should=5 nit=6
+SEAT panel-cdo pass da0dc24 AC14 05/07 frames clean; hero part owner at gate
+SEAT panel-cdo fail da0dc24 AC15 desktop STRIDE tables clipped by nowrap; in-page repeats; sticky header hides anchor target
+SEAT panel-cdo pass da0dc24 AC17 no stray line, brace on own line
+TRIAGE fixed=10 dismissed=0 backlog=5
