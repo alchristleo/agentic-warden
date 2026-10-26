@@ -81,6 +81,7 @@ Parallel group A: T1, T2, T3, T4, T6, T7 (no shared files). T5 after T2, T3, T4,
 - TLS certificate hot reload.
 - Admin tokens in the database with create/revoke API.
 - Custom CA option for `aw-sync` / `awd` CLI.
+- One exported admin-tokens parse function taking the env hash; config exports the name-rule message for `awd admin-token` (panel-design nits).
 - From adapter cleanup: known-agent allowlist for rule keys; merged-document validation per agent; skip-with-note for foreign agy admin file; back-off for always-failing render; prune parent-dir ownership check.
 
 ## Ledger
@@ -114,3 +115,13 @@ T5 done c80f2d5 sdd-reviewer-lite re-review approve
 T8 done 0a8ebe9 sdd-implementer docs + cell AWD_TRUSTED_PROXIES via data aws_vpc (new ec2:DescribeVpcs); tofu test 28 pass; AWD_APPLIED_BY docs dropped
 T8 review approve 0a8ebe9 sdd-reviewer nits: data aws_vpc ok; reference 11th attempt
 T8 coord 183c888 reference: 11th attempt not failure
+COORD fix-wave re-review 0023547 sdd-reviewer-lite fail: must 183c888 sed missed (backticked 429), reference.md unchanged; edit deferred to panel fix wave (AC14 seat)
+PANEL design 0023547 must=1 should=5 nit=4
+PANEL correctness 0023547 must=1 should=2 nit=3
+COORD usage 89 budget mode: no design re-run, no Opus escalation
+PANEL security 0023547 must=1 should=1 nit=2
+SEAT panel-security pass 0023547 AC14 docs match D9; reference 11th-attempt edit still pending
+DISMISSED design should LRU->arbitrary eviction: owner chose plain LRU, both O(1)
+DISMISSED design should Limit hook->*Limiter: preference, no failure
+DISMISSED design nit statPath global: seat rated acceptable
+TRIAGE fixed=15 dismissed=3 backlog=2
