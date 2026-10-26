@@ -9,7 +9,7 @@ Set BorderRadius 8
 Set Margin 20
 Set MarginFill "#0a0a0a"
 Set FontSize 18
-Set Width 1200
+Set Width 1300
 Set Height 460
 Set TypingSpeed 20ms
 Set Padding 16

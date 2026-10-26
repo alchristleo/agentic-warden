@@ -7,6 +7,10 @@ description: What Agentic Warden enforces, what it only detects, and what it can
 
 # Security model and limits
 
+- **Holds:** policy for bare `claude`, a bundle checked against a pinned key, schema-valid output only, hashed credentials, closed admin routes.
+- **Only detects:** tampering by a user with root, and loose file ownership or mode.
+- **Does not stop:** a local administrator, edits to `.git/config`, shadowing server-managed settings, or unenforced agy and Codex settings.
+
 Agentic Warden is a client-side control. It is not a security boundary against a person with administrator rights on their own machine. This page says what it holds, what it only detects, and where it stops. Each claim names the file or test that backs it, so you can check us. Paths are relative to the [repository](https://github.com/alchristleo/agentic-warden).
 
 ## What it holds
@@ -17,7 +21,7 @@ Agentic Warden is a client-side control. It is not a security boundary against a
 
 **Settings that fail the schema are never emitted.** The helper validates its output against the vendored Claude Code settings schema first. Evidence: `TestASchemaViolationIsNeverEmitted` in `internal/policyhelper/helper_test.go`.
 
-**A bundle is checked against a pinned key before it is used.** When the control plane signs bundles, a machine pins the key it is given at enrollment and verifies every fetch against it before parsing the body. The pin is trust on first use, but a token from a signing control plane carries the key id, so a different key is refused (see [design limits](./threat-model.md#design-limits)). Signing applies only to machines enrolled after the key is set; an earlier machine pins nothing and `aw doctor` warns "enrolled before bundle signing; re-enroll to pin a key" (`inspectPin` in `internal/agent/claude/inspect.go`). Only a rollover statement signed by the pinned key can move the pin, or a root re-enrollment (`aw-sync enroll --force`, `cmd/aw-sync/main.go`), which is trust on first use again. A failed check writes nothing. Evidence: `TestFetchRequiresASignatureWhenAKeyIsPinned`, `TestFetchRejectsATamperedBody` and `TestFetchRejectsAForgedRollover` in `internal/sync/client_test.go`; `TestRunWritesNothingWhenVerificationFails` in `internal/sync/sync_test.go`.
+**A bundle is checked against a pinned key before it is used.** When the control plane signs bundles, a machine pins the key it is given at enrollment and verifies every fetch against it before parsing the body. The pin is trust on first use (see [design limits](./threat-model.md#design-limits)). Signing applies only to machines enrolled after the key is set; an earlier machine pins nothing and `aw doctor` warns "enrolled before bundle signing; re-enroll to pin a key" (`inspectPin` in `internal/agent/claude/inspect.go`). Only a rollover statement signed by the pinned key can move the pin, or a root re-enrollment (`aw-sync enroll --force`, `cmd/aw-sync/main.go`). A failed check writes nothing. Evidence: `TestFetchRequiresASignatureWhenAKeyIsPinned`, `TestFetchRejectsATamperedBody` and `TestFetchRejectsAForgedRollover` in `internal/sync/client_test.go`; `TestRunWritesNothingWhenVerificationFails` in `internal/sync/sync_test.go`.
 
 **On a signed deployment, `aw-policy` re-checks the bundle on disk at every launch.** It verifies the bundle, its signature and the trust file together before compiling. Evidence: `TestRunRefusesATamperedBundle`, `TestRunRefusesAMissingSignature` and `TestRunRefusesAnUnreadableTrustFile` in `internal/policyhelper/helper_test.go`.
 
@@ -55,6 +59,6 @@ The design limits, with the evidence for each, are in the [threat model](./threa
 
 ## What the control plane sees
 
-Enrollment and sync requests: who enrolled, from which machine, and which policy they were sent. It never sees prompts, code or model traffic, because `awd` is not in the path of an agent session: its routes (`Routes` in `internal/handler/handler.go`) are policy, bundle, enrollment, groups, audit, SCIM and the console, with no proxy to a model provider. The [trust statement](./trust.md) covers the hosted version.
+Enrollment and sync requests: who enrolled, from which machine, and which policy they were sent. Prompts, code and model traffic never reach it ([what never reaches us](./trust.md#what-never-reaches-us)). The routes in `Routes` in `internal/handler/handler.go` have no proxy to a model provider.
 
 Next: the [threat model](./threat-model.md) goes component by component.

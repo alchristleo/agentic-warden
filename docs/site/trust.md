@@ -16,7 +16,7 @@ runs today, including what is not yet as good as we want it.
 
 Where the statement makes a claim about the infrastructure, the check is in the repository. The key policy, the task role's permissions, the private database and the digest-pinned image are asserted by `deploy/aws/cell/tests/cell.tftest.hcl`, and the [threat model](./threat-model.md) names the tests. Some claims are not in this repository. CloudTrail logging of `Sign` calls and the deletion steps are our operating practice, described in the [runbook](https://github.com/alchristleo/agentic-warden/blob/main/docs/hosting/runbook.md). You should ask us for evidence of them.
 
-One limit to know before you read it: we hold the AWS account that holds your signing key. Co-signed revisions, where a key you hold must also sign, are planned and not built.
+One limit to know before you read it: we hold the AWS account that holds your signing key. [Who holds the signing key](#who-holds-the-signing-key) says what limits that.
 
 ## What we run for you
 
