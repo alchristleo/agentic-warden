@@ -101,6 +101,13 @@ it cites. Plain English, short sentences (asd-ste100 rules in the implementer ag
 - Hero and 06 GIFs: owner re-records by hand after T5 (`docs/tapes/README.md`).
 - Stale `.claude/worktrees/agent-*` directories from earlier milestones (8+): clean up.
 
+- check-links anchor nits (T6 review): skip the page's first h1 (site strips it; -N drift if repeated); `_x_` emphasis slug; fixture for `/docs/<page>#frag`.
+
 ## Ledger
 
 PLAN f70698d spec approved; plan written; group A (T6, T4, T5) next
+USAGE start 21
+T4 done a98944b sdd-implementer red docs.spec.ts:95 then green; typecheck, 84 unit, build, 48 e2e pass; first hand-back was 'pending', re-asked
+T6 done fd9b6d0 sdd-implementer anchors resolve via renderMarkdown slug rule h1-h3; no stale anchors on main; SIGPIPE false-positive fixed
+T4 review approve a98944b sdd-reviewer red re-verified by removing rule; 2 nits skipped (untouched css spacing, trailer info)
+T6 review approve fd9b6d0 sdd-reviewer break-it exit 1 verified; 3 nits -> Backlog
