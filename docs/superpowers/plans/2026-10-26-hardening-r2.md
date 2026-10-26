@@ -111,3 +111,4 @@ MERGE T3 cca7143 clean; go vet+test green
 T5 done f8d383d sdd-implementer TLS, admin-token, limiter wiring, CLI redirect, dup-hash reject; exported config.ValidAdminName; appliedBy removed
 T5 fix f8d383d sdd-reviewer fix-needed must limiter outside Logging/Recovery (429 not logged); should no served /healthz bypass check; nits serveFailure comment
 T5 done c80f2d5 sdd-reviewer-lite re-review approve
+T8 done 0a8ebe9 sdd-implementer docs + cell AWD_TRUSTED_PROXIES via data aws_vpc (new ec2:DescribeVpcs); tofu test 28 pass; AWD_APPLIED_BY docs dropped
