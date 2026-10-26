@@ -61,6 +61,8 @@ if [ "$_aw_n" -gt 2 ]; then
   awd_pid=$!
   # Out of the job table, so that killing awd prints no "Done ... (wd: /tmp/tmp.XXXXXXXXXX/...)" notice.
   disown
+  # disown also keeps awd alive when the recording shell exits; stop it then, or the next tape finds the port taken.
+  trap 'kill "$awd_pid" 2>/dev/null' EXIT
   sleep 1
 fi
 if [ "$_aw_n" -gt 3 ]; then _aw_r awd apply examples/quickstart.yaml || return 1; fi
