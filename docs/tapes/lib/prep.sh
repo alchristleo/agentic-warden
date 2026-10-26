@@ -57,6 +57,8 @@ if [ "$_aw_n" -gt 2 ]; then
   # The previous tape's awd can still hold the port for a moment after its recording ends.
   for _aw_i in $(seq 50); do (exec 3<>/dev/tcp/127.0.0.1/8080) 2>/dev/null || break; sleep 0.2; done
   unset _aw_i
+  # No job control, so that killing awd prints no "Done ... (wd: /tmp/tmp.XXXXXXXXXX/...)" notice.
+  set +m
   awd serve >/dev/null 2>&1 &
   awd_pid=$!
   sleep 1
