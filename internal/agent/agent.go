@@ -187,9 +187,9 @@ type Rendering struct {
 
 // Renderer is implemented by adapters whose agent is governed by files on
 // disk that something on the machine has to write. Render validates what it
-// returns: an error means none of its files may be written, and the caller
-// then writes nothing for any agent that cycle, so the machine never carries
-// a half-applied policy.
+// returns: an error means none of its files may be written, so that agent
+// never carries a half-applied policy. The caller still writes the other
+// agents and records the error in state.
 //
 // The operating system Render renders for is the adapter's own knob (for
 // example claude.Adapter.GOOS), set by the caller before calling Render; the
