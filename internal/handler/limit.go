@@ -53,7 +53,8 @@ func (l *Limiter) Wrap(next http.Handler) http.Handler {
 			return
 		}
 		key := l.key(r)
-		if wait := l.reserve(key); wait > 0 {
+		wait, taken := l.reserve(key)
+		if wait > 0 {
 			w.Header().Set("Retry-After", strconv.Itoa(int(math.Ceil(wait.Seconds()))))
 			writeError(w, http.StatusTooManyRequests, limitBlockedBody)
 			return
@@ -61,7 +62,7 @@ func (l *Limiter) Wrap(next http.Handler) http.Handler {
 		rec := &statusRecorder{ResponseWriter: w, status: http.StatusOK}
 		next.ServeHTTP(rec, r)
 		if !countedFailure(r, rec.status) {
-			l.refund(key)
+			l.refund(key, taken)
 		}
 	})
 }
@@ -85,9 +86,10 @@ func (l *Limiter) refilled(b *bucket, now time.Time) float64 {
 }
 
 // reserve takes one token for key before the request runs. It returns how
-// long until key may try again, or 0 when a token was taken. Check and take
-// happen under one lock, so concurrent requests cannot overshoot the burst.
-func (l *Limiter) reserve(key netip.Prefix) time.Duration {
+// long until key may try again, or 0 when a token was taken, and the bucket
+// the token came from. Check and take happen under one lock, so concurrent
+// requests cannot overshoot the burst.
+func (l *Limiter) reserve(key netip.Prefix) (time.Duration, *list.Element) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	now := l.now()
@@ -108,20 +110,21 @@ func (l *Limiter) reserve(key netip.Prefix) time.Duration {
 	b.tokens = l.refilled(b, now)
 	b.last = now
 	if b.tokens < 1 {
-		return time.Duration((1 - b.tokens) * float64(limitRefill))
+		return time.Duration((1 - b.tokens) * float64(limitRefill)), el
 	}
 	b.tokens--
-	return 0
+	return 0, el
 }
 
-// refund gives back a reserved token when the request was not a counted
-// failure. A bucket that is full again is dropped, so the map holds only
+// refund gives back a token reserve took from el when the request was not a
+// counted failure. If el was evicted meanwhile, a new bucket for the same key
+// is not credited. A bucket that is full again is dropped, so the map holds only
 // keys that failed recently.
-func (l *Limiter) refund(key netip.Prefix) {
+func (l *Limiter) refund(key netip.Prefix, taken *list.Element) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	el, ok := l.buckets[key]
-	if !ok {
+	if !ok || el != taken {
 		return
 	}
 	b := el.Value.(*bucket)

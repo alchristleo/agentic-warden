@@ -392,3 +392,69 @@ func TestLimiterRefundsUncountedRequests(t *testing.T) {
 		t.Fatalf("buckets = %d after only successes", len(l.buckets))
 	}
 }
+
+func TestLimiterBlockedRequestTakesNoToken(t *testing.T) {
+	l, clock, _ := limiterFor()
+	inner := &statusInner{status: 401}
+	h := l.Wrap(inner)
+	for i := 0; i < 10; i++ {
+		do(h, "GET", "/v1/policy", "192.0.2.1:1")
+	}
+	clock.advance(3 * time.Second)
+	for i := 0; i < 5; i++ {
+		if got := do(h, "GET", "/v1/policy", "192.0.2.1:1").Code; got != 429 {
+			t.Fatalf("blocked request %d: %d", i, got)
+		}
+	}
+	clock.advance(3 * time.Second)
+	if got := do(h, "GET", "/v1/policy", "192.0.2.1:1").Code; got != 401 {
+		t.Fatalf("after one refill interval: %d", got)
+	}
+	if got := do(h, "GET", "/v1/policy", "192.0.2.1:1").Code; got != 429 {
+		t.Fatalf("second request after one interval: %d", got)
+	}
+}
+
+func TestLimiterRefundNeverExceedsBurst(t *testing.T) {
+	l, clock, _ := limiterFor()
+	inner := &statusInner{status: 401}
+	h := l.Wrap(inner)
+	do(h, "GET", "/v1/policy", "192.0.2.1:1") // 9 tokens
+	clock.advance(limitRefill)                // back to 10 by time alone
+	inner.status = 200
+	do(h, "GET", "/v1/policy", "192.0.2.1:1") // reserve to 9, refund to 10
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	for _, el := range l.buckets {
+		if tk := el.Value.(*bucket).tokens; tk > limitBurst {
+			t.Fatalf("tokens = %v above burst", tk)
+		}
+	}
+	if len(l.buckets) != 0 {
+		t.Fatalf("full bucket kept: %d", len(l.buckets))
+	}
+}
+
+func TestLimiterRefundSkipsRecreatedBucket(t *testing.T) {
+	l, _, _ := limiterFor()
+	key := netip.MustParsePrefix("192.0.2.1/32")
+	h := l.Wrap(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		// While this request runs, other clients push its key out of the
+		// cache and the key comes back with a fresh bucket.
+		for i := 0; i < limitMaxKeys; i++ {
+			l.reserve(v4Key(i))
+		}
+		l.reserve(key)
+		w.WriteHeader(http.StatusOK)
+	}))
+	do(h, "GET", "/v1/policy", "192.0.2.1:1")
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	el, ok := l.buckets[key]
+	if !ok {
+		t.Fatal("recreated bucket missing")
+	}
+	if tk := el.Value.(*bucket).tokens; tk != limitBurst-1 {
+		t.Fatalf("tokens = %v, want %d: refund credited the new bucket", tk, limitBurst-1)
+	}
+}
