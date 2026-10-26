@@ -85,6 +85,7 @@ Checks: `cd web && pnpm test`; `grep -c -i gemini` on the five files prints 0 (e
 - Skip-with-note for a foreign agy admin file (Renderer contract).
 - agy permissions/MCP/hooks if Google adds a system tier; macOS/Windows real-agy checks.
 - Back-off for an agent whose render fails every cycle.
+- Prune: refuse a parent dir that is not root-owned, or unlinkat via O_NOFOLLOW dir fd (panel-security nit; mitigated by no prune under --root).
 - .agents/product-marketing.md still lists Gemini CLI and `aw gemini` (D docs session).
 
 ## Ledger
@@ -105,3 +106,11 @@ COORD review approve 37b5c0f sdd-reviewer-lite architecture.json + revision.go
 T2 done 1005189 sdd-implementer prune+isolation+304 prune+enroll keeps Files; sidecar is .aw-revision; concerns: 304 unknown-root agent files = orphans, stale Run doc comment
 T2 fix 1005189 sdd-reviewer fix-needed root-less failed agent's files pruned (D3), test seeds none, stale Run doc
 T2 done 6918021 sdd-reviewer-lite re-review approve; should: root-less cycle skips removed-agent prune too (intended, spec D3 note)
+T2 coord 2dd5a40 spec D2 states root-less cycle skips all prune (reviewer-lite should)
+PANEL design 2dd5a40 must=0 should=4 nit=4
+PANEL cdo 2dd5a40 must=0 should=5 nit=4
+SEAT panel-cdo fail 2dd5a40 AC11 sync note no re-enroll step, paid-licence exception missing, sample error clipped
+PANEL security 2dd5a40 must=0 should=1 nit=1
+SEAT panel-security pass 2dd5a40 AC12 caveat: --root override prunes enrolled agent's real files on 304
+PANEL correctness 2dd5a40 must=1 should=2 nit=3
+TRIAGE fixed=22 dismissed=0 backlog=1
