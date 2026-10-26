@@ -1667,3 +1667,23 @@ func TestRunIsolatesUnknownAgent(t *testing.T) {
 		t.Errorf("ghost file or record lost: state = %+v", state)
 	}
 }
+
+// noRootRenderer is an adapter aw-sync knows no system directory for.
+type noRootRenderer struct{ flakyRenderer }
+
+func (noRootRenderer) Name() string { return "noroot" }
+
+func TestRunIsolatesAgentWithoutARoot(t *testing.T) {
+	f := newFakeAwd(t, testBundle())
+	cfg, root := enrolled(t, f, claudeRegistry(t, noRootRenderer{flakyRenderer{&atomic.Bool{}}}), "claude", "noroot")
+	res := sync.Run(context.Background(), cfg)
+	if res.Err == nil || !strings.Contains(res.Err.Error(), "noroot") {
+		t.Fatalf("Err = %v, want it to name noroot", res.Err)
+	}
+	if !exists(filepath.Join(root, claude.BundleFile)) {
+		t.Error("claude was not written")
+	}
+	if state, _ := sync.LoadState(cfg.StateDir); state.ETag != "" {
+		t.Errorf("etag = %q, want none", state.ETag)
+	}
+}
