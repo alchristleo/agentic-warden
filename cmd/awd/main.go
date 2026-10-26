@@ -37,6 +37,7 @@ import (
 	"github.com/alchristleo/agentic-warden/internal/console/authz"
 	"github.com/alchristleo/agentic-warden/internal/console/session"
 	"github.com/alchristleo/agentic-warden/internal/console/sso"
+	"github.com/alchristleo/agentic-warden/internal/credential"
 	"github.com/alchristleo/agentic-warden/internal/handler"
 	"github.com/alchristleo/agentic-warden/internal/model"
 	"github.com/alchristleo/agentic-warden/internal/policy"
@@ -147,8 +148,9 @@ func serve() error {
 
 	h := handler.New(backing, log)
 	h.ManagedValidator = managedValidator
-	h.AdminToken = cfg.AdminToken
-	if cfg.AdminToken == "" {
+	if cfg.AdminToken != "" {
+		h.AdminTokens = map[string]string{"admin": credential.Hash(cfg.AdminToken)}
+	} else {
 		log.Warn("AWD_ADMIN_TOKEN is unset; apply and machine administration are disabled")
 	}
 	h.SCIMToken = cfg.SCIMToken

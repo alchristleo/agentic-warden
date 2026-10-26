@@ -151,7 +151,7 @@ func TestSCIMGroupsHiddenWhenSCIMDisabled(t *testing.T) {
 	}
 
 	h := handler.New(s, nil)
-	h.AdminToken = adminToken
+	h.AdminTokens = adminTokens()
 	h.SCIMToken = "" // SCIM disabled; the store still has SCIM data from before
 	h.Now = func() time.Time { return at }
 	srv := httptest.NewServer(h.Routes())

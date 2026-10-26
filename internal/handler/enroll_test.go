@@ -91,7 +91,7 @@ func TestATokenEnrollsOneMachine(t *testing.T) {
 
 func TestEnrollmentReturnsThePublicKeyWhenSigned(t *testing.T) {
 	h := handler.New(store.NewMemory(), nil)
-	h.AdminToken = adminToken
+	h.AdminTokens = adminTokens()
 	key, _ := signing.Generate()
 	h.Signer = &handler.Signer{Current: signing.NewSeedSigner(key)}
 	srv := httptest.NewServer(h.Routes())
@@ -224,7 +224,7 @@ func TestRevokingAMachine(t *testing.T) {
 
 func TestEnrollmentTokenCarriesKeyID(t *testing.T) {
 	h := handler.New(store.NewMemory(), nil)
-	h.AdminToken = adminToken
+	h.AdminTokens = adminTokens()
 	key, _ := signing.Generate()
 	h.Signer = &handler.Signer{Current: signing.NewSeedSigner(key)}
 	srv := httptest.NewServer(h.Routes())

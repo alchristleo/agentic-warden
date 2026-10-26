@@ -233,7 +233,7 @@ func TestBundleGroupsAreTheUnionOfAuthoredAndSynced(t *testing.T) {
 func newSignedServer(t *testing.T, signer *handler.Signer) *httptest.Server {
 	t.Helper()
 	h := handler.New(store.NewMemory(), nil)
-	h.AdminToken = adminToken
+	h.AdminTokens = adminTokens()
 	h.Now = func() time.Time { return time.Date(2026, 9, 20, 12, 0, 0, 0, time.UTC) }
 	h.Signer = signer
 	srv := httptest.NewServer(h.Routes())
@@ -559,7 +559,7 @@ func TestBundleCarriesRevisedAt(t *testing.T) {
 
 func TestRollbackApplyMovesRevisedAtForward(t *testing.T) {
 	h := handler.New(store.NewMemory(), nil)
-	h.AdminToken = adminToken
+	h.AdminTokens = adminTokens()
 	now := time.Date(2026, 9, 20, 12, 0, 0, 0, time.UTC)
 	h.Now = func() time.Time { return now }
 	srv := httptest.NewServer(h.Routes())

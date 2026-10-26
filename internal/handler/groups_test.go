@@ -7,6 +7,8 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+
+	"github.com/alchristleo/agentic-warden/internal/credential"
 )
 
 // putGroups posts a snapshot with the given bearer; empty sends none.
@@ -149,5 +151,24 @@ func TestAnEmptyMembersObjectIsAValidSnapshot(t *testing.T) {
 	}
 	if !strings.Contains(string(body), `"members":{}`) {
 		t.Errorf("GET body = %s; want an explicit empty members object, not an omitted field", body)
+	}
+}
+
+func TestGroupsAppliedByIsVerifiedActor(t *testing.T) {
+	srv := serverWithTokens(t, map[string]string{"alice": credential.Hash("alice-secret")})
+	req, _ := http.NewRequest("PUT", srv.URL+"/v1/groups", strings.NewReader(`{"source":"okta","members":{"bob@example.com":["devs"]}}`))
+	req.Header.Set("Authorization", "Bearer alice-secret")
+	req.Header.Set("X-Applied-By", "mallory")
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	if got := decodeSummary(t, resp); got.AppliedBy != "token:alice" {
+		t.Errorf("PUT appliedBy = %q, want token:alice", got.AppliedBy)
+	}
+
+	if got := decodeSummary(t, getAs(t, srv, "/v1/groups", "alice-secret")); got.AppliedBy != "token:alice" {
+		t.Errorf("GET appliedBy = %q, want token:alice", got.AppliedBy)
 	}
 }
