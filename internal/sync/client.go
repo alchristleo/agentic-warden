@@ -264,9 +264,12 @@ func (c *Client) endpoint(path string) string {
 // warm between calls; building one here is cheap enough.
 func (c *Client) client() *http.Client {
 	if c.HTTP != nil {
-		return c.HTTP
+		if c.HTTP.CheckRedirect != nil {
+			return c.HTTP
+		}
+		hc := *c.HTTP
+		hc.CheckRedirect = CheckRedirect
+		return &hc
 	}
-	return &http.Client{Timeout: defaultTimeout, CheckRedirect: func(r *http.Request, _ []*http.Request) error {
-		return CheckTransport(r.URL.String())
-	}}
+	return &http.Client{Timeout: defaultTimeout, CheckRedirect: CheckRedirect}
 }

@@ -239,6 +239,12 @@ func Run(ctx context.Context, cfg Config) Result {
 	// is signed with the bundle, so a replay of an old signed bundle is
 	// caught here, before anything is rendered or written.
 	if pinned != nil && fetched.Bundle.RevisedAt < state.RevisedAt {
+		// The rollover was verified against the pin inside Fetch and says
+		// nothing about this bundle, so a refused replay must not stop the
+		// rotation from finishing.
+		if fetched.Rollover != nil {
+			notes = append(notes, cfg.repin(machine, *fetched.Rollover)...)
+		}
 		return cfg.fail(state, notes, nil, nil, fmt.Errorf("policy revision time %s is older than last rendered %s; apply the policy again on the control plane",
 			revisionTime(fetched.Bundle.RevisedAt), revisionTime(state.RevisedAt)))
 	}

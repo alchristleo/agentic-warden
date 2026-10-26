@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -694,5 +695,54 @@ func TestFetchAgainstV2OnlyServerWithOldClientBehaviour(t *testing.T) {
 	_, err := (&sync.Client{Server: srv.URL}).Fetch(context.Background(), "cred", "", nil)
 	if err == nil || !strings.Contains(err.Error(), "upgrade aw-sync") {
 		t.Fatalf("err = %v, want it to mention upgrading aw-sync; the machine keeps its current bundle either way", err)
+	}
+}
+
+func redirectChain(t *testing.T, hops int) *httptest.Server {
+	t.Helper()
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		n, _ := strconv.Atoi(strings.TrimPrefix(r.URL.Path, "/"))
+		if n >= hops {
+			w.WriteHeader(http.StatusCreated)
+			_, _ = w.Write([]byte(`{"machineId":"m1","credential":"c1","user":"u"}`))
+			return
+		}
+		http.Redirect(w, r, "/"+strconv.Itoa(n+1), http.StatusTemporaryRedirect)
+	}))
+	t.Cleanup(srv.Close)
+	return srv
+}
+
+// AC9: a custom CheckRedirect replaces Go's ten-hop cap, so the helper
+// restores it.
+func TestRedirectCap(t *testing.T) {
+	ok := redirectChain(t, 9)
+	if _, err := (&sync.Client{Server: ok.URL}).Enroll(context.Background(), "tok", "h", "linux"); err != nil {
+		t.Errorf("9 hops: err = %v, want success", err)
+	}
+	tooMany := redirectChain(t, 10)
+	_, err := (&sync.Client{Server: tooMany.URL}).Enroll(context.Background(), "tok", "h", "linux")
+	if err == nil || !strings.Contains(err.Error(), "redirect") {
+		t.Errorf("10 hops: err = %v, want a refusal naming redirects", err)
+	}
+}
+
+// AC9: an injected client without CheckRedirect still refuses plain http,
+// and the caller's client is not changed.
+func TestInjectedClientChecksRedirect(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, "http://evil.example/steal", http.StatusTemporaryRedirect)
+	}))
+	defer srv.Close()
+	hc := &http.Client{}
+	c := &sync.Client{Server: srv.URL, HTTP: hc}
+
+	_, err := c.Enroll(context.Background(), "tok", "h", "linux")
+
+	if err == nil || !strings.Contains(err.Error(), "https") {
+		t.Fatalf("err = %v, want a refusal naming https", err)
+	}
+	if hc.CheckRedirect != nil {
+		t.Error("the caller's client was mutated")
 	}
 }
