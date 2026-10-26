@@ -2,7 +2,6 @@ package codex
 
 import (
 	"fmt"
-	"strings"
 
 	toml "github.com/pelletier/go-toml/v2"
 
@@ -36,7 +35,7 @@ func (a *Adapter) Render(bundle *policy.Bundle) (agent.Rendering, error) {
 	content := append([]byte(header(bundle)), body...)
 	return agent.Rendering{
 		Files: []agent.File{{Path: RequirementsFile, Content: content, Mode: 0o644}},
-		Notes: dropped(bundle),
+		Notes: agent.DroppedRepoRules(bundle, Name, RequirementsFile),
 	}, nil
 }
 
@@ -49,25 +48,6 @@ func header(bundle *policy.Bundle) string {
 		version = bundle.Version
 	}
 	return "# Managed by aw-sync from policy revision " + version + ". Do not edit: the next sync overwrites this file.\n\n"
-}
-
-// dropped names the Codex rules Compile("") left out because they are scoped
-// to repositories. Rules for other agents are not this renderer's to report.
-func dropped(bundle *policy.Bundle) []string {
-	if bundle == nil {
-		return nil
-	}
-	var names []string
-	for _, rule := range bundle.Rules {
-		if _, forCodex := rule.Agents[Name]; forCodex && len(rule.Match.Repos) > 0 {
-			names = append(names, rule.Name)
-		}
-	}
-	if len(names) == 0 {
-		return nil
-	}
-	return []string{fmt.Sprintf("codex: %d repo-scoped rule(s) not enforceable in requirements.toml: %s",
-		len(names), strings.Join(names, ", "))}
 }
 
 // DecodeForTest parses a rendered document back into a map. It exists so the
