@@ -101,3 +101,7 @@ T5 review approve 2915fca sdd-reviewer-lite should: docs/assets/architecture.jso
 T1 review approve 4db3165 sdd-reviewer nits: revision.go:8 long line; .agents/product-marketing.md still lists Gemini
 MERGE group A 02c767d T1,T3,T4,T5 clean; go vet+test green; AC1 AC9 pass
 T5 coord 37b5c0f architecture.json label Codex, agy; revision.go comment reflow
+COORD review approve 37b5c0f sdd-reviewer-lite architecture.json + revision.go
+T2 done 1005189 sdd-implementer prune+isolation+304 prune+enroll keeps Files; sidecar is .aw-revision; concerns: 304 unknown-root agent files = orphans, stale Run doc comment
+T2 fix 1005189 sdd-reviewer fix-needed root-less failed agent's files pruned (D3), test seeds none, stale Run doc
+T2 done 6918021 sdd-reviewer-lite re-review approve; should: root-less cycle skips removed-agent prune too (intended, spec D3 note)

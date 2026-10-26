@@ -46,6 +46,9 @@ Share the one repo-scoped-rule note helper that codex and agy copy.
   etag) are never candidates. A `.revision` sidecar is removed only together with its main file, only if
   Lstat says regular file; it is not hash-checked (its content is a revision line).
   "Under root R" is `filepath.Rel(R, p)` local, not a string prefix.
+  If any enrolled agent not in `RemovedAgents` has no resolvable root, its files cannot be told apart from
+  orphans, so prune is skipped for that whole cycle (removed agents included) with one note; recorded files carry over.
+  Sidecar suffix is `.aw-revision`.
 - **D2a Prune on 304 too** (pre-mortem). An upgraded machine with an unchanged policy gets 304 every cycle, so
   prune also runs on the 304 path, over orphans only: recorded paths not under the root of any enrolled,
   non-removed agent and not state-dir files. A renderer that stops emitting a file is pruned at the next policy
