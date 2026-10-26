@@ -114,3 +114,9 @@ PANEL security 2dd5a40 must=0 should=1 nit=1
 SEAT panel-security pass 2dd5a40 AC12 caveat: --root override prunes enrolled agent's real files on 304
 PANEL correctness 2dd5a40 must=1 should=2 nit=3
 TRIAGE fixed=22 dismissed=0 backlog=1
+FIX wave 4633631 sdd-implementer F1-F17; F1 narrowed: skip prune when a Roots override replaces a default root holding recorded files; no test F10/F9 note
+COORD fix-wave re-review 4633631 sdd-reviewer-lite fail: should 304 loop under shadowing Roots override (forced full cycle forever, wrong note); should F10 doctor untested; nits spec RemovedAgents name
+PANEL security 4633631 must=0 should=0 nit=2
+SEAT panel-security pass 4633631 AC12 re-run on fix diff
+PANEL cdo 4633631 must=0 should=1 nit=3
+SEAT panel-cdo fail 4633631 AC11 re-enroll command in sync note not runnable (needs --server + new token, literal ...)
