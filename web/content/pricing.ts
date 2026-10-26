@@ -12,7 +12,7 @@ export const pricing = {
       badge: "Coming soon",
       summary: "Hosted for you. For teams that want governance without running a control plane.",
       price: "Contact us",
-      features: ["Hosted console", "Claude Code and Codex", "Group and repository targeting", "Signed bundles"],
+      features: ["Hosted console", "Claude Code, Codex and Antigravity CLI (gateway and models)", "Group and repository targeting", "Signed bundles"],
       cta: "Request demo",
     },
     {
@@ -45,7 +45,7 @@ export const pricing = {
   comparison: {
     columns: ["Team", "Enterprise", "Self-hosted"],
     rows: [
-      { feature: "Claude Code and Codex", values: ["Yes", "Yes", "Yes"] },
+      { feature: "Claude Code, Codex and Antigravity CLI (gateway and models)", values: ["Yes", "Yes", "Yes"] },
       { feature: "Group and repository targeting", values: ["Yes", "Yes", "Yes"] },
       { feature: "Signed bundles", values: ["Yes", "Yes", "Yes"] },
       { feature: "SCIM provisioning", values: ["—", "Yes", "Yes"] },

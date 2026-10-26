@@ -6,14 +6,14 @@ import { isProductionDeploy, siteUrl, type Env } from "@/lib/env";
 export const routes = [
   {
     path: "/",
-    title: "Agentic Warden — one policy for every coding agent",
+    title: "Agentic Warden — one policy for your coding agents",
     description: site.description,
   },
   {
     path: "/product",
     title: "Product — Agentic Warden",
     description:
-      "Group and repository targeting, signed bundles, SCIM provisioning and scheduled sync for Claude Code, Codex and agy (Antigravity CLI).",
+      "Group and repository targeting, signed bundles, SCIM provisioning and scheduled sync for Claude Code, Codex and Antigravity CLI.",
   },
   {
     path: "/pricing",

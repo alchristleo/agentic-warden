@@ -1,7 +1,7 @@
 export const site = {
   name: "Agentic Warden",
   description:
-    "Agentic Warden is the enterprise control plane for AI coding agents. Author one policy and govern Claude Code and Codex by group and by repository.",
+    "Agentic Warden is the enterprise control plane for AI coding agents. Author one policy and govern Claude Code, Codex and Antigravity CLI (gateway and models) by group and by repository.",
   githubUrl: "https://github.com/alchristleo/agentic-warden",
   docsUrl: "/docs",
   licenseName: "Apache-2.0",

@@ -2,7 +2,7 @@ import { expect, test } from "@playwright/test";
 
 test("home tells the story in order", async ({ page }) => {
   await page.goto("/");
-  await expect(page.getByRole("heading", { level: 1, name: "One policy for every coding agent" })).toBeVisible();
+  await expect(page.getByRole("heading", { level: 1, name: "One policy for your coding agents" })).toBeVisible();
   for (const name of ["What the vendor consoles leave uncovered", "How it works", "Governs the agents your developers use"]) {
     await expect(page.getByRole("heading", { level: 2, name })).toBeVisible();
   }
