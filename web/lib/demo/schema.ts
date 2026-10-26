@@ -10,7 +10,7 @@ export const sizeOptions = [
 export const agentOptions = [
   { value: "claude-code", label: "Claude Code" },
   { value: "codex", label: "Codex" },
-  { value: "gemini-cli", label: "Gemini CLI" },
+  { value: "agy", label: "agy (Antigravity CLI)" },
   { value: "other", label: "Other" },
 ] as const;
 

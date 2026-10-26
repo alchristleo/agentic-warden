@@ -14,6 +14,12 @@ describe("demoSchema", () => {
   it("accepts a minimal valid request", () => {
     expect(demoSchema.safeParse(valid).success).toBe(true);
   });
+  it("accepts agy as an agent", () => {
+    expect(demoSchema.safeParse({ ...valid, agents: ["agy"] }).success).toBe(true);
+  });
+  it("rejects gemini-cli as an agent", () => {
+    expect(demoSchema.safeParse({ ...valid, agents: ["gemini-cli"] }).success).toBe(false);
+  });
   it("accepts optional plan and message", () => {
     expect(demoSchema.safeParse({ ...valid, plan: "team", message: "hi" }).success).toBe(true);
   });
