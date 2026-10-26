@@ -84,4 +84,31 @@ test.describe("mobile", () => {
     await menu.click();
     await expect(first).toBeVisible();
   });
+
+  test("table code stays on one line", async ({ page }) => {
+    await page.goto("/docs/reference");
+    const cells = page.locator(".docs-prose td code");
+    expect(await cells.count()).toBeGreaterThanOrEqual(5);
+    const rects = await page.$$eval(".docs-prose td code, .docs-prose th code", (els) =>
+      els.map((e) => e.getClientRects().length),
+    );
+    expect(rects.every((n) => n === 1)).toBe(true);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);
+  });
+});
+
+test.describe("desktop", () => {
+  test.use({ viewport: { width: 1280, height: 800 } });
+
+  test("threat-model tables fit the column", async ({ page }) => {
+    await page.goto("/docs/threat-model");
+    const fits = await page.$$eval(".docs-prose table", (els) =>
+      els.map((e) => {
+        const column = e.closest(".docs-prose")!.clientWidth;
+        return e.scrollWidth <= e.clientWidth + 1 && e.scrollWidth <= column + 1;
+      }),
+    );
+    expect(fits.length).toBeGreaterThan(0);
+    expect(fits.every(Boolean)).toBe(true);
+  });
 });

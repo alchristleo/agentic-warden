@@ -164,7 +164,7 @@ svg[data-preset="blueprint"] .c-region {
             <path d="M6 3 3 8l3 5M10 3l3 5-3 5"/>
           </g>
           <text data-node-label="" data-detail-anchor="" x="120" y="90" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">awd</text>
-        <text data-detail="context" x="120" y="106" class="t-muted" font-size="9" text-anchor="middle">policy, not agent traffic</text>
+        <text data-detail="context" x="120" y="106" class="t-muted" font-size="10" text-anchor="middle">policy, not agent traffic</text>
         </g>
 
         <g id="node-admin" data-node-id="admin" data-node-label="Policy author" tabindex="0" role="button" aria-label="Focus Policy author, writes policies, Architecture component" aria-pressed="false" data-node-kind="external" data-node-sublabel="writes policies" data-node-context="Architecture component">
@@ -175,7 +175,7 @@ svg[data-preset="blueprint"] .c-region {
             <circle cx="8" cy="4.5" r="2.5"/><path d="M3 14v-2a5 5 0 0 1 10 0v2"/>
           </g>
           <text data-node-label="" data-detail-anchor="" x="410" y="90" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">Policy author</text>
-        <text data-detail="context" x="410" y="106" class="t-muted" font-size="9" text-anchor="middle">writes policies</text>
+        <text data-detail="context" x="410" y="106" class="t-muted" font-size="10" text-anchor="middle">writes policies</text>
         </g>
 
         <g id="node-aw-sync" data-node-id="aw-sync" data-node-label="aw-sync" tabindex="0" role="button" aria-label="Focus aw-sync, timer on each laptop, Developer laptop" aria-pressed="false" data-node-kind="backend" data-node-sublabel="timer on each laptop" data-node-context="Developer laptop">
@@ -186,7 +186,7 @@ svg[data-preset="blueprint"] .c-region {
             <path d="M6 3 3 8l3 5M10 3l3 5-3 5"/>
           </g>
           <text data-node-label="" data-detail-anchor="" x="120" y="280" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">aw-sync</text>
-        <text data-detail="context" x="120" y="296" class="t-muted" font-size="9" text-anchor="middle">timer on each laptop</text>
+        <text data-detail="context" x="120" y="296" class="t-muted" font-size="10" text-anchor="middle">timer on each laptop</text>
         </g>
 
         <g id="node-agent" data-node-id="agent" data-node-label="Claude Code" tabindex="0" role="button" aria-label="Focus Claude Code, reads via aw-policy, Developer laptop" aria-pressed="false" data-node-kind="frontend" data-node-sublabel="reads via aw-policy" data-node-context="Developer laptop">
@@ -200,7 +200,7 @@ svg[data-preset="blueprint"] .c-region {
             <circle cx="6.3" cy="4.8" r=".7" class="sigil-fill"/>
           </g>
           <text data-node-label="" data-detail-anchor="" x="410" y="280" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">Claude Code</text>
-        <text data-detail="context" x="410" y="296" class="t-muted" font-size="9" text-anchor="middle">reads via aw-policy</text>
+        <text data-detail="context" x="410" y="296" class="t-muted" font-size="10" text-anchor="middle">reads via aw-policy</text>
         </g>
 
         <g id="node-advisory" data-node-id="advisory" data-node-label="Codex" tabindex="0" role="button" aria-label="Focus Codex, rendered at launch by aw, advisory, Developer laptop" aria-pressed="false" data-node-kind="frontend" data-node-sublabel="rendered at launch by aw, advisory" data-node-context="Developer laptop">
@@ -214,7 +214,7 @@ svg[data-preset="blueprint"] .c-region {
             <circle cx="6.3" cy="4.8" r=".7" class="sigil-fill"/>
           </g>
           <text data-node-label="" data-detail-anchor="" x="460" y="400" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">Codex</text>
-        <text data-detail="context" x="460" y="416" class="t-muted" font-size="9" text-anchor="middle">rendered at launch by aw, advisory</text>
+        <text data-detail="context" x="460" y="416" class="t-muted" font-size="10" text-anchor="middle">rendered at launch by aw, advisory</text>
         </g>
 
         <g id="node-agy" data-node-id="agy" data-node-label="Antigravity CLI (agy)" tabindex="0" role="button" aria-label="Focus Antigravity CLI (agy), machine-wide admin file, gateway and models only, Developer laptop" aria-pressed="false" data-node-kind="frontend" data-node-sublabel="machine-wide admin file, gateway and models only" data-node-context="Developer laptop">
@@ -228,7 +228,7 @@ svg[data-preset="blueprint"] .c-region {
             <circle cx="6.3" cy="4.8" r=".7" class="sigil-fill"/>
           </g>
           <text data-node-label="" data-detail-anchor="" x="460" y="500" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">Antigravity CLI (agy)</text>
-        <text data-detail="context" x="460" y="516" class="t-muted" font-size="8.7" text-anchor="middle">machine-wide admin file, gateway and models only</text>
+        <text data-detail="context" x="460" y="516" class="t-muted" font-size="10" text-anchor="middle">machine-wide admin file, gateway and models only</text>
         </g>
 
         <g id="node-vendor" data-node-id="vendor" data-node-label="Model provider" tabindex="0" role="button" aria-label="Focus Model provider, vendor API, Architecture component" aria-pressed="false" data-node-kind="external" data-node-sublabel="vendor API" data-node-context="Architecture component">
@@ -240,44 +240,44 @@ svg[data-preset="blueprint"] .c-region {
             <path d="M8 2.5h5.5V8M13.5 2.5 7.5 8.5"/>
           </g>
           <text data-node-label="" data-detail-anchor="" x="740" y="280" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">Model provider</text>
-        <text data-detail="context" x="740" y="296" class="t-muted" font-size="9" text-anchor="middle">vendor API</text>
+        <text data-detail="context" x="740" y="296" class="t-muted" font-size="10" text-anchor="middle">vendor API</text>
         </g>
 
         <!-- Connection labels -->
         <g data-detail="context" data-edge-from="admin" data-edge-to="awd" data-edge-label="policies" data-edge-key="0" data-edge-id="policies">
-          <rect x="240.8" y="72" width="48.4" height="14" rx="3" class="c-mask"/>
-          <text x="265" y="82" class="t-edge-default" font-size="8" text-anchor="middle">policies</text>
+          <rect x="241.3" y="71" width="47.4" height="16" rx="3" class="c-mask"/>
+          <text x="265" y="82" class="t-edge-default" font-size="10" text-anchor="middle">policies</text>
         </g>
         <g data-detail="context" data-edge-from="awd" data-edge-to="aw-sync" data-edge-label="policy bundle" data-edge-key="1" data-edge-id="fetch-bundle">
-          <rect x="41.599999999999994" y="180" width="72.4" height="14" rx="3" class="c-mask"/>
-          <text x="77.8" y="190" class="t-edge-default" font-size="8" text-anchor="middle">policy bundle</text>
+          <rect x="41.4" y="179" width="72.8" height="16" rx="3" class="c-mask"/>
+          <text x="77.8" y="190" class="t-edge-default" font-size="10" text-anchor="middle">policy bundle</text>
         </g>
         <g data-detail="context" data-edge-from="aw-sync" data-edge-to="agent" data-edge-label="aw-bundle.json" data-edge-key="2" data-edge-id="bundle-file">
-          <rect x="226.4" y="248" width="77.2" height="14" rx="3" class="c-mask"/>
-          <text x="265" y="258" class="t-edge-default" font-size="8" text-anchor="middle">aw-bundle.json</text>
+          <rect x="224.3" y="247" width="81.3" height="16" rx="3" class="c-mask"/>
+          <text x="265" y="258" class="t-edge-default" font-size="10" text-anchor="middle">aw-bundle.json</text>
         </g>
         <g data-detail="context" data-edge-from="aw-sync" data-edge-to="advisory" data-edge-label="bundle, read by aw" data-edge-key="3" data-edge-id="bundle-advisory">
-          <rect x="216.8" y="322" width="96.39999999999999" height="14" rx="3" class="c-mask"/>
-          <text x="265" y="332" class="t-edge-default" font-size="8" text-anchor="middle">bundle, read by aw</text>
+          <rect x="215.3" y="321" width="99.3" height="16" rx="3" class="c-mask"/>
+          <text x="265" y="332" class="t-edge-default" font-size="10" text-anchor="middle">bundle, read by aw</text>
         </g>
         <g data-detail="context" data-edge-from="aw-sync" data-edge-to="agy" data-edge-label="admin_settings.json" data-edge-key="4" data-edge-id="agy-file">
-          <rect x="174.4" y="482" width="101.2" height="14" rx="3" class="c-mask"/>
-          <text x="225" y="492" class="t-edge-default" font-size="8" text-anchor="middle">admin_settings.json</text>
+          <rect x="173.8" y="481" width="102.4" height="16" rx="3" class="c-mask"/>
+          <text x="225" y="492" class="t-edge-default" font-size="10" text-anchor="middle">admin_settings.json</text>
         </g>
         <g data-detail="context" data-edge-from="agent" data-edge-to="vendor" data-edge-label="model calls" data-edge-key="5" data-edge-id="model-calls">
-          <rect x="543.6" y="262" width="62.8" height="14" rx="3" class="c-mask"/>
-          <text x="575" y="272" class="t-edge-emphasis" font-size="8" text-anchor="middle">model calls</text>
+          <rect x="543.0" y="261" width="64.0" height="16" rx="3" class="c-mask"/>
+          <text x="575" y="272" class="t-edge-emphasis" font-size="10" text-anchor="middle">model calls</text>
         </g>
 
         <!-- Boundary labels (foreground masks keep routes out of titles) -->
         <g data-graph-role="structural-frame-label" data-composition-frame-id="0" data-composition-frame-kind="region" data-composition-frame-label="Control plane (yours, or our hosted pilot)">
-          <rect data-graph-role="structural-frame-label-mask" x="14" y="40" width="212" height="16" rx="3" class="c-mask"/>
-          <text data-boundary-label="" x="18" y="52.01587301587301" class="t-cloud" font-size="8.015873015873016" font-weight="600">Control plane (yours, or our hosted pilot)</text>
+          <rect data-graph-role="structural-frame-label-mask" x="14" y="40" width="206" height="16" rx="3" class="c-mask"/>
+          <text data-boundary-label="" x="18" y="52.01587301587301" class="t-cloud" font-size="10" font-weight="600">Control plane (yours, or our hosted pilot)</text>
         </g>
 
         <g data-graph-role="structural-frame-label" data-composition-frame-id="1" data-composition-frame-kind="region" data-composition-frame-label="Developer laptop">
-          <rect data-graph-role="structural-frame-label-mask" x="14" y="230" width="96.39999999999999" height="16" rx="3" class="c-mask"/>
-          <text data-boundary-label="" x="18" y="243" class="t-cloud" font-size="9" font-weight="600">Developer laptop</text>
+          <rect data-graph-role="structural-frame-label-mask" x="14" y="230" width="100" height="16" rx="3" class="c-mask"/>
+          <text data-boundary-label="" x="18" y="243" class="t-cloud" font-size="10" font-weight="600">Developer laptop</text>
         </g>
 
         <!-- Legend -->

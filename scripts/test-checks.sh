@@ -63,6 +63,10 @@ trap 'rm -f "$out"' EXIT
 expect "links: passing file exits 0" 0 - "$ln" "$data/quickstart-pass.md"
 expect "links: broken relative link exits 1" 1 "does-not-exist.md" "$ln" "$data/links-broken.md"
 expect "links: broken /docs link exits 1" 1 "/docs/nope" "$ln" "$data/links-broken.md"
+expect "links: a broken anchor exits 1 and names it" 1 "#no-such-heading" "$ln" "$data/anchors-broken.md"
+expect "links: a good anchor to another file passes" 0 - "$ln" "$data/anchors-pass.md"
+expect "links: an anchor to a fenced line fails" 1 "#not-a-heading" "$ln" "$data/anchors-fenced.md"
+expect "links: shell slugs match the TS slugs for real headings" 0 - "$ln" "$data/anchors-real.md"
 
 svg=$dir/check-svg.sh
 root=$(cd "$dir/.." && pwd)

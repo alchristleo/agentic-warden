@@ -23,6 +23,8 @@ stub `claude` first on `PATH` (unless `AW_MANUAL=1`).
 
 ## Render locally
 
+Record tapes one at a time. Every tape uses the fixed `/tmp/aw-home` and port 8080, so two renders at once clash.
+
 You need [vhs](https://github.com/charmbracelet/vhs) (`go install github.com/charmbracelet/vhs@v0.12.1`),
 ffmpeg and ttyd 1.7.2 or newer (distro packages can be older; the upstream static build works). From the repository root, with changes committed (the clone reads your checkout):
 
@@ -56,8 +58,9 @@ vhs docs/tapes/manual/hero.tape
 `AW_MANUAL=1` keeps your real `HOME`, so the trial state lands in `~/.aw-try` and `aw` writes one
 settings file per launch under `~/.cache/agent-wrapper/claude/`. Run `rm -rf ~/.aw-try` before each
 Claude tape (or the second enroll fails) and when you are done. The tapes stop `awd` at the end.
-Each tape runs the step 6 `aw claude -p` command with the prompt before `--allowedTools`. The hero
-shows it refused in `payments-api` and then running in `sandbox`. Claude's wording varies per run.
+The `06` tape runs the step 6 `aw claude -p` command with the prompt before `--allowedTools`. The hero
+uses a shorter prompt so that no line wraps. It shows the command refused in `payments-api` and then
+running in `sandbox`. Claude's wording varies per run.
 
 Before committing a Claude GIF, check it shows no account name, no email other than `you@acme.com`,
 and no absolute path under your real home.

@@ -299,7 +299,7 @@ its own KMS key, `alias/aw-<tenant>-<label>`.
 
 If a key itself may be compromised, still follow these steps, but go to step 3 as soon as the
 machines have moved, and give the partner the CloudTrail `Sign` events for the old key (see
-`trust.md`). This procedure has not been exercised on a real account.
+[trust statement](../site/trust.md)). This procedure has not been exercised on a real account.
 
 ## 10. Backup and restore
 

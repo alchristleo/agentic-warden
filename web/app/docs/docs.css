@@ -1,6 +1,7 @@
 /* Rendered markdown for /docs */
 .docs-prose { line-height: 1.75; }
 .docs-prose > * + * { margin-top: 1rem; }
+.docs-prose h2, .docs-prose h3 { scroll-margin-top: 5rem; }
 .docs-prose h2 { margin-top: 2.5rem; font-size: 1.5rem; font-weight: 600; letter-spacing: -0.01em; }
 .docs-prose h3 { margin-top: 2rem; font-size: 1.125rem; font-weight: 600; }
 .docs-prose a { text-decoration: underline; text-underline-offset: 3px; }
@@ -9,6 +10,7 @@
 .docs-prose li + li { margin-top: 0.25rem; }
 .docs-prose img { border-radius: 0.75rem; border: 1px solid var(--border); }
 .docs-prose :not(pre) > code { overflow-wrap: anywhere;border-radius: 0.25rem; background: var(--muted); padding: 0.1rem 0.35rem; font-family: var(--font-mono); font-size: 0.875em; }
+@media (max-width: 767px) { .docs-prose td code, .docs-prose th code { overflow-wrap: normal; white-space: nowrap; } }
 .docs-prose table { display: block; overflow-x: auto; width: 100%; font-size: 0.875rem; border-collapse: collapse; }
 .docs-prose th, .docs-prose td { border-bottom: 1px solid var(--border); padding: 0.5rem; text-align: left; vertical-align: top; }
 .docs-prose blockquote { border-left: 2px solid var(--border); padding-left: 1rem; color: var(--muted-foreground); }
