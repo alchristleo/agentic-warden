@@ -9,7 +9,7 @@ Set BorderRadius 8
 Set Margin 20
 Set MarginFill "#0a0a0a"
 Set FontSize 18
-Set Width 1000
+Set Width 1200
 Set Height 460
 Set TypingSpeed 20ms
 Set Padding 16
@@ -27,14 +27,14 @@ Show
 Type "# policy: deny Bash(curl *) in repos matching github.com/acme/payments*"
 Enter
 Sleep 1500ms
-Type `aw claude -p "Run: curl -sI https://example.com and show the status line. If a tool is denied, say so in one line and stop." --allowedTools "Bash(curl *)"`
+Type `aw claude -p "Run: curl -sI example.com. Say if denied." --allowedTools "Bash(curl *)"`
 Enter
 Wait+Line@180s /\$\s*$/
 Sleep 2s
 Type "cd ../sandbox"
 Enter
 Sleep 400ms
-Type `aw claude -p "Run: curl -sI https://example.com and show the status line. If a tool is denied, say so in one line and stop." --allowedTools "Bash(curl *)"`
+Type `aw claude -p "Run: curl -sI example.com. Say if denied." --allowedTools "Bash(curl *)"`
 Enter
 Wait+Line@180s /\$\s*$/
 Sleep 2s

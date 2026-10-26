@@ -9,7 +9,8 @@ _aw_r() { "$@" >/dev/null 2>&1 || { echo "prep failed: $*"; return 1; }; }
 
 export GOMODCACHE=$(go env GOMODCACHE) GOCACHE=$(go env GOCACHE)
 if [ -z "${AW_MANUAL:-}" ]; then
-  export HOME=$(mktemp -d)
+  # A fixed path, so that the recordings show /tmp/aw-home and not a random /tmp/tmp.XXXXXXXXXX.
+  rm -rf /tmp/aw-home && mkdir /tmp/aw-home && export HOME=/tmp/aw-home
   mkdir "$HOME/stub" && printf '#!/bin/sh\nexit 0\n' > "$HOME/stub/claude" && chmod +x "$HOME/stub/claude"
   export PATH=$HOME/stub:$PATH
 fi
@@ -80,6 +81,10 @@ if [ -n "${BLE_DIR:-}" ]; then
   bleopt prompt_eol_mark=''
   for _aw_f in syntax_varname varname_array varname_empty varname_export varname_expr varname_hash varname_number varname_readonly varname_transform varname_unset; do ble-face "$_aw_f=fg=blue"; done
   unset _aw_f
+  # An unclosed "$(" and the word typed after it are a syntax error until ")" arrives. Paint them plain, not red.
+  ble-face syntax_error=none
+  # The default comment colour (256-colour 242, #6c6c6c) is 3.1:1 on #1e1e2e. 246 (#949494) is 5.4:1.
+  ble-face syntax_comment=fg=246
   ble-bind -f RET accept-line
   ble-bind -f C-m accept-line
 fi

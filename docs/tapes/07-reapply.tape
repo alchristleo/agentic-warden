@@ -1,5 +1,6 @@
 # Quickstart step 7, CLI part only (the Claude command is in docs/tapes/manual).
 # Run from the repository root: AW_REPO=$PWD vhs docs/tapes/07-reapply.tape
+# Width 1450 at font 14 gives about 168 columns: the longest output line (the connection refused error) is 162.
 Output docs/assets/07-reapply.gif
 Set Shell bash
 Set Theme "Catppuccin Mocha"
@@ -7,8 +8,8 @@ Set WindowBar Colorful
 Set BorderRadius 8
 Set Margin 20
 Set MarginFill "#0a0a0a"
-Set FontSize 16
-Set Width 1100
+Set FontSize 14
+Set Width 1450
 Set Height 700
 Set TypingSpeed 20ms
 Set Padding 16
