@@ -131,3 +131,11 @@ COORD review approve ac7a1d0 sdd-reviewer-lite SVGs parse, only agy label lines 
 CONVERGE 90b3f04 spec-converge AC1-10 VERIFIED; AC11, AC12 INCONCLUSIVE owner at gate
 SEAT owner pass 68bdfeb AC11
 SEAT owner pass 68bdfeb AC12
+PR #12 opened https://github.com/alchristleo/agentic-warden/pull/12
+
+## Retro (2026-10-26)
+
+- **Numbers:** tasks=5 fix_rounds=1 coord=2 fix_waves=2 blocked=0 seats pass/fail=2/2 reruns=2 owner=2 panel(must/should/nit)=[design 0/4/4; cdo 0/5/4; security 0/1/1; correctness 1/2/3; security(re-run) 0/0/2; cdo(re-run) 0/1/3] triage=[fixed=22 dismissed=0 backlog=1]
+- **Removal leaked past its task:** T4 left Gemini in web meta, OG image, schema, SVGs (owner added T5); `.agents/product-marketing.md` still leaks. Fix: removal/rename tasks take a repo-wide grep with an explicit allowlist as their acceptance test.
+- **Docs command not runnable:** panel-cdo failed AC11 twice (no re-enroll step, then literal `...` and missing `--server`/token), forcing fix wave 2 past cap. Fix: implementer rule, every user-facing command is copy-pasteable with real flags.
+- **sed broke SVG `</text>`:** caught by reviewer-lite, coord repair ac7a1d0. Fix: CI step parses every committed SVG (T1 of next plan).
