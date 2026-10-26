@@ -180,7 +180,7 @@ func (a *Adapter) mergeSettings(managed map[string]any, launch *agent.Launch) (s
 	if err := cache.Prune(dir, pruneAfter); err != nil {
 		launch.Notes = append(launch.Notes, "could not prune old settings files: "+err.Error())
 	}
-	path, err := cache.Write(dir, "settings", ".json", encoded)
+	path, err := cache.Write(dir, "settings", ".json", append(encoded, '\n'))
 	if err != nil {
 		return "", err
 	}
