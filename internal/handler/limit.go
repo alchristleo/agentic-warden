@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"container/list"
 	"log/slog"
 	"math"
 	"net/http"
@@ -27,11 +28,13 @@ type Limiter struct {
 	log     *slog.Logger
 
 	mu      sync.Mutex
-	buckets map[netip.Prefix]*bucket
+	buckets map[netip.Prefix]*list.Element // value: *bucket
+	lru     *list.List                     // front = most recently used
 	warned  sync.Once
 }
 
 type bucket struct {
+	key    netip.Prefix
 	tokens float64
 	last   time.Time
 }
@@ -39,7 +42,7 @@ type bucket struct {
 // NewLimiter builds a limiter. X-Forwarded-For is read only when the
 // connection's address is inside trusted.
 func NewLimiter(trusted []netip.Prefix, now func() time.Time, log *slog.Logger) *Limiter {
-	return &Limiter{trusted: trusted, now: now, log: log, buckets: map[netip.Prefix]*bucket{}}
+	return &Limiter{trusted: trusted, now: now, log: log, buckets: map[netip.Prefix]*list.Element{}, lru: list.New()}
 }
 
 // Wrap guards next. /healthz and /readyz are never blocked or counted.
@@ -50,15 +53,15 @@ func (l *Limiter) Wrap(next http.Handler) http.Handler {
 			return
 		}
 		key := l.key(r)
-		if wait := l.wait(key); wait > 0 {
+		if wait := l.reserve(key); wait > 0 {
 			w.Header().Set("Retry-After", strconv.Itoa(int(math.Ceil(wait.Seconds()))))
 			writeError(w, http.StatusTooManyRequests, limitBlockedBody)
 			return
 		}
 		rec := &statusRecorder{ResponseWriter: w, status: http.StatusOK}
 		next.ServeHTTP(rec, r)
-		if countedFailure(r, rec.status) {
-			l.fail(key)
+		if !countedFailure(r, rec.status) {
+			l.refund(key)
 		}
 	})
 }
@@ -81,55 +84,52 @@ func (l *Limiter) refilled(b *bucket, now time.Time) float64 {
 	return math.Min(t, limitBurst)
 }
 
-// wait returns how long until key may try again, or 0 when it may.
-func (l *Limiter) wait(key netip.Prefix) time.Duration {
-	l.mu.Lock()
-	defer l.mu.Unlock()
-	b, ok := l.buckets[key]
-	if !ok {
-		return 0
-	}
-	t := l.refilled(b, l.now())
-	if t >= 1 {
-		return 0
-	}
-	return time.Duration((1 - t) * float64(limitRefill))
-}
-
-// fail takes one token from key's bucket.
-func (l *Limiter) fail(key netip.Prefix) {
+// reserve takes one token for key before the request runs. It returns how
+// long until key may try again, or 0 when a token was taken. Check and take
+// happen under one lock, so concurrent requests cannot overshoot the burst.
+func (l *Limiter) reserve(key netip.Prefix) time.Duration {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	now := l.now()
-	b, ok := l.buckets[key]
-	if !ok {
+	el, ok := l.buckets[key]
+	if ok {
+		l.lru.MoveToFront(el)
+	} else {
 		if len(l.buckets) >= limitMaxKeys {
-			l.evict(now)
+			// Drop the least recently used key. Its bucket restarts full.
+			oldest := l.lru.Back()
+			l.lru.Remove(oldest)
+			delete(l.buckets, oldest.Value.(*bucket).key)
 		}
-		b = &bucket{tokens: limitBurst, last: now}
-		l.buckets[key] = b
+		el = l.lru.PushFront(&bucket{key: key, tokens: limitBurst, last: now})
+		l.buckets[key] = el
 	}
-	b.tokens = math.Max(l.refilled(b, now)-1, 0)
+	b := el.Value.(*bucket)
+	b.tokens = l.refilled(b, now)
 	b.last = now
+	if b.tokens < 1 {
+		return time.Duration((1 - b.tokens) * float64(limitRefill))
+	}
+	b.tokens--
+	return 0
 }
 
-// evict drops buckets that are full again, then the oldest if none were.
-func (l *Limiter) evict(now time.Time) {
-	var oldest netip.Prefix
-	var oldestAt time.Time
-	dropped := false
-	for k, b := range l.buckets {
-		if l.refilled(b, now) >= limitBurst {
-			delete(l.buckets, k)
-			dropped = true
-			continue
-		}
-		if oldestAt.IsZero() || b.last.Before(oldestAt) {
-			oldest, oldestAt = k, b.last
-		}
+// refund gives back a reserved token when the request was not a counted
+// failure. A bucket that is full again is dropped, so the map holds only
+// keys that failed recently.
+func (l *Limiter) refund(key netip.Prefix) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	el, ok := l.buckets[key]
+	if !ok {
+		return
 	}
-	if !dropped {
-		delete(l.buckets, oldest)
+	b := el.Value.(*bucket)
+	b.tokens = l.refilled(b, l.now()) + 1
+	b.last = l.now()
+	if b.tokens >= limitBurst {
+		l.lru.Remove(el)
+		delete(l.buckets, key)
 	}
 }
 

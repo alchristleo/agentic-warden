@@ -8,6 +8,8 @@ import (
 	"net/http/httptest"
 	"net/netip"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 )
@@ -292,5 +294,101 @@ func TestLimiterBounded(t *testing.T) {
 	}
 	if n == 0 {
 		t.Fatal("limiter forgot everything")
+	}
+}
+
+func v4Key(i int) netip.Prefix {
+	return netip.PrefixFrom(netip.AddrFrom4([4]byte{10, byte(i >> 16), byte(i >> 8), byte(i)}), 32)
+}
+
+func TestLimiterEvictsLeastRecentlyUsed(t *testing.T) {
+	l, _, _ := limiterFor()
+	h := l.Wrap(&statusInner{status: 401})
+	addr := func(i int) string { return v4Key(i).Addr().String() + ":1" }
+	for i := 0; i < limitMaxKeys; i++ {
+		do(h, "GET", "/v1/policy", addr(i))
+	}
+	for i := 0; i < 100; i++ { // touch the 100 oldest
+		do(h, "GET", "/v1/policy", addr(i))
+	}
+	do(h, "GET", "/v1/policy", addr(limitMaxKeys)) // one more key at the cap
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	if len(l.buckets) != limitMaxKeys {
+		t.Fatalf("buckets = %d", len(l.buckets))
+	}
+	if _, ok := l.buckets[v4Key(100)]; ok {
+		t.Fatal("least recently used key survived")
+	}
+	for _, i := range []int{0, 99, 101, limitMaxKeys - 1, limitMaxKeys} {
+		if _, ok := l.buckets[v4Key(i)]; !ok {
+			t.Fatalf("key %d was dropped", i)
+		}
+	}
+}
+
+// countInner is safe for concurrent use.
+type countInner struct {
+	status int
+	calls  atomic.Int64
+}
+
+func (c *countInner) ServeHTTP(w http.ResponseWriter, _ *http.Request) {
+	c.calls.Add(1)
+	w.WriteHeader(c.status)
+}
+
+func TestLimiterConcurrentOneKeyCannotOvershoot(t *testing.T) {
+	l, _, _ := limiterFor()
+	inner := &countInner{status: 401}
+	h := l.Wrap(inner)
+	var wg sync.WaitGroup
+	for i := 0; i < 200; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			do(h, "GET", "/v1/policy", "192.0.2.1:1")
+		}()
+	}
+	wg.Wait()
+	if got := inner.calls.Load(); got != 10 {
+		t.Fatalf("inner calls = %d, want 10", got)
+	}
+}
+
+func TestLimiterConcurrentDistinctKeys(t *testing.T) {
+	l, _, _ := limiterFor()
+	inner := &countInner{status: 401}
+	h := l.Wrap(inner)
+	var wg sync.WaitGroup
+	for k := 0; k < 50; k++ {
+		for j := 0; j < 15; j++ {
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				do(h, "GET", "/v1/policy", fmt.Sprintf("192.0.2.%d:1", k+1))
+			}()
+		}
+	}
+	wg.Wait()
+	if got := inner.calls.Load(); got != 500 {
+		t.Fatalf("inner calls = %d, want 500", got)
+	}
+}
+
+func TestLimiterRefundsUncountedRequests(t *testing.T) {
+	l, _, _ := limiterFor()
+	inner := &statusInner{status: 200}
+	h := l.Wrap(inner)
+	for i := 0; i < 50; i++ {
+		do(h, "GET", "/v1/policy", "192.0.2.1:1")
+	}
+	if inner.calls != 50 {
+		t.Fatalf("inner calls = %d", inner.calls)
+	}
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	if len(l.buckets) != 0 || l.lru.Len() != 0 {
+		t.Fatalf("buckets = %d after only successes", len(l.buckets))
 	}
 }
