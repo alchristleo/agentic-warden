@@ -100,3 +100,11 @@ T4 review approve 42d7bd5 sdd-reviewer nits to T5: reject duplicate token hash i
 T3 done b18c88d sdd-implementer limiter 17 tests, mutation-checked; eviction O(n) scan at cap
 T3 fix b18c88d sdd-reviewer fix-needed O(n) eviction under lock, eviction order untested, wait/fail overshoot, no concurrency test
 MERGE group A a702cd4 T1,T2,T4,T6,T7 clean; go vet+test green; T3 in fix round 1
+T3 fix c3a72b5 sdd-reviewer-lite fix-needed must stale-spec (owner kept plain LRU, resolved); should no test blocked-no-reserve, refund cap; nit refund identity
+COORD owner approved spec D2 plain LRU eviction 2026-10-26
+T3 fix f682e9d sdd-reviewer-lite fix-needed should refund test misses burst cap (mutation survives); nits double now(), comment wrap
+COORD owner approved coord fix past T3 cap
+T3 coord 4f80a12 TestLimiterRefillCapsAtBurst (mutation: cap removed -> fails); one now() in refund; comment rewrap
+T3 done 4f80a12 sdd-reviewer-lite coord re-review approve
+COORD review approve 4f80a12 sdd-reviewer-lite refill cap test mutation-checked
+MERGE T3 cca7143 clean; go vet+test green
