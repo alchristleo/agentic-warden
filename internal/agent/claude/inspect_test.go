@@ -555,3 +555,26 @@ func TestInspectSaysAnUnpinnedMachineEmitsNoSettingsWithoutABundle(t *testing.T)
 		t.Errorf("findings %+v should say an unpinned machine emits no settings", findings)
 	}
 }
+
+func TestEmptyEffectReadsRequireBundle(t *testing.T) {
+	t.Run("true with no trust file fails closed", func(t *testing.T) {
+		in := newInspection(t)
+		in.adapter.StateDir = t.TempDir()
+		in.write(t, filepath.Join(in.systemDir, "aw-policy.json"), `{"requireBundle":true}`)
+		f := in.adapter.Inspect([]string{})
+		if !findingsWith(f, agent.Warn, "refuses to start") {
+			t.Errorf("findings %+v should say aw-policy refuses to start", f)
+		}
+	})
+	t.Run("false with a trust file emits no settings", func(t *testing.T) {
+		in := newInspection(t)
+		stateDir := t.TempDir()
+		in.adapter.StateDir = stateDir
+		in.write(t, filepath.Join(stateDir, "aw-trust.pub"), "key\n")
+		in.write(t, filepath.Join(in.systemDir, "aw-policy.json"), `{"requireBundle":false}`)
+		f := in.adapter.Inspect([]string{})
+		if !findingsWith(f, agent.Warn, "emits no settings") || findingsWith(f, agent.Warn, "refuses to start") {
+			t.Errorf("findings %+v should say aw-policy emits no settings", f)
+		}
+	})
+}
