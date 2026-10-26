@@ -265,7 +265,7 @@ func settingsFor(doc *policy.Document, agentName, version string) agent.Settings
 
 func launch(registry *agent.Registry, opts options, agentName string, args []string) error {
 	if hint, removed := policy.RemovedHint(agentName); removed {
-		return errors.New(hint)
+		return errors.New(hint + ": aw agy")
 	}
 	// Lookup first so an unknown agent reports the agents this binary knows,
 	// rather than whatever the policy happens to be missing.

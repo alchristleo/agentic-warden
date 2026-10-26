@@ -1801,3 +1801,26 @@ func TestRunDoesNotPruneWhenARootOverrideShadowsADefaultRoot(t *testing.T) {
 		t.Errorf("state.Files[%s] = %q, want it kept", recorded, state.Files[recorded])
 	}
 }
+
+func TestRunIsA304WhenARootOverrideShadowsADefaultRootHoldingRecordedFiles(t *testing.T) {
+	// GOOS windows makes the claude default root a relative name, so the
+	// recorded file lives in a temp working directory instead of /etc.
+	t.Chdir(t.TempDir())
+	f := newFakeAwd(t, testBundle())
+	cfg, _ := enrolled(t, f, claudeRegistry(t), "claude")
+	cfg.GOOS = "windows"
+	if res := sync.Run(context.Background(), cfg); res.Err != nil {
+		t.Fatal(res.Err)
+	}
+	recorded := filepath.Join(claude.SystemDir("windows"), "recorded.json")
+	writeFile(t, recorded, "A")
+	seedFiles(t, cfg, map[string]string{recorded: sha("A")})
+
+	res := sync.Run(context.Background(), cfg)
+	if res.Err != nil || !res.Unchanged {
+		t.Fatalf("res = %+v, want a 304 cycle", res)
+	}
+	if hasNote(res.Notes, "belongs to no enrolled agent") {
+		t.Errorf("notes = %q, want no orphan note", res.Notes)
+	}
+}

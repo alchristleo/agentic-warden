@@ -157,7 +157,9 @@ func Run(ctx context.Context, cfg Config) Result {
 	// a full cycle prunes, after it has written the current roots, so an
 	// orphan forces one. Without a root for every enrolled agent an orphan
 	// cannot be told from that agent's own file.
-	if roots, rootless := cfg.enrolledRoots(machine.Agents); !rootless {
+	// A Roots override that shadows a default root holding recorded files
+	// makes the full cycle skip prune, so those files are not forced orphans.
+	if roots, rootless := cfg.enrolledRoots(machine.Agents); !rootless && cfg.shadowedDefault(machine.Agents, state.Files) == "" {
 		keep := pruneKeep(roots, cfg.StateDir, nil)
 		var orphans []string
 		for path := range state.Files {
@@ -428,7 +430,7 @@ const pruneSkippedNote = "pruning skipped: an enrolled agent has no known system
 // removedNextStep is what to do about an enrolled agent that agent-wrapper no
 // longer supports.
 func removedNextStep(name string) string {
-	return "; re-enroll with `aw-sync enroll --force --agents ...` leaving " + name + " out (" + policy.RemovedDocs + ")"
+	return "; re-enroll with a new enrollment token: `aw-sync enroll --force --server URL --token TOKEN --agents <your other agents, e.g. claude,codex>` (" + policy.RemovedDocs + ")"
 }
 
 // enrolledRoots returns the roots of the enrolled agents that are still
@@ -464,6 +466,15 @@ func (cfg Config) fullCycleKeep(agents, failedRoots []string, planned map[string
 	if _, rootless := cfg.enrolledRoots(agents); rootless {
 		return keepAll, []string{pruneSkippedNote}
 	}
+	if note := cfg.shadowedDefault(agents, prev); note != "" {
+		return keepAll, []string{note}
+	}
+	return pruneKeep(failedRoots, cfg.StateDir, planned), nil
+}
+
+// shadowedDefault returns the pruning-skipped note when a Roots override moves
+// an agent away from a default directory that holds recorded files, or "".
+func (cfg Config) shadowedDefault(agents []string, prev map[string]string) string {
 	for _, name := range agents {
 		dir := cfg.Roots[name]
 		def, err := AgentRoot(cfg.GOOS, name)
@@ -472,11 +483,11 @@ func (cfg Config) fullCycleKeep(agents, failedRoots []string, planned map[string
 		}
 		for path := range prev {
 			if underAny([]string{def}, path) {
-				return keepAll, []string{fmt.Sprintf("pruning skipped: a root override replaces %s for %s and files are recorded under it", def, name)}
+				return fmt.Sprintf("pruning skipped: a root override replaces %s for %s and files are recorded under it", def, name)
 			}
 		}
 	}
-	return pruneKeep(failedRoots, cfg.StateDir, planned), nil
+	return ""
 }
 
 // underAny reports whether path is inside one of roots, by filepath.Rel and

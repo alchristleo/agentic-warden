@@ -26,8 +26,8 @@ Share the one repo-scoped-rule note helper that codex and agy copy.
 ## Decisions
 
 - **D1 Gemini removal = hard remove, soft landing** (owner, 2026-10-26). `internal/agent/gemini/**` and
-  every registration go. One table `policy.RemovedAgents` (`"gemini"` → migration hint naming agy) is the only
-  place the name survives in non-test Go code. Callers:
+  every registration go. One unexported table in `internal/policy/removed.go`, read through `policy.RemovedHint` (`"gemini"` → migration
+  hint naming agy), is the only place the name survives in non-test Go code. Callers:
   - `awd apply` (ruleset validation) rejects a rule with a removed agent key; the error names the rule and agy.
   - `aw-sync enroll --agents gemini` is refused with the same hint.
   - `aw-sync once` with `gemini` in machine.json skips it with a note (`gemini: removed from agent-wrapper; ...`)
@@ -46,7 +46,7 @@ Share the one repo-scoped-rule note helper that codex and agy copy.
   etag) are never candidates. A `.revision` sidecar is removed only together with its main file, only if
   Lstat says regular file; it is not hash-checked (its content is a revision line).
   "Under root R" is `filepath.Rel(R, p)` local, not a string prefix.
-  If any enrolled agent not in `RemovedAgents` has no resolvable root, its files cannot be told apart from
+  If any enrolled agent not removed has no resolvable root, its files cannot be told apart from
   orphans, so prune is skipped for that whole cycle (removed agents included) with one note; recorded files carry over.
   Sidecar suffix is `.aw-revision`.
 - **D2a Orphans force a full cycle** (pre-mortem, revised after the panel). An upgraded machine with an unchanged

@@ -164,7 +164,7 @@ Existing rules:
   ```text
   rule "payments-repos": agent "gemini" was removed: delete the gemini block from this rule;
   Gemini CLI is no longer supported by agent-wrapper;
-  use agy (Antigravity CLI): aw agy (docs/site/reference.md#gemini-cli-removed)
+  use agy (Antigravity CLI) (docs/site/reference.md#gemini-cli-removed)
   ```
 
   Delete the block, then apply again. To keep the parts that agy supports, move them to an `agy` block.
@@ -175,7 +175,7 @@ Enrollments:
 - `aw-sync enroll --agents gemini` fails with the same hint.
 - An enrolled machine skips `gemini`, prints a note, and syncs the other agents.
 - aw-sync removes the Gemini files it wrote if you have not changed them. It keeps a changed file and prints a note. [Removing](./removing.md) lists the paths.
-- To stop syncing Gemini, re-enroll with `--force` and an `--agents` list that leaves out `gemini`, such as `--agents claude,codex`.
+- To stop syncing Gemini, re-enroll with `--force`, `--server`, a new enrollment token, and an `--agents` list that leaves out `gemini`, such as `--agents claude,codex`.
 
 `aw gemini` exits with an error that tells you to use `aw agy`.
 

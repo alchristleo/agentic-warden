@@ -583,6 +583,25 @@ func TestDoctorChecksOnlyEnrolledAgents(t *testing.T) {
 	}
 }
 
+func TestDoctorShowsTheHintForAnEnrolledRemovedAgent(t *testing.T) {
+	binDir := t.TempDir()
+	fakeAgent(t, binDir, "claude", "exit 0")
+	stateDir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(stateDir, "machine.json"), []byte(`{"server":"http://awd.example","machineId":"m1","credential":"c","agents":["claude","gemini"]}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	state := `{"server":"http://awd.example","machineId":"m1","agents":["claude","gemini"],"etag":"","version":"v1","syncedAt":"2026-09-21T12:00:00Z","files":{},"notes":[]}`
+	if err := os.WriteFile(filepath.Join(stateDir, "state.json"), []byte(state), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	env := append(baseEnv(t, binDir), "AW_SYNC_STATE_DIR="+stateDir)
+
+	out, _ := run(t, env, "doctor", "gemini")
+	if !strings.Contains(out, "Gemini CLI is no longer supported by agent-wrapper; use agy (Antigravity CLI)") {
+		t.Errorf("doctor output lacks the removed-agent hint:\n%s", out)
+	}
+}
+
 // Wiring only: aw has no system-dir override, so this reads the host's real
 // admin path. File states are covered by the agy package's Inspect tests.
 func TestDoctorListsAgyFindings(t *testing.T) {
