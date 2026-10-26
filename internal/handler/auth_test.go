@@ -167,3 +167,22 @@ func TestNoAdminTokensIs503(t *testing.T) {
 		t.Errorf("status = %d, want 503", resp.StatusCode)
 	}
 }
+
+func TestAdminTokensEmptyBearerNeverAuthenticates(t *testing.T) {
+	srv := serverWithTokens(t, map[string]string{"empty": credential.Hash("")})
+
+	for _, header := range []string{"", "Bearer ", "Bearer"} {
+		req, _ := http.NewRequest(http.MethodGet, srv.URL+"/v1/audit", nil)
+		if header != "" {
+			req.Header.Set("Authorization", header)
+		}
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		resp.Body.Close()
+		if resp.StatusCode != http.StatusUnauthorized {
+			t.Errorf("Authorization %q: status = %d, want 401", header, resp.StatusCode)
+		}
+	}
+}

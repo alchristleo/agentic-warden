@@ -31,7 +31,12 @@ func (h *Handler) tokenAdmin(next http.HandlerFunc) http.HandlerFunc {
 			writeError(w, http.StatusServiceUnavailable, "admin token not configured")
 			return
 		}
-		presented := []byte(credential.Hash(bearer(r)))
+		token := bearer(r)
+		if token == "" { // sha256("") is a valid hash, so an empty token must not reach the compare
+			writeError(w, http.StatusUnauthorized, "unauthorized")
+			return
+		}
+		presented := []byte(credential.Hash(token))
 		matched := ""
 		for name, hash := range h.AdminTokens {
 			// No early exit: every entry is compared on every request.

@@ -57,7 +57,7 @@ type GroupSnapshot struct {
 	Seq int64 `json:"seq"`
 	// Source names the exporter, for the operator reading a listing.
 	Source string `json:"source"`
-	// AppliedBy is who posted it, from the client's environment.
+	// AppliedBy is the verified actor who posted it: token:<name> or the console user.
 	AppliedBy string `json:"appliedBy,omitempty"`
 	// SyncedAt is when the server stored it.
 	SyncedAt time.Time `json:"syncedAt"`

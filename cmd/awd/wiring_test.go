@@ -2,6 +2,7 @@ package main_test
 
 import (
 	"bufio"
+	"bytes"
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/rand"
@@ -147,25 +148,28 @@ func TestServeTLSBadPairBindsNothing(t *testing.T) {
 }
 
 func TestAdminTokenCommand(t *testing.T) {
-	out, code := runAwdEnv(t, []string{"AWD_TLS_CERT_FILE=only-one-set"}, "admin-token", "alice")
-	if code != 0 {
-		t.Fatalf("exit %d: %s", code, out)
+	cmd := exec.Command(built, "admin-token", "alice")
+	cmd.Env = append(os.Environ(), "AWD_LOG_LEVEL=error", "AWD_TLS_CERT_FILE=only-one-set")
+	var stdout, stderr bytes.Buffer
+	cmd.Stdout, cmd.Stderr = &stdout, &stderr
+	if err := cmd.Run(); err != nil {
+		t.Fatalf("%v: %s", err, stderr.String())
 	}
-	lines := strings.Split(strings.TrimSpace(out), "\n")
-	if len(lines) != 2 {
-		t.Fatalf("lines = %q", lines)
+	token := strings.TrimSpace(stderr.String())
+	line := strings.TrimSpace(stdout.String())
+	if token == "" || strings.Contains(token, "\n") {
+		t.Fatalf("stderr = %q, want the token alone", stderr.String())
 	}
-	token := lines[0]
-	if lines[1] != "alice "+credential.Hash(token) {
-		t.Errorf("line 2 = %q, want alice + hash of line 1", lines[1])
+	if line != "alice "+credential.Hash(token) {
+		t.Errorf("stdout = %q, want alice + hash of the stderr token", line)
 	}
 
-	parsed, err := config.ParseAdminTokens(strings.NewReader(lines[1] + "\n"))
+	parsed, err := config.ParseAdminTokens(strings.NewReader(line + "\n"))
 	if err != nil || parsed["alice"] != credential.Hash(token) {
 		t.Fatalf("round trip: %v, %v", parsed, err)
 	}
 	file := filepath.Join(t.TempDir(), "tokens")
-	if err := os.WriteFile(file, []byte(lines[1]+"\n"), 0o600); err != nil {
+	if err := os.WriteFile(file, []byte(line+"\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	s := startServerEnv(t, []string{"AWD_ADMIN_TOKENS_FILE=" + file})

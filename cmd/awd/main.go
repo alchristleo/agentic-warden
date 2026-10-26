@@ -56,7 +56,7 @@ const usage = `awd is the agent-wrapper control plane.
 Usage:
   awd serve                        run the API server
   awd keygen --out FILE            write a new signing key
-  awd admin-token <name>           print a new admin token and its AWD_ADMIN_TOKENS_FILE line
+  awd admin-token <name>           print a new admin token to stderr and its AWD_ADMIN_TOKENS_FILE line to stdout
   awd apply <file> [--url URL]     store a new policy revision
   awd enroll-token <user> [--url URL] [--ttl 24h]   mint a single-use token that enrolls one machine
   awd machines [--url URL]                          list enrolled machines
@@ -354,7 +354,7 @@ func adminToken(args []string) error {
 	if err != nil {
 		return err
 	}
-	fmt.Println(plain)
+	fmt.Fprintln(os.Stderr, plain)
 	fmt.Println(args[0], hash)
 	return nil
 }
@@ -629,7 +629,7 @@ func machines(argv []string) error {
 type groupSummary struct {
 	// Source names the exporter that produced the current snapshot.
 	Source string `json:"source"`
-	// AppliedBy is who posted the current snapshot, from the client's environment.
+	// AppliedBy is the verified actor who posted the current snapshot: token:<name> or the console user.
 	AppliedBy string `json:"appliedBy"`
 	// SyncedAt is when the server stored the current snapshot.
 	SyncedAt time.Time `json:"syncedAt"`
