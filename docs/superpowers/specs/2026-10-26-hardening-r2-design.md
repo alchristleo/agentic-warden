@@ -59,3 +59,26 @@ Close the gaps a self-hosting admin meets first. `awd` serves TLS itself, slows 
 - The tokens file holds hashes only; `credential.Hash` is SHA-256 over a 256-bit random secret, so no salt or slow hash is needed. Startup errors never print a line's hash or a token.
 - Constant-time comparison over all entries; timing reveals neither which name matched nor the entry count beyond the file size the operator controls.
 - Lockout risk: one bad client behind a shared NAT can lock out admin, enroll and SCIM callers on that IP for up to a minute. Machine syncs on that IP also get 429 and catch up on the next timer cycle after the refill. Revoked machines cannot cause a lockout, because their 401s are not counted. Documented.
+
+## Status (converged 2026-10-26)
+
+Base main (7899120), HEAD 2f89281. No earlier status table existed in this spec.
+
+| # | criterion (short) | verdict | evidence |
+|---|---|---|---|
+| 1 | TLS serve, one-file error, bad pair binds nothing | VERIFIED | `go test ./cmd/awd -run TestServeTLS -v`: TestServeTLSHTTPS, ...OneVarSetNamesTheOther, ...BadPairBindsNothing PASS |
+| 2 | 10 failures then 429 + Retry-After, refill, healthz, other IP | VERIFIED | `go test ./internal/handler -run TestLimiter -v`: FailuresStopAfterTenCompleted, Refills, HealthExempt, OtherIPUnaffected PASS |
+| 3 | Counted vs uncounted failures | VERIFIED | `-run TestLimiterCounts -v`: Enroll404And409, Admin401, SCIM401, OnlyCredentialed401 PASS; TestLimiterSkipsBundle401 PASS |
+| 4 | X-Forwarded-For / trusted proxies / IPv6 /64 | VERIFIED | `-run TestLimiterKey -v`: 8 tests PASS (RightmostUntrusted, TwoHeaderLines, IPPortEntries, ForgedLeftEntryIgnored, IPv6SharesSlash64, UntrustedXFFIgnored) |
+| 5 | At most 10 000 keys under 20 000 IPs | VERIFIED | `-run TestLimiterBounded -v`: PASS |
+| 6 | Per-admin tokens, actor ignores X-Applied-By | VERIFIED | `-run TestAdminTokens -v`: BothNamesPass, ActorIgnoresAppliedBy, RemovedNameFails, SingleLegacyIsAdmin PASS |
+| 7 | Bad tokens file fails startup with line, no token text | VERIFIED | `go test ./internal/config -run TestAdminTokensFile -v`: 8 tests PASS incl. ErrorsCarryLineNotText, AdminClashesWithEnvToken |
+| 8 | `awd admin-token` output admits the token | VERIFIED | `go test ./cmd/awd -run TestAdminTokenCommand -v`: PASS |
+| 9 | Redirect cap on sync client and both CLI clients | VERIFIED | `go test ./internal/sync ./cmd/awd -run TestRedirectCap -v`: PASS in both packages |
+| 10 | Doctor helper ownership/mode | VERIFIED | `go test ./internal/agent/claude -run TestDoctorHelperOwnership -v`: 4 tests PASS |
+| 11 | Refused older bundle repins; emptyEffect requireBundle | VERIFIED | `go test ./internal/sync ./internal/agent/claude -run 'TestRefusedOlderBundleStillRepins|TestEmptyEffectReadsRequireBundle' -v`: both PASS |
+| 12 | check-svg.sh passes/fails, docs.yml runs it | VERIFIED | `scripts/test-checks.sh`: 'test-checks: all passed' (svg cases ok); grep check-svg.sh docs.yml ok |
+| 13 | Full suite green | VERIFIED | `go vet ./...` clean; `go test ./...` no FAIL lines (run with cached results for unchanged packages) |
+| 14 | Docs match D9 | VERIFIED | check: seat panel-security. Ledger: `SEAT panel-security pass 210a761 AC14 re-run on fix diff`; 210a761 is the last commit touching docs/site (later commits touch only the plan ledger) |
+
+Deviations: none. Open findings: none (TRIAGE fixed=15 dismissed=3 backlog=2; security re-run must=0 should=0 nit=1). AC12 note: test-checks.sh output tail only was read; AC13 packages shown cached.
