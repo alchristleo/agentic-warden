@@ -1524,6 +1524,9 @@ func TestRunPruneSkipsNonAbsoluteAndUncleanPaths(t *testing.T) {
 	dir := t.TempDir()
 	victim := filepath.Join(dir, "victim")
 	writeFile(t, victim, "A")
+	if err := os.Mkdir(filepath.Join(dir, "sub"), 0o755); err != nil {
+		t.Fatal(err)
+	}
 	unclean := dir + "/sub/../victim"
 	res, _ := pruneCycle(t, func(sync.Config) map[string]string {
 		return map[string]string{unclean: sha("A"), "rel/x": sha("A")}
