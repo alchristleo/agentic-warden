@@ -108,3 +108,6 @@ T3 coord 4f80a12 TestLimiterRefillCapsAtBurst (mutation: cap removed -> fails); 
 T3 done 4f80a12 sdd-reviewer-lite coord re-review approve
 COORD review approve 4f80a12 sdd-reviewer-lite refill cap test mutation-checked
 MERGE T3 cca7143 clean; go vet+test green
+T5 done f8d383d sdd-implementer TLS, admin-token, limiter wiring, CLI redirect, dup-hash reject; exported config.ValidAdminName; appliedBy removed
+T5 fix f8d383d sdd-reviewer fix-needed must limiter outside Logging/Recovery (429 not logged); should no served /healthz bypass check; nits serveFailure comment
+T5 done c80f2d5 sdd-reviewer-lite re-review approve
