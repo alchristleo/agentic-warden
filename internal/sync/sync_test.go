@@ -19,6 +19,7 @@ import (
 
 	"github.com/alchristleo/agentic-warden/internal/agent"
 	"github.com/alchristleo/agentic-warden/internal/agent/claude"
+	"github.com/alchristleo/agentic-warden/internal/credential"
 	"github.com/alchristleo/agentic-warden/internal/handler"
 	"github.com/alchristleo/agentic-warden/internal/model"
 	"github.com/alchristleo/agentic-warden/internal/policy"
@@ -1028,7 +1029,7 @@ func newRevisedFixture(t *testing.T) *revisedFixture {
 	}
 	f := &revisedFixture{key: key, now: time.Date(2026, 9, 20, 12, 0, 0, 0, time.UTC)}
 	f.h = handler.New(store.NewMemory(), nil)
-	f.h.AdminToken = testAdminToken
+	f.h.AdminTokens = map[string]string{"admin": credential.Hash(testAdminToken)}
 	f.h.Signer = &handler.Signer{Current: signing.NewSeedSigner(key)}
 	f.h.Now = func() time.Time { return f.now }
 	routes := f.h.Routes()
@@ -1822,5 +1823,51 @@ func TestRunIsA304WhenARootOverrideShadowsADefaultRootHoldingRecordedFiles(t *te
 	}
 	if hasNote(res.Notes, "belongs to no enrolled agent") {
 		t.Errorf("notes = %q, want no orphan note", res.Notes)
+	}
+}
+
+// AC11: a rollover the fetch verified moves the pin even when the same
+// response is refused for carrying an older revision.
+func TestRefusedOlderBundleStillRepins(t *testing.T) {
+	f := newRevisedFixture(t)
+	old := f.twoRevisions(t)
+	next, err := signing.Generate()
+	if err != nil {
+		t.Fatal(err)
+	}
+	nextPub := next.Public().(ed25519.PublicKey)
+	header, err := signing.SignRollover(context.Background(), signing.NewSeedSigner(f.key), nextPub)
+	if err != nil {
+		t.Fatal(err)
+	}
+	old.Header().Set("X-AW-Key-Rollover", header)
+	old.Header().Set("X-AW-Signature-Format", signing.FormatV1)
+	old.Header().Set("X-AW-Signature", signing.Sign(next, old.Body.Bytes()))
+	before := f.snapshot(t)
+
+	f.replay = old
+	res := sync.Run(context.Background(), f.cfg)
+
+	if res.Err == nil || !strings.Contains(res.Err.Error(), "is older than last rendered") {
+		t.Fatalf("err = %v, want the older-revision refusal", res.Err)
+	}
+	machine, err := sync.LoadMachine(f.cfg.StateDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if machine.PublicKey != signing.FormatPublic(nextPub) || machine.KeyID != signing.KeyID(nextPub) {
+		t.Errorf("machine = %+v, want the pin moved to the announced key", machine)
+	}
+	after := f.snapshot(t)
+	if len(after) != len(before) {
+		t.Errorf("file set changed: %d files before, %d after", len(before), len(after))
+	}
+	for path, content := range before {
+		if filepath.Base(path) == "machine.json" {
+			continue // the pin file is the one thing that moves
+		}
+		if got, ok := after[path]; !ok || got != content {
+			t.Errorf("%s changed or vanished after the refusal", path)
+		}
 	}
 }

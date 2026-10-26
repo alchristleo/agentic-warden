@@ -29,6 +29,9 @@ const defaultRevisionLimit = 50
 type Handler struct {
 	store store.Store
 	log   *slog.Logger
+	// Limit, when set, wraps the routes inside logging and recovery, so a
+	// refusal it writes is logged and a panic in it is recovered.
+	Limit func(http.Handler) http.Handler
 	// Now supplies the current time. Tests replace it to make stored
 	// revisions deterministic.
 	Now func() time.Time
@@ -37,11 +40,12 @@ type Handler struct {
 	// an agent refuse to start is rejected here, in front of the author,
 	// rather than discovered on a developer's machine. Nil skips the check.
 	ManagedValidator policy.ManagedValidator
-	// AdminToken is the bearer token administrative routes require. Empty
-	// disables them with a 503; it never leaves them open.
-	AdminToken string
+	// AdminTokens maps an admin's name to credential.Hash of their bearer
+	// token. Administrative routes require one of them. Empty disables the
+	// routes with a 503; it never leaves them open.
+	AdminTokens map[string]string
 	// SCIMToken is the bearer token the identity provider presents on
-	// /scim/v2. It is separate from AdminToken because it lives in the
+	// /scim/v2. It is separate from AdminTokens because it lives in the
 	// IdP's configuration, not with the operators. Empty disables SCIM
 	// with a 503.
 	SCIMToken string
@@ -103,7 +107,11 @@ func (h *Handler) Routes() http.Handler {
 	mux.HandleFunc("GET /v1/audit", h.requireAdmin(h.getAudit))
 	h.scimRoutes(mux)
 	h.consoleRoutes(mux)
-	return Logging(h.log)(Recovery(h.log)(mux))
+	var inner http.Handler = mux
+	if h.Limit != nil {
+		inner = h.Limit(mux)
+	}
+	return Logging(h.log)(Recovery(h.log)(inner))
 }
 
 func (h *Handler) healthz(w http.ResponseWriter, _ *http.Request) {

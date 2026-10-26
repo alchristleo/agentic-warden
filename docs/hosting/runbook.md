@@ -19,6 +19,7 @@ Placeholders used below. Replace them everywhere:
 | `<ops>` | Absolute path to the private ops repository checkout. It must be absolute: a relative `-var-file` is resolved against `-chdir`, not your current directory |
 
 Prerequisites: OpenTofu 1.13 (`tofu version`), AWS CLI v2 signed in to the account, Docker, Go.
+The identity that applies a cell needs `ec2:DescribeVpcs`. The cell reads the platform VPC to set `AWD_TRUSTED_PROXIES`.
 Run every `tofu` command from the repository root.
 
 ## 1. Bootstrap the state bucket (once)

@@ -74,6 +74,7 @@ func (a *Adapter) Inspect(env []string) []agent.Finding {
 	default:
 		binary := checkHelperBinary(helper, source)
 		findings = append(findings, binary)
+		findings = append(findings, checkHelperOwnership(a.goos(), helper)...)
 		if binary.Level == agent.OK {
 			if build, warn := checkHelperBuild(helper, source); warn {
 				findings = append(findings, build)
@@ -152,6 +153,41 @@ func checkHelperBinary(helper, source string) agent.Finding {
 	return agent.Finding{Level: agent.OK, Message: fmt.Sprintf("policyHelper %s (from %s)", helper, source)}
 }
 
+// statPath is os.Stat, a variable so tests can fake uid and mode.
+var statPath = os.Stat
+
+// checkHelperOwnership warns when the helper or its directory is owned by
+// someone other than root or is writable by group or others: whoever can
+// replace the helper controls every launch. Skipped on Windows, where
+// neither a uid nor an ACL is readable here. A path that cannot be statted
+// is checkHelperBinary's to report.
+func checkHelperOwnership(goos, helper string) []agent.Finding {
+	if goos != "linux" && goos != "darwin" {
+		return nil
+	}
+	var findings []agent.Finding
+	for _, path := range []string{helper, filepath.Dir(helper)} {
+		info, err := statPath(path)
+		if err != nil {
+			continue
+		}
+		uid, known := ownerUID(info)
+		if !known || (uid == rootUID && info.Mode().Perm()&worldWritable == 0) {
+			continue
+		}
+		fix := fmt.Sprintf("sudo chown root:0 %s && sudo chmod 755 %s", path, path)
+		if path != helper {
+			// The directory may be a package manager's prefix, which the
+			// user owns on purpose, so advise moving the helper instead.
+			fix = fmt.Sprintf("install aw-policy in a root-owned directory such as /usr/local/libexec, or move it out of %s, and point policyHelper there", path)
+		}
+		findings = append(findings, agent.Finding{Level: agent.Warn, Message: fmt.Sprintf(
+			"%s is owned by uid %d with mode %s: anyone who can write it or its directory can replace the policy helper; fix with: %s",
+			path, uid, info.Mode(), fix)})
+	}
+	return findings
+}
+
 // helperProbeTimeout bounds `aw-policy build-info`. The real helper answers
 // instantly; the bound is for a helper that is not ours and reads stdin or
 // waits on a network.
@@ -174,10 +210,18 @@ func checkHelperBuild(helper, source string) (agent.Finding, bool) {
 		Message: fmt.Sprintf("policyHelper %s (from %s) was built with -tags awtest: a developer can point it at their own bundle; rebuild without the tag", helper, source)}, true
 }
 
-// emptyEffect says what a missing or unusable bundle does to a launch. A
-// trust file that is there, or cannot be statted, means a key is pinned and
-// aw-policy fails closed; with none it emits nothing and exits 0.
-func emptyEffect(stateDir string) string {
+// emptyEffect says what a missing or unusable bundle does to a launch. An
+// explicit requireBundle in aw-policy.json decides: true fails closed, false
+// emits nothing. Without one, a trust file that is there, or cannot be
+// statted, means a key is pinned and aw-policy fails closed; with none it
+// emits nothing and exits 0.
+func emptyEffect(systemDir, stateDir string) string {
+	if cfg, err := ReadConfig(filepath.Join(systemDir, PolicyConfigFile)); err == nil && cfg.RequireBundle != nil {
+		if *cfg.RequireBundle {
+			return "aw-policy refuses to start: requireBundle is true"
+		}
+		return "aw-policy emits no settings"
+	}
 	if stateDir != "" {
 		if _, err := os.Stat(filepath.Join(stateDir, stateTrustFile)); !errors.Is(err, os.ErrNotExist) {
 			return "aw-policy refuses to start: a key is pinned"
@@ -192,7 +236,7 @@ func emptyEffect(stateDir string) string {
 // parse, the same happens for a worse reason. Age and last error are
 // aw-sync's to report, from its state directory; `aw doctor` shows both.
 func inspectBundle(systemDir, stateDir string) agent.Finding {
-	noSettings := emptyEffect(stateDir)
+	noSettings := emptyEffect(systemDir, stateDir)
 	path := filepath.Join(systemDir, BundleFile)
 	raw, err := os.ReadFile(path)
 	switch {

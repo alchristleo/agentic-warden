@@ -9,10 +9,13 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"net/netip"
 	"net/url"
 	"os"
 	"strings"
 	"time"
+
+	"github.com/alchristleo/agentic-warden/internal/credential"
 )
 
 // Config is the control plane's runtime configuration.
@@ -30,9 +33,15 @@ type Config struct {
 	IdleTimeout  time.Duration
 	// ShutdownTimeout bounds how long in-flight requests may drain.
 	ShutdownTimeout time.Duration
-	// AdminToken is the bearer token for administrative routes. Unset means
-	// those routes are disabled.
-	AdminToken string
+	// AdminTokens maps each admin name to the SHA-256 hex of its token. It
+	// holds AWD_ADMIN_TOKEN as "admin" plus the entries of AWD_ADMIN_TOKENS_FILE.
+	AdminTokens map[string]string
+	// TLSCertFile and TLSKeyFile enable native TLS. Both set or both empty.
+	TLSCertFile string
+	TLSKeyFile  string
+	// TrustedProxies lists the proxies whose X-Forwarded-For the failed-auth
+	// limiter believes.
+	TrustedProxies []netip.Prefix
 	// SCIMToken is the bearer token the identity provider presents on
 	// /scim/v2. Unset means SCIM is disabled.
 	SCIMToken string
@@ -68,9 +77,50 @@ func FromEnv() (Config, error) {
 	cfg := Config{
 		Addr:        env("AWD_ADDR", ":8080"),
 		DatabaseURL: os.Getenv("AWD_DATABASE_URL"),
-		AdminToken:  os.Getenv("AWD_ADMIN_TOKEN"),
 		SCIMToken:   os.Getenv("AWD_SCIM_TOKEN"),
+
+		TLSCertFile: os.Getenv("AWD_TLS_CERT_FILE"),
+		TLSKeyFile:  os.Getenv("AWD_TLS_KEY_FILE"),
 	}
+	switch {
+	case cfg.TLSCertFile != "" && cfg.TLSKeyFile == "":
+		return Config{}, errors.New("config: AWD_TLS_CERT_FILE is set but AWD_TLS_KEY_FILE is missing")
+	case cfg.TLSKeyFile != "" && cfg.TLSCertFile == "":
+		return Config{}, errors.New("config: AWD_TLS_KEY_FILE is set but AWD_TLS_CERT_FILE is missing")
+	}
+
+	for _, raw := range strings.Split(os.Getenv("AWD_TRUSTED_PROXIES"), ",") {
+		raw = strings.TrimSpace(raw)
+		if raw == "" {
+			continue
+		}
+		p, err := netip.ParsePrefix(raw)
+		if err != nil {
+			return Config{}, fmt.Errorf("config: AWD_TRUSTED_PROXIES entry %q is not a CIDR: %w", raw, err)
+		}
+		cfg.TrustedProxies = append(cfg.TrustedProxies, p.Masked())
+	}
+
+	envHash := ""
+	if t := os.Getenv("AWD_ADMIN_TOKEN"); t != "" {
+		envHash = credential.Hash(t)
+	}
+	tokens := map[string]string{}
+	if path := os.Getenv("AWD_ADMIN_TOKENS_FILE"); path != "" {
+		f, err := os.Open(path)
+		if err != nil {
+			return Config{}, fmt.Errorf("config: AWD_ADMIN_TOKENS_FILE: %w", err)
+		}
+		defer f.Close()
+		tokens, err = parseAdminTokens(f, envHash)
+		if err != nil {
+			return Config{}, err
+		}
+	}
+	if envHash != "" {
+		tokens["admin"] = envHash
+	}
+	cfg.AdminTokens = tokens
 
 	level, err := logLevel(env("AWD_LOG_LEVEL", "info"))
 	if err != nil {

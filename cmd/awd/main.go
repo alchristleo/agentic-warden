@@ -13,6 +13,7 @@ import (
 	"bytes"
 	"context"
 	"crypto/ed25519"
+	"crypto/tls"
 	"encoding/json"
 	"errors"
 	"flag"
@@ -37,6 +38,7 @@ import (
 	"github.com/alchristleo/agentic-warden/internal/console/authz"
 	"github.com/alchristleo/agentic-warden/internal/console/session"
 	"github.com/alchristleo/agentic-warden/internal/console/sso"
+	"github.com/alchristleo/agentic-warden/internal/credential"
 	"github.com/alchristleo/agentic-warden/internal/handler"
 	"github.com/alchristleo/agentic-warden/internal/model"
 	"github.com/alchristleo/agentic-warden/internal/policy"
@@ -54,6 +56,7 @@ const usage = `awd is the agent-wrapper control plane.
 Usage:
   awd serve                        run the API server
   awd keygen --out FILE            write a new signing key
+  awd admin-token <name>           print a new admin token to stderr and its AWD_ADMIN_TOKENS_FILE line to stdout
   awd apply <file> [--url URL]     store a new policy revision
   awd enroll-token <user> [--url URL] [--ttl 24h]   mint a single-use token that enrolls one machine
   awd machines [--url URL]                          list enrolled machines
@@ -73,7 +76,11 @@ Environment:
   AWD_IDLE_TIMEOUT           keep-alive idle timeout (default 120s)
   AWD_SHUTDOWN_TIMEOUT       how long in-flight requests may drain (default 30s)
   AWD_URL                    control plane URL used by apply (default http://localhost:8080)
-  AWD_ADMIN_TOKEN            bearer token for apply and machine administration; unset disables them
+  AWD_ADMIN_TOKEN            bearer token for apply and machine administration, named admin
+  AWD_ADMIN_TOKENS_FILE      file of "<name> <sha256-hex>" lines, one per admin; see awd admin-token
+  AWD_TLS_CERT_FILE          PEM certificate chain; set with AWD_TLS_KEY_FILE to serve HTTPS (TLS 1.2 and up)
+  AWD_TLS_KEY_FILE           PEM private key for AWD_TLS_CERT_FILE
+  AWD_TRUSTED_PROXIES        comma-separated CIDRs whose X-Forwarded-For the failed-auth limiter trusts
   AWD_SCIM_TOKEN             bearer token the identity provider presents on /scim/v2; unset disables SCIM
   AWD_SIGNING_KEY            path to a signing key written by keygen, or awskms:<key ARN>; unset means bundles are not signed
   AWD_SIGNING_KEY_PREVIOUS   path to a signing key written by keygen, or awskms:<key ARN>, being rotated out, signed over during a rotation
@@ -109,6 +116,8 @@ func run(argv []string) error {
 		return serve()
 	case "keygen":
 		return keygen(argv[1:])
+	case "admin-token":
+		return adminToken(argv[1:])
 	case "apply":
 		return apply(argv[1:])
 	case "enroll-token":
@@ -147,19 +156,23 @@ func serve() error {
 
 	h := handler.New(backing, log)
 	h.ManagedValidator = managedValidator
-	h.AdminToken = cfg.AdminToken
-	if cfg.AdminToken == "" {
-		log.Warn("AWD_ADMIN_TOKEN is unset; apply and machine administration are disabled")
+	h.AdminTokens = cfg.AdminTokens
+	h.Limit = handler.NewLimiter(cfg.TrustedProxies, time.Now, log).Wrap
+	if len(cfg.AdminTokens) == 0 {
+		log.Warn("no admin token is set; apply and machine administration are disabled; set AWD_ADMIN_TOKEN or AWD_ADMIN_TOKENS_FILE")
 	}
 	h.SCIMToken = cfg.SCIMToken
 	if cfg.SCIMToken != "" {
 		log.Info("SCIM provisioning is enabled at /scim/v2")
 		// The IdP's token lives in its own configuration, separate from
-		// operators; sharing it with AdminToken means anyone who can
+		// operators; sharing it with an admin token means anyone who can
 		// provision users can also administer the control plane, and vice
 		// versa. Never log either token's value.
-		if cfg.SCIMToken == cfg.AdminToken {
-			log.Warn("AWD_SCIM_TOKEN equals AWD_ADMIN_TOKEN; they should be distinct")
+		scimHash := credential.Hash(cfg.SCIMToken)
+		for _, adminHash := range cfg.AdminTokens {
+			if scimHash == adminHash {
+				log.Warn("AWD_SCIM_TOKEN equals an admin token; they should be distinct")
+			}
 		}
 	}
 
@@ -216,8 +229,19 @@ func serve() error {
 		log.Info("admin console disabled; set AWD_PUBLIC_URL and AWD_CONSOLE_* to enable it")
 	}
 
+	// A bad certificate pair stops the process before anything is bound.
+	var tlsConfig *tls.Config
+	if cfg.TLSCertFile != "" {
+		pair, err := tls.LoadX509KeyPair(cfg.TLSCertFile, cfg.TLSKeyFile)
+		if err != nil {
+			return fmt.Errorf("loading the TLS certificate pair: %w", err)
+		}
+		tlsConfig = &tls.Config{Certificates: []tls.Certificate{pair}, MinVersion: tls.VersionTLS12}
+	}
+
 	srv := &http.Server{
 		Handler:      h.Routes(),
+		TLSConfig:    tlsConfig,
 		ReadTimeout:  cfg.ReadTimeout,
 		WriteTimeout: cfg.WriteTimeout,
 		IdleTimeout:  cfg.IdleTimeout,
@@ -235,7 +259,13 @@ func serve() error {
 
 	serverError := make(chan error, 1)
 	go func() {
-		if err := srv.Serve(listener); !errors.Is(err, http.ErrServerClosed) {
+		var err error
+		if tlsConfig != nil {
+			err = srv.ServeTLS(listener, "", "")
+		} else {
+			err = srv.Serve(listener)
+		}
+		if !errors.Is(err, http.ErrServerClosed) {
 			serverError <- err
 			return
 		}
@@ -314,6 +344,21 @@ func loadSigner(ctx context.Context, value string) (signing.Signer, error) {
 	return signing.NewSeedSigner(key), nil
 }
 
+// adminToken mints an admin token. Line 1 is the token, for the admin. Line 2
+// is "<name> <hash>", for AWD_ADMIN_TOKENS_FILE. It reads no config.
+func adminToken(args []string) error {
+	if len(args) != 1 || !config.ValidAdminName(args[0]) {
+		return errors.New("awd admin-token: give one name of 1 to 64 characters from a-z, 0-9, . _ @ -, starting with a letter or digit")
+	}
+	plain, hash, err := credential.New()
+	if err != nil {
+		return err
+	}
+	fmt.Fprintln(os.Stderr, plain)
+	fmt.Println(args[0], hash)
+	return nil
+}
+
 // keygen writes a new signing key and prints the public half. It never
 // replaces an existing key: a control plane that quietly started signing
 // with a different key would strand every machine that pinned the old one.
@@ -389,13 +434,8 @@ func apply(argv []string) error {
 	if token := os.Getenv("AWD_ADMIN_TOKEN"); token != "" {
 		req.Header.Set("Authorization", "Bearer "+token)
 	}
-	if who := appliedBy(); who != "" {
-		req.Header.Set("X-Applied-By", who)
-	}
 
-	client := &http.Client{Timeout: 30 * time.Second, CheckRedirect: func(r *http.Request, _ []*http.Request) error {
-		return sync.CheckTransport(r.URL.String())
-	}}
+	client := &http.Client{Timeout: 30 * time.Second, CheckRedirect: sync.CheckRedirect}
 	resp, err := client.Do(req)
 	if err != nil {
 		return fmt.Errorf("reaching the control plane at %s: %w", url, err)
@@ -423,15 +463,6 @@ func managedValidator(agentName string, doc map[string]any) error {
 		return err
 	}
 	return agymanaged.ForAgent(agentName, doc)
-}
-
-func appliedBy() string {
-	for _, key := range []string{"AWD_APPLIED_BY", "USER", "USERNAME"} {
-		if value := os.Getenv(key); value != "" {
-			return value
-		}
-	}
-	return ""
 }
 
 func envOr(key, fallback string) string {
@@ -502,12 +533,7 @@ func adminRequest(method, url, path string, body any, out any) error {
 	if token := os.Getenv("AWD_ADMIN_TOKEN"); token != "" {
 		req.Header.Set("Authorization", "Bearer "+token)
 	}
-	if who := appliedBy(); who != "" {
-		req.Header.Set("X-Applied-By", who)
-	}
-	client := &http.Client{Timeout: 30 * time.Second, CheckRedirect: func(r *http.Request, _ []*http.Request) error {
-		return sync.CheckTransport(r.URL.String())
-	}}
+	client := &http.Client{Timeout: 30 * time.Second, CheckRedirect: sync.CheckRedirect}
 	resp, err := client.Do(req)
 	if err != nil {
 		return fmt.Errorf("reaching the control plane at %s: %w", url, err)
@@ -603,7 +629,7 @@ func machines(argv []string) error {
 type groupSummary struct {
 	// Source names the exporter that produced the current snapshot.
 	Source string `json:"source"`
-	// AppliedBy is who posted the current snapshot, from the client's environment.
+	// AppliedBy is the verified actor who posted the current snapshot: token:<name> or the console user.
 	AppliedBy string `json:"appliedBy"`
 	// SyncedAt is when the server stored the current snapshot.
 	SyncedAt time.Time `json:"syncedAt"`

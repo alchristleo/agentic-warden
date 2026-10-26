@@ -8,6 +8,10 @@ data "terraform_remote_state" "platform" {
   }
 }
 
+data "aws_vpc" "this" {
+  id = local.p.vpc_id
+}
+
 data "aws_region" "current" {}
 data "aws_caller_identity" "current" {}
 
@@ -318,6 +322,8 @@ resource "aws_ecs_task_definition" "this" {
       { name = "AWD_ADDR", value = ":${local.port}" },
       { name = "AWD_SIGNING_KEY", value = "awskms:${aws_kms_key.signing[local.current_key].arn}" },
       { name = "AWD_LOG_LEVEL", value = "info" },
+      # The load balancer is the only client of the task. Without this every client shares its bucket in the failed-auth limiter.
+      { name = "AWD_TRUSTED_PROXIES", value = data.aws_vpc.this.cidr_block },
     ], local.previous_key_env, local.console_env)
 
     secrets = [for name, arn in local.secret_arns : { name = name, valueFrom = arn }]

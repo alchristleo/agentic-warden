@@ -29,7 +29,7 @@ type groupsRequest struct {
 type groupsSummary struct {
 	// Source names the exporter that produced the current snapshot.
 	Source string `json:"source"`
-	// AppliedBy is who posted the current snapshot, from the client's environment.
+	// AppliedBy is the verified actor who posted the current snapshot: token:<name> or the console user.
 	AppliedBy string `json:"appliedBy,omitempty"`
 	// SyncedAt is when the server stored the current snapshot.
 	SyncedAt time.Time `json:"syncedAt"`

@@ -2,18 +2,18 @@
 title: Upgrading
 section: security-review
 order: 5
-description: Four behavior changes in the security hardening release, and what to do about each before you upgrade.
+description: Behavior changes in the security hardening releases, and what to do about each before you upgrade.
 ---
 
 # Upgrading
 
-The security hardening release changes four behaviors. Each one fails closed: it refuses and leaves the old files in place. Read them before you upgrade `awd` and the clients. Upgrade `awd` first.
+The security hardening release changes four behaviors. A second hardening release, described at the end, adds more. Each one fails closed: it refuses and leaves the old files in place. Read them before you upgrade `awd` and the clients. Upgrade `awd` first.
 
 ## 1. Plain HTTP to a remote host is refused
 
 `aw-sync enroll`, `aw-sync run` and the `awd` admin commands that send the admin token refuse an `http://` URL unless the host is `localhost`, an address in `127.0.0.0/8` or `::1`. They send no request. `aw-sync run` checks the server saved at enrollment too, so a machine that enrolled over plain HTTP to a remote host stops syncing after the upgrade. It keeps the files it has.
 
-Fix: put TLS in front of `awd` and use an `https://` URL. For a machine already enrolled over HTTP, re-enroll it with an `https://` server and `--force`. The quickstart uses `http://localhost:8080` and is not affected.
+Fix: set `AWD_TLS_CERT_FILE` and `AWD_TLS_KEY_FILE` on `awd`, or put TLS in front of it, and use an `https://` URL. For a machine already enrolled over HTTP, re-enroll it with an `https://` server and `--force`. The quickstart uses `http://localhost:8080` and is not affected.
 
 Evidence: `TestCheckTransport`, `TestRunRefusesASavedPlainHTTPServer` in `internal/sync/transport_test.go`; `TestEnrollRefusesPlainHTTP` in `cmd/aw-sync/transport_test.go`; `TestAdminCLIRefusesPlainHTTP` in `cmd/awd/transport_test.go`.
 
@@ -50,3 +50,21 @@ Evidence: `TestFailsClosedWhenAKeyIsPinned`, `TestExplicitRequireBundleFalseFail
 
 - `GET /v1/policy` needs the admin token or a console admin session. Send `Authorization: Bearer $AWD_ADMIN_TOKEN` (`TestReadingPolicyNeedsAdmin` in `internal/handler/auth_test.go`). No client in the repository calls it.
 - A token from a signing `awd` ends in `.<keyId>`. `aw-sync enroll` refuses a server that presents a different key (`TestEnrollRefusesAKeyIDMismatch` in `internal/sync/client_test.go`). Tokens from an older `awd` have no suffix and enroll as before.
+
+## Second hardening release
+
+### The audit actor on the token path is the token name
+
+Before, the audit actor was `token:` plus the `X-Applied-By` header that the caller sent. Now the actor is `token:<name>` and `awd` ignores `X-Applied-By`. A setup that uses only `AWD_ADMIN_TOKEN` has the name `admin`, so new audit rows read `token:admin`. Old rows keep the label the caller sent. The `AWD_APPLIED_BY` variable no longer does anything. The `awd` CLI no longer sends the header, and an older `awd` CLI that still sends it keeps working.
+
+Fix: nothing breaks. To tell admins apart, give each one a token with `awd admin-token <name>`. See [Reference](./reference.md#control-plane-awd).
+
+Evidence: `TestAdminTokensActorIgnoresAppliedBy`, `TestAdminTokensSingleLegacyIsAdmin` in `internal/handler/auth_test.go`.
+
+### Repeated failed attempts from one IP get 429
+
+After 10 failed attempts, `awd` answers 429 with a `Retry-After` header to that client IP, then allows one more attempt every 6 seconds. Behind a load balancer every client has the balancer's IP unless you set `AWD_TRUSTED_PROXIES`. Machine credential 401s do not count. A machine that `awd` blocks keeps its files and syncs again on its next timer cycle.
+
+Fix: if `awd` runs behind a proxy, set `AWD_TRUSTED_PROXIES` to the proxy CIDRs before you upgrade.
+
+Evidence: `TestLimiterBlocksAfterTenFailures`, `TestLimiterSkipsBundle401` in `internal/handler/limit_test.go`. `TestLimiterAnswers429ToAServedAwd` in `cmd/awd/wiring_test.go`.

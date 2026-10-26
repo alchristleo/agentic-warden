@@ -9,7 +9,6 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
-	"net/http"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -44,8 +43,6 @@ type Config struct {
 	// Registry holds the adapters this binary was compiled with. Only those
 	// implementing agent.Renderer can be synced.
 	Registry *agent.Registry
-	// HTTP overrides the client used to reach the control plane.
-	HTTP *http.Client
 	// Now supplies the time for state.json and the audit log.
 	Now func() time.Time
 }
@@ -176,7 +173,7 @@ func Run(ctx context.Context, cfg Config) Result {
 		}
 	}
 
-	client := &Client{Server: machine.Server, HTTP: cfg.HTTP}
+	client := &Client{Server: machine.Server}
 	var pinned ed25519.PublicKey
 	if machine.PublicKey != "" {
 		key, err := signing.ParsePublic(machine.PublicKey)
@@ -239,6 +236,12 @@ func Run(ctx context.Context, cfg Config) Result {
 	// is signed with the bundle, so a replay of an old signed bundle is
 	// caught here, before anything is rendered or written.
 	if pinned != nil && fetched.Bundle.RevisedAt < state.RevisedAt {
+		// The rollover was verified against the pin inside Fetch and says
+		// nothing about this bundle, so a refused replay must not stop the
+		// rotation from finishing.
+		if fetched.Rollover != nil {
+			notes = append(notes, cfg.repin(machine, *fetched.Rollover)...)
+		}
 		return cfg.fail(state, notes, nil, nil, fmt.Errorf("policy revision time %s is older than last rendered %s; apply the policy again on the control plane",
 			revisionTime(fetched.Bundle.RevisedAt), revisionTime(state.RevisedAt)))
 	}

@@ -1,8 +1,10 @@
 package sync
 
 import (
+	"errors"
 	"fmt"
 	"net"
+	"net/http"
 	"net/url"
 	"strings"
 )
@@ -29,4 +31,14 @@ func CheckTransport(rawURL string) error {
 		}
 	}
 	return fmt.Errorf("sync: refusing %s: plain http is only allowed to localhost; use an https URL", u.Redacted())
+}
+
+// CheckRedirect is the redirect policy for every control plane client. A
+// custom CheckRedirect replaces Go's default ten-hop cap, so the cap is
+// restored here before the transport check on the hop's URL.
+func CheckRedirect(req *http.Request, via []*http.Request) error {
+	if len(via) >= 10 {
+		return errors.New("sync: stopped after 10 redirects")
+	}
+	return CheckTransport(req.URL.String())
 }

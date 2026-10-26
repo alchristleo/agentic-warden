@@ -122,13 +122,10 @@ func TestEachAdminWriteIsAuditedWithTheTokenActor(t *testing.T) {
 	if events[0].Detail["name"] != "laptop" || events[0].Detail["user"] != "bob@example.com" {
 		t.Errorf("revoke detail = %#v", events[0].Detail)
 	}
-	for _, e := range events[1:] {
-		if e.Actor != "token:alice" && e.Actor != "token:" {
-			t.Errorf("actor = %q", e.Actor)
+	for _, e := range events {
+		if e.Actor != "token:admin" {
+			t.Errorf("actor = %q, want token:admin", e.Actor)
 		}
-	}
-	if events[4].Actor != "token:alice" {
-		t.Errorf("revision actor = %q, want token:alice", events[4].Actor)
 	}
 	for _, e := range events {
 		if _, leaked := e.Detail["token"]; leaked {

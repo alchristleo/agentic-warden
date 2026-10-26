@@ -74,6 +74,8 @@ jobs:
         run: scripts/check-readme.sh
         env:
           GITHUB_TOKEN: ${{ github.token }}
+      - name: Check the SVGs parse
+        run: scripts/check-svg.sh
       - name: Check links
         run: |
           scripts/check-links.sh README.md
