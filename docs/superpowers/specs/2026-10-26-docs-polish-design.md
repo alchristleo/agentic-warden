@@ -130,3 +130,29 @@ T1–T3 share README cross-links, so they run in sequence after T6. T4 and T5 ar
 Hero and 06 need a logged-in Claude Code. Default: you record them by hand after the tape edits land
 (`docs/tapes/README.md` has the commands). Alternative: an agent re-renders them in this session with
 your login (two short `claude -p` runs each).
+
+## Status (converged 2026-10-26)
+
+Base main (b456ed5), HEAD 1be8732. No earlier status table.
+
+| # | criterion | verdict | evidence |
+|---|---|---|---|
+| 1 | limits only in threat-model | VERIFIED | AC1 check command exits 0 |
+| 2 | no evidence or fact lost | VERIFIED | AC2 loop over 16 names/phrases, no "missing" |
+| 3 | security-model links to limits | VERIFIED | grep `threat-model.md#design-limits` ok |
+| 4 | every old claim has a home | VERIFIED | `SEAT panel-correctness pass 8ee880f AC4` (no later commit touched docs) |
+| 5 | trust statement is the docs page | VERIFIED | AC5 check exits 0 (9 headings, evidence, pointer ≤ 5 lines) |
+| 6 | no hosting trust refs | VERIFIED | `git grep` allowlist check empty |
+| 7 | how-it-works concepts only | VERIFIED | AC7 check exits 0 |
+| 8 | link check resolves anchors | VERIFIED | `scripts/test-checks.sh`: "all passed" |
+| 9 | links and anchors resolve | VERIFIED | check-links on README and docs/site/*.md, rc 0 |
+| 10 | 390 px table code, no sideways scroll | VERIFIED | playwright `-g "table code"`: 1 passed |
+| 11 | site builds, tests pass | VERIFIED | typecheck, 84 unit passed, build, 49 e2e passed |
+| 12 | no text < 10 px, SVGs parse | VERIFIED | font-size check + `scripts/check-svg.sh` rc 0 |
+| 13 | tapes validate, 07 no temp path | VERIFIED | `vhs validate` and no `/tmp/tmp.` in `$SCRATCH/07-reapply.txt` (17:25 render) |
+| 14 | media nits | INCONCLUSIVE | `SEAT panel-cdo pass 8ee880f AC14` covers 05/07 only; hero.gif not re-rendered, owner checks at merge gate (no `SEAT owner pass` line) |
+| 15 | security-review section reads well | VERIFIED | `SEAT panel-cdo pass 8ee880f AC15` (earlier fail at da0dc24 fixed in 8ee880f) |
+| 16 | settings file ends `}\n` | VERIFIED | `go test ./internal/agent/claude/ -run TestSettingsFileEndsWithNewline -v`: PASS both cases |
+| 17 | 05/07 no stray line, brace on own line | VERIFIED | `SEAT panel-cdo pass da0dc24 AC17`; 05/07 GIFs unchanged since |
+
+Deviations: none from Check commands. AC14 hero part pending owner. Residual noted in ledger: 05 cat prompt indented 1 space (gate). Open findings: none (TRIAGE fixed=10 dismissed=0 backlog=5; panel re-runs must=0).
