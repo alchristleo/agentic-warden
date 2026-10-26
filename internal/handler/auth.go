@@ -20,22 +20,30 @@ func bearer(r *http.Request) string {
 	return strings.TrimSpace(header[7:])
 }
 
-// tokenAdmin admits a request only with the configured admin token. With
+// tokenAdmin admits a request only with a configured admin token. With
 // no token configured the route answers 503 rather than opening: an
-// operator who forgot to set AWD_ADMIN_TOKEN must find out from the error,
-// not from an audit.
+// operator who forgot to set one must find out from the error, not from
+// an audit. The actor is "token:<name>" of the matching entry, never a
+// client-supplied header.
 func (h *Handler) tokenAdmin(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		if h.AdminToken == "" {
+		if len(h.AdminTokens) == 0 {
 			writeError(w, http.StatusServiceUnavailable, "admin token not configured")
 			return
 		}
-		presented := bearer(r)
-		if subtle.ConstantTimeCompare([]byte(presented), []byte(h.AdminToken)) != 1 {
+		presented := []byte(credential.Hash(bearer(r)))
+		matched := ""
+		for name, hash := range h.AdminTokens {
+			// No early exit: every entry is compared on every request.
+			if subtle.ConstantTimeCompare(presented, []byte(hash)) == 1 {
+				matched = name
+			}
+		}
+		if matched == "" {
 			writeError(w, http.StatusUnauthorized, "unauthorized")
 			return
 		}
-		next(w, withActor(r, "token:"+r.Header.Get("X-Applied-By")))
+		next(w, withActor(r, "token:"+matched))
 	}
 }
 

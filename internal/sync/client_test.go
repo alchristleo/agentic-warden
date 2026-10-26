@@ -12,6 +12,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/alchristleo/agentic-warden/internal/credential"
 	"github.com/alchristleo/agentic-warden/internal/handler"
 	"github.com/alchristleo/agentic-warden/internal/model"
 	"github.com/alchristleo/agentic-warden/internal/signing"
@@ -508,7 +509,7 @@ const testAdminToken = "test-admin-token"
 func realSignedServer(t *testing.T, signer *handler.Signer) (*handler.Handler, *httptest.Server, sync.Enrollment) {
 	t.Helper()
 	h := handler.New(store.NewMemory(), nil)
-	h.AdminToken = testAdminToken
+	h.AdminTokens = map[string]string{"admin": credential.Hash(testAdminToken)}
 	h.Signer = signer
 	srv := httptest.NewServer(h.Routes())
 	t.Cleanup(srv.Close)

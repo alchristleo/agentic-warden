@@ -37,11 +37,12 @@ type Handler struct {
 	// an agent refuse to start is rejected here, in front of the author,
 	// rather than discovered on a developer's machine. Nil skips the check.
 	ManagedValidator policy.ManagedValidator
-	// AdminToken is the bearer token administrative routes require. Empty
-	// disables them with a 503; it never leaves them open.
-	AdminToken string
+	// AdminTokens maps an admin's name to credential.Hash of their bearer
+	// token. Administrative routes require one of them. Empty disables the
+	// routes with a 503; it never leaves them open.
+	AdminTokens map[string]string
 	// SCIMToken is the bearer token the identity provider presents on
-	// /scim/v2. It is separate from AdminToken because it lives in the
+	// /scim/v2. It is separate from AdminTokens because it lives in the
 	// IdP's configuration, not with the operators. Empty disables SCIM
 	// with a 503.
 	SCIMToken string

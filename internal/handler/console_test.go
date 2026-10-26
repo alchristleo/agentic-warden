@@ -52,7 +52,7 @@ func newConsoleWithStore(t *testing.T, s store.Store, members map[string][]strin
 		}
 	}
 	h := handler.New(s, nil)
-	h.AdminToken = adminToken
+	h.AdminTokens = adminTokens()
 	h.Now = func() time.Time { return *env.now }
 	env.sessions = session.NewManager(s)
 	env.sessions.Now = h.Now
@@ -275,7 +275,7 @@ func TestConsoleIdPDownAtLoginIs503ThenRecovers(t *testing.T) {
 		t.Fatal(err)
 	}
 	h := handler.New(s, nil)
-	h.AdminToken = adminToken
+	h.AdminTokens = adminTokens()
 	h.Now = func() time.Time { return now }
 	sessions := session.NewManager(s)
 	sessions.Now = h.Now

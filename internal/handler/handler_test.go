@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/alchristleo/agentic-warden/internal/credential"
 	"github.com/alchristleo/agentic-warden/internal/handler"
 	"github.com/alchristleo/agentic-warden/internal/policy"
 	"github.com/alchristleo/agentic-warden/internal/store"
@@ -28,7 +29,7 @@ func newServer(t *testing.T) *httptest.Server {
 func newServerWithStore(t *testing.T, s store.Store) *httptest.Server {
 	t.Helper()
 	h := handler.New(s, nil)
-	h.AdminToken = adminToken
+	h.AdminTokens = adminTokens()
 	h.Now = func() time.Time { return time.Date(2026, 9, 20, 12, 0, 0, 0, time.UTC) }
 	srv := httptest.NewServer(h.Routes())
 	t.Cleanup(srv.Close)
@@ -337,7 +338,7 @@ func TestResponsesAreJSON(t *testing.T) {
 
 func TestApplyingARuleSetThatFailsManagedValidationIsRejected(t *testing.T) {
 	h := handler.New(store.NewMemory(), nil)
-	h.AdminToken = adminToken
+	h.AdminTokens = adminTokens()
 	h.ManagedValidator = func(agentName string, managed map[string]any) error {
 		if agentName == "claude" && managed["model"] == 42.0 {
 			return errors.New("model must be a string")
@@ -360,4 +361,9 @@ func TestApplyingARuleSetThatFailsManagedValidationIsRejected(t *testing.T) {
 	if !strings.Contains(body["error"], "model must be a string") {
 		t.Errorf("error %q should carry the validator's message to the author", body["error"])
 	}
+}
+
+// adminTokens is the single-entry admin token set most tests run with.
+func adminTokens() map[string]string {
+	return map[string]string{"admin": credential.Hash(adminToken)}
 }

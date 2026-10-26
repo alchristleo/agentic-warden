@@ -19,6 +19,7 @@ import (
 
 	"github.com/alchristleo/agentic-warden/internal/agent"
 	"github.com/alchristleo/agentic-warden/internal/agent/claude"
+	"github.com/alchristleo/agentic-warden/internal/credential"
 	"github.com/alchristleo/agentic-warden/internal/handler"
 	"github.com/alchristleo/agentic-warden/internal/model"
 	"github.com/alchristleo/agentic-warden/internal/policy"
@@ -1028,7 +1029,7 @@ func newRevisedFixture(t *testing.T) *revisedFixture {
 	}
 	f := &revisedFixture{key: key, now: time.Date(2026, 9, 20, 12, 0, 0, 0, time.UTC)}
 	f.h = handler.New(store.NewMemory(), nil)
-	f.h.AdminToken = testAdminToken
+	f.h.AdminTokens = map[string]string{"admin": credential.Hash(testAdminToken)}
 	f.h.Signer = &handler.Signer{Current: signing.NewSeedSigner(key)}
 	f.h.Now = func() time.Time { return f.now }
 	routes := f.h.Routes()

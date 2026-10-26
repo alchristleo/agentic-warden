@@ -19,7 +19,7 @@ const scimToken = "test-scim-token"
 func newSCIMServer(t *testing.T) *httptest.Server {
 	t.Helper()
 	h := handler.New(store.NewMemory(), nil)
-	h.AdminToken = adminToken
+	h.AdminTokens = adminTokens()
 	h.SCIMToken = scimToken
 	// The same clock as newServer, so a bundle from either server is
 	// byte-comparable.
