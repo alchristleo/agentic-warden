@@ -117,9 +117,9 @@ func (l *Limiter) reserve(key netip.Prefix) (time.Duration, *list.Element) {
 }
 
 // refund gives back a token reserve took from el when the request was not a
-// counted failure. If el was evicted meanwhile, a new bucket for the same key
-// is not credited. A bucket that is full again is dropped, so the map holds only
-// keys that failed recently.
+// counted failure. If el was evicted meanwhile, a new bucket for the same
+// key is not credited. A bucket that is full again is dropped, so the map
+// holds only keys that failed recently.
 func (l *Limiter) refund(key netip.Prefix, taken *list.Element) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
@@ -128,8 +128,9 @@ func (l *Limiter) refund(key netip.Prefix, taken *list.Element) {
 		return
 	}
 	b := el.Value.(*bucket)
-	b.tokens = l.refilled(b, l.now()) + 1
-	b.last = l.now()
+	now := l.now()
+	b.tokens = l.refilled(b, now) + 1
+	b.last = now
 	if b.tokens >= limitBurst {
 		l.lru.Remove(el)
 		delete(l.buckets, key)

@@ -435,6 +435,20 @@ func TestLimiterRefundNeverExceedsBurst(t *testing.T) {
 	}
 }
 
+func TestLimiterRefillCapsAtBurst(t *testing.T) {
+	l, clock, _ := limiterFor()
+	inner := &statusInner{status: 401}
+	h := l.Wrap(inner)
+	do(h, "GET", "/v1/policy", "192.0.2.1:1") // 9 tokens
+	clock.advance(time.Hour)                  // refill stops at 10
+	for i := 0; i < limitBurst; i++ {
+		do(h, "GET", "/v1/policy", "192.0.2.1:1")
+	}
+	if got := do(h, "GET", "/v1/policy", "192.0.2.1:1").Code; got != http.StatusTooManyRequests {
+		t.Fatalf("failure %d after a long idle = %d, want 429", limitBurst+1, got)
+	}
+}
+
 func TestLimiterRefundSkipsRecreatedBucket(t *testing.T) {
 	l, _, _ := limiterFor()
 	key := netip.MustParsePrefix("192.0.2.1/32")
