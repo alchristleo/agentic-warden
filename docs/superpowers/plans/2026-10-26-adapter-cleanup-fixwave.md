@@ -23,3 +23,13 @@ F17 [must, cdo+design] README.md:17 and how-it-works.md:69: cut the retirement h
 
 Checks: go vet ./... && go test ./...; AC1-AC11 commands from the spec; cd web && pnpm test; check-links on README, docs/site/*.md, deploy/aw-sync/README.md; check-readme.sh.
 Spec edits: D2a text → "orphans force a full cycle; prune runs only in the full cycle; no prune with --root overrides"; AC6a test name if renamed.
+
+# Fix wave 2 (owner-approved past cap, 2026-10-26), base 4633631
+
+G1 [should, reviewer-lite] internal/sync/sync.go 304 orphan check: a Roots override that shadows an agent's default root holding recorded files makes those files orphans every cycle → empty etag forever, and the note "running a full cycle to prune it" is false (fullCycleKeep skips prune). Fix: the orphan check applies the same shadowed-default-root test as fullCycleKeep and does not force a full cycle for them; note wording matches what happens. Test: with such an override, a second unchanged cycle sends If-None-Match and gets 304.
+G2 [should, reviewer-lite] cmd/aw doctor removed-agent branch: add a test asserting the hint appears in `aw doctor gemini` output.
+G3 [should, cdo AC11] sync note (sync.go ~431) and docs/site/reference.md:178: re-enroll command runnable as printed: "re-enroll with a new enrollment token: `aw-sync enroll --force --server URL --token TOKEN --agents <your other agents, e.g. claude,codex>`". reference.md says a re-enroll needs `--server` and a new enrollment token.
+G4 [nit, cdo] apply and enroll errors: drop "aw agy"; they say "...; use agy (Antigravity CLI) (docs pointer)". Only the `aw gemini` launch message names `aw agy` (AC4). Shared hint in internal/policy/removed.go without the launch command; launch adds it. reference.md sample updated to match.
+G5 [nit, cdo] docs/assets/architecture.json agy node label "Antigravity CLI (agy)" if it fits; regenerate both SVGs as in F12.
+G6 [nit, reviewer-lite] spec: `policy.RemovedAgents` → unexported table + `policy.RemovedHint`.
+Checks: same as wave 1.

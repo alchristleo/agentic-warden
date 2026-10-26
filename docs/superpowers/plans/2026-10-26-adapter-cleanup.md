@@ -85,6 +85,8 @@ Checks: `cd web && pnpm test`; `grep -c -i gemini` on the five files prints 0 (e
 - Skip-with-note for a foreign agy admin file (Renderer contract).
 - agy permissions/MCP/hooks if Google adds a system tier; macOS/Windows real-agy checks.
 - Back-off for an agent whose render fails every cycle.
+- Removed-agent hint: public docs URL instead of repo path once a docs site exists (panel-cdo nit).
+- `TestRunRootChangeNeverLosesAnAgentsFiles`: name claims more than it checks; override A to B prunes A (panel-security nit).
 - Prune: refuse a parent dir that is not root-owned, or unlinkat via O_NOFOLLOW dir fd (panel-security nit; mitigated by no prune under --root).
 - .agents/product-marketing.md still lists Gemini CLI and `aw gemini` (D docs session).
 
@@ -120,3 +122,4 @@ PANEL security 4633631 must=0 should=0 nit=2
 SEAT panel-security pass 4633631 AC12 re-run on fix diff
 PANEL cdo 4633631 must=0 should=1 nit=3
 SEAT panel-cdo fail 4633631 AC11 re-enroll command in sync note not runnable (needs --server + new token, literal ...)
+COORD owner approved fix wave 2 past cap; AC11 owner at gate; nits folded: drop aw agy apply/enroll, diagram label; docs URL backlog
