@@ -93,11 +93,11 @@ Design-partner pilot. The trust statement, linked from [Trust statement](./trust
 | STRIDE | Threat | Mitigation | Residual risk |
 |---|---|---|---|
 | S / T | The signing key is used to sign a policy you did not write | KMS key; its policy denies `kms:Sign` to every principal except the cell's task role; the task role may only call `Sign` and `GetPublicKey` on its own key (`key_policy_confines_signing_to_the_task_role`, `task_role_signs_only_with_own_key` in `deploy/aws/cell/tests/cell.tftest.hcl`) | We hold the AWS account. A person with the right access can change the key policy or sign through the service, and a signature is valid whoever asked for it. Co-signed revisions, where a key you hold must also sign, are planned and not built. |
-| R | We deny having signed something | Every `Sign` call is recorded in CloudTrail (stated in `docs/hosting/trust.md`; CloudTrail is AWS's, not configured by this repository) | We can share the events for the last 90 days of AWS event history. |
+| R | We deny having signed something | Every `Sign` call is recorded in CloudTrail (stated in [trust statement](./trust.md); CloudTrail is AWS's, not configured by this repository) | We can share the events for the last 90 days of AWS event history. |
 | I | Another partner reads your data | Each cell has its own database, secrets, key and IAM role. The database is private, encrypted and reachable only from the cell's task (`database_is_private_encrypted_protected`, `database_accepts_only_the_task`); secrets are secrets, not environment values (`secrets_are_secrets_not_environment`); the task image is pinned by digest (`image_is_pinned_by_digest`) | Cells share the network, load balancer, certificate, image repository, cluster and AWS account. The infrastructure state bucket holds every cell's generated secrets, encrypted. |
 | I | Our operators read your admin token | Not prevented | Operators can read the cell's admin and SCIM tokens from state and Secrets Manager. We use them only to support you, when you ask. |
 | D | Loss of the database or a cell | Deletion protection and 7-day automated backups (`database_is_private_encrypted_protected`) | One database instance per cell, no alarms or paging yet, no availability promise. |
-| E | An administrator widens access | Changes to the key policy are recorded in CloudTrail (trust.md) | Not prevented. |
+| E | An administrator widens access | Changes to the key policy are recorded in CloudTrail ([trust statement](./trust.md)) | Not prevented. |
 
 ## Not covered here
 
