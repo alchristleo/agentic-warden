@@ -85,12 +85,12 @@ Claude Code already ships managed settings, MDM delivery, server-managed setting
 
 ## Questions your security team will ask
 
-- **Do our code or prompts reach you?** No. `awd` is not in the path of an agent session, so it never sees prompts, code or model traffic. It sees enrollment and sync requests. In the hosted pilot we store your policies with their revision history, machine records (machine id, enrolled email, key id, last sync), identity-provider group membership, audit events (who applied what policy, and when) and service logs kept 30 days ([security model](docs/site/security-model.md#what-the-control-plane-sees), [trust statement](docs/hosting/trust.md)).
+- **Do our code or prompts reach you?** No. `awd` is not in the path of an agent session, so it never sees prompts, code or model traffic. It sees enrollment and sync requests. In the hosted pilot we store your policies with their revision history, machine records (machine id, enrolled email, key id, last sync), identity-provider group membership, audit events (who applied what policy, and when) and service logs kept 30 days ([security model](docs/site/security-model.md#what-the-control-plane-sees), [trust statement](docs/site/trust.md)).
 - **What if the server goes down?** A machine keeps the policy it has, with no expiry. A machine with a pinned signing key that holds a bad or missing bundle refuses to start Claude Code; with no pinned key it falls back to the static files. `requireBundle` overrides either way ([design limits](docs/site/threat-model.md#design-limits)).
 - **Can a developer bypass it?** Partly. Bare `claude` is governed, but a local administrator can edit the managed source or remove the drop-in, the `origin` remote that repository rules key on is the developer's to edit, and a developer's own Claude Code install is outside managed settings ([what it does not stop](docs/site/security-model.md#what-it-does-not-stop)).
 - **What is not covered yet?** agy permissions, MCP servers, hooks and repository-scoped rules are not enforced ([how it works](docs/site/how-it-works.md#antigravity-cli-gateway-and-models-only)). Two replays are not detected (same revision with older group membership, and a backwards control plane clock). `aw codex` is advisory. Co-signed revisions are planned and not built ([design limits](docs/site/threat-model.md#design-limits), [threat model](docs/site/threat-model.md)).
 
-You run `awd` yourself and hold the signing key. A hosted design-partner pilot also exists, on the terms in the [trust statement](docs/hosting/trust.md).
+You run `awd` yourself and hold the signing key. A hosted design-partner pilot also exists, on the terms in the [trust statement](docs/site/trust.md).
 
 ## Try it
 
