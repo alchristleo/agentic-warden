@@ -127,3 +127,5 @@ FIX wave 158698c sdd-implementer wave 2 G1-G6; SVGs sed-patched not regenerated
 COORD owner: AC12 after wave 2 = reviewer-lite regression check + owner at gate (security seat re-run cap used)
 COORD fix-wave re-review 158698c sdd-reviewer-lite fail: must SVG </text> corrupted by sed; AC12 regression none
 COORD ac7a1d0 repaired </text> in both SVGs, xml.dom parse ok
+COORD review approve ac7a1d0 sdd-reviewer-lite SVGs parse, only agy label lines changed
+CONVERGE 90b3f04 spec-converge AC1-10 VERIFIED; AC11, AC12 INCONCLUSIVE owner at gate
