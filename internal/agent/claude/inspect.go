@@ -175,9 +175,15 @@ func checkHelperOwnership(goos, helper string) []agent.Finding {
 		if !known || (uid == rootUID && info.Mode().Perm()&worldWritable == 0) {
 			continue
 		}
+		fix := fmt.Sprintf("sudo chown root:0 %s && sudo chmod 755 %s", path, path)
+		if path != helper {
+			// The directory may be a package manager's prefix, which the
+			// user owns on purpose, so advise moving the helper instead.
+			fix = fmt.Sprintf("install aw-policy in a root-owned directory such as /usr/local/libexec, or move it out of %s, and point policyHelper there", path)
+		}
 		findings = append(findings, agent.Finding{Level: agent.Warn, Message: fmt.Sprintf(
-			"%s is owned by uid %d with mode %s: anyone who can write it or its directory can replace the policy helper; fix with: sudo chown root:root %s && sudo chmod 755 %s",
-			path, uid, info.Mode(), path, path)})
+			"%s is owned by uid %d with mode %s: anyone who can write it or its directory can replace the policy helper; fix with: %s",
+			path, uid, info.Mode(), fix)})
 	}
 	return findings
 }
@@ -204,29 +210,17 @@ func checkHelperBuild(helper, source string) (agent.Finding, bool) {
 		Message: fmt.Sprintf("policyHelper %s (from %s) was built with -tags awtest: a developer can point it at their own bundle; rebuild without the tag", helper, source)}, true
 }
 
-// policyConfigFile is aw-policy's optional configuration in the system
-// directory. cmd/aw-policy is package main and cannot be imported, so this
-// package reads the one key it needs, with the same strict parse.
-const policyConfigFile = "aw-policy.json"
-
 // emptyEffect says what a missing or unusable bundle does to a launch. An
 // explicit requireBundle in aw-policy.json decides: true fails closed, false
 // emits nothing. Without one, a trust file that is there, or cannot be
 // statted, means a key is pinned and aw-policy fails closed; with none it
 // emits nothing and exits 0.
 func emptyEffect(systemDir, stateDir string) string {
-	if raw, err := os.ReadFile(filepath.Join(systemDir, policyConfigFile)); err == nil {
-		var cfg struct {
-			RequireBundle *bool `json:"requireBundle"`
+	if cfg, err := ReadConfig(filepath.Join(systemDir, PolicyConfigFile)); err == nil && cfg.RequireBundle != nil {
+		if *cfg.RequireBundle {
+			return "aw-policy refuses to start: requireBundle is true"
 		}
-		dec := json.NewDecoder(strings.NewReader(string(raw)))
-		dec.DisallowUnknownFields()
-		if dec.Decode(&cfg) == nil && cfg.RequireBundle != nil {
-			if *cfg.RequireBundle {
-				return "aw-policy refuses to start: requireBundle is true"
-			}
-			return "aw-policy emits no settings"
-		}
+		return "aw-policy emits no settings"
 	}
 	if stateDir != "" {
 		if _, err := os.Stat(filepath.Join(stateDir, stateTrustFile)); !errors.Is(err, os.ErrNotExist) {

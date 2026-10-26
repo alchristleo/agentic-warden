@@ -54,7 +54,7 @@ func doctorHelperFindings(t *testing.T, fileUID uint32, fileMode fs.FileMode, di
 
 func TestDoctorHelperOwnershipWarnsOnNonRootOwner(t *testing.T) {
 	helper, f := doctorHelperFindings(t, 1000, 0o755, 0, 0o755)
-	if !findingsWith(f, agent.Warn, "uid 1000") || !findingsWith(f, agent.Warn, "sudo chown root:root "+helper+" && sudo chmod 755 "+helper) {
+	if !findingsWith(f, agent.Warn, "uid 1000") || !findingsWith(f, agent.Warn, "sudo chown root:0 "+helper+" && sudo chmod 755 "+helper) {
 		t.Errorf("findings %+v should warn about uid 1000 with the fix", f)
 	}
 }
@@ -69,8 +69,12 @@ func TestDoctorHelperOwnershipWarnsOnGroupWritableHelper(t *testing.T) {
 func TestDoctorHelperOwnershipWarnsOnWritableDirectory(t *testing.T) {
 	helper, f := doctorHelperFindings(t, 0, 0o755, 0, 0o757)
 	dir := filepath.Dir(helper)
-	if !findingsWith(f, agent.Warn, "sudo chown root:root "+dir+" && sudo chmod 755 "+dir) {
-		t.Errorf("findings %+v should warn about the directory", f)
+	if !findingsWith(f, agent.Warn, dir+" is owned by uid 0 with mode drwxr-xrwx") ||
+		!findingsWith(f, agent.Warn, "install aw-policy in a root-owned directory such as /usr/local/libexec, or move it out of "+dir) {
+		t.Errorf("findings %+v should advise moving the helper out of the directory", f)
+	}
+	if findingsWith(f, agent.Warn, "chown") {
+		t.Errorf("findings %+v tell the user to chown a directory", f)
 	}
 }
 

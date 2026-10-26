@@ -27,7 +27,6 @@
 package main
 
 import (
-	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -70,14 +69,6 @@ const buildInfoArg = "build-info"
 // 1 MiB, and it shows stderr as the reason when the helper exits non-zero,
 // so short is also more useful.
 const maxStderr = 16 << 10
-
-// fileConfig is the deployed configuration file.
-type fileConfig struct {
-	// RequireBundle makes the helper exit non-zero, so Claude Code refuses
-	// to start, when no usable bundle is on the machine. Absent or null:
-	// closed once a key is pinned, open otherwise. False opts out.
-	RequireBundle *bool `json:"requireBundle"`
-}
 
 func main() {
 	if len(os.Args) == 2 && os.Args[1] == buildInfoArg {
@@ -133,7 +124,7 @@ func loadConfig(getenv func(string) string, allowEnv bool) (policyhelper.Config,
 		BundlePath: filepath.Join(systemDir, claude.BundleFile),
 		StateDir:   stateDir,
 	}
-	path := filepath.Join(systemDir, "aw-policy.json")
+	path := filepath.Join(systemDir, claude.PolicyConfigFile)
 	if allowEnv {
 		if p := getenv(bundleEnv); p != "" {
 			cfg.BundlePath = p
@@ -154,21 +145,14 @@ func loadConfig(getenv func(string) string, allowEnv bool) (policyhelper.Config,
 			notes = append(notes, fmt.Sprintf("%s is set but this build ignores it; the state directory is %s only", stateDirEnv, stateDir))
 		}
 	}
-	raw, err := os.ReadFile(path)
+	file, err := claude.ReadConfig(path)
 	switch {
 	case err == nil:
-		var file fileConfig
-		decoder := json.NewDecoder(strings.NewReader(string(raw)))
-		decoder.DisallowUnknownFields()
-		if err := decoder.Decode(&file); err != nil {
-			notes = append(notes, fmt.Sprintf("configuration %s is invalid: %v", path, err))
-			break
-		}
 		cfg.RequireBundle = file.RequireBundle
 	case errors.Is(err, os.ErrNotExist):
 		// The file is optional: its one key defaults to failing safe.
 	default:
-		notes = append(notes, fmt.Sprintf("configuration %s: %v", path, err))
+		notes = append(notes, fmt.Sprintf("configuration %s is unusable: %v", path, err))
 	}
 
 	if dir, err := os.UserCacheDir(); err == nil {
