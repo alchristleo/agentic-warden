@@ -31,9 +31,9 @@ rules:
 
 - `name` identifies the rule.
 - `match` narrows who the rule applies to. A rule with no `match` block applies to everyone.
-- `agents` holds one block per agent: `claude`, `codex`, `gemini` (retired for most users) or `agy`.
+- `agents` holds one block per agent: `claude`, `codex` or `agy`.
 - `managed` is the machine-wide layer. For Claude it is the managed settings; for Codex it is
-  `requirements.toml`; for Gemini it is the system settings and the admin policy; for agy it is the
+  `requirements.toml`; for agy it is the
   admin settings file.
 - `launch` is Codex's per-launch `config.toml` layer, applied by `aw codex` and not by `aw-sync`.
 - `env` and `forceEnv` set environment variables. With `forceEnv: true`, organization values replace
@@ -113,9 +113,7 @@ agy renders only on machines enrolled with agy (`--agents ...,agy`). See the [aw
 
 Rules apply in order, and a later rule overrides an earlier one per key. Permission lists union
 across rules instead of replacing one another. Codex scalars and allowlists replace across rules, and
-`prefix_rules` accumulate. For Gemini, `tools.exclude` and `mcp.allowed` union, `mcpServers` merge by
-name, other settings replace, and policies accumulate. Every Gemini policy rule needs `toolName`,
-`decision` and an integer `priority` from 0 to 999. For agy, `models.list` replaces across rules, and
+`prefix_rules` accumulate. For agy, `models.list` replaces across rules, and
 `gateway.customHeaders` accumulate, with a later rule winning per header name.
 
 `aw doctor` shows the compiled result for the repository you are in.

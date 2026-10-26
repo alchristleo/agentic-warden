@@ -12,7 +12,7 @@ export const pricing = {
       badge: "Coming soon",
       summary: "Hosted for you. For teams that want governance without running a control plane.",
       price: "Contact us",
-      features: ["Hosted console", "Claude Code, Codex and Gemini CLI", "Group and repository targeting", "Signed bundles"],
+      features: ["Hosted console", "Claude Code and Codex", "Group and repository targeting", "Signed bundles"],
       cta: "Request demo",
     },
     {
@@ -45,7 +45,7 @@ export const pricing = {
   comparison: {
     columns: ["Team", "Enterprise", "Self-hosted"],
     rows: [
-      { feature: "Claude Code, Codex, Gemini CLI", values: ["Yes", "Yes", "Yes"] },
+      { feature: "Claude Code and Codex", values: ["Yes", "Yes", "Yes"] },
       { feature: "Group and repository targeting", values: ["Yes", "Yes", "Yes"] },
       { feature: "Signed bundles", values: ["Yes", "Yes", "Yes"] },
       { feature: "SCIM provisioning", values: ["—", "Yes", "Yes"] },
@@ -64,7 +64,7 @@ export const pricing = {
     },
     {
       q: "Can a developer bypass it by running claude directly?",
-      a: "Not for Claude Code outside the copy your organization installs: the policy helper runs on every launch of that copy, wrapper or not. For Codex and Gemini CLI the machine-wide files always apply; repository-specific rules apply when launched through aw codex or aw gemini.",
+      a: "Not for Claude Code outside the copy your organization installs: the policy helper runs on every launch of that copy, wrapper or not. For Codex the machine-wide files always apply; repository-specific rules apply when launched through aw codex.",
     },
     {
       q: "Which identity providers work?",
