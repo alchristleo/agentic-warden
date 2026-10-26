@@ -85,6 +85,7 @@ Checks: `cd web && pnpm test`; `grep -c -i gemini` on the five files prints 0 (e
 - Skip-with-note for a foreign agy admin file (Renderer contract).
 - agy permissions/MCP/hooks if Google adds a system tier; macOS/Windows real-agy checks.
 - Back-off for an agent whose render fails every cycle.
+- .agents/product-marketing.md still lists Gemini CLI and `aw gemini` (D docs session).
 
 ## Ledger
 
@@ -93,3 +94,10 @@ USAGE start 0
 T3 done a0104bd sdd-implementer-lite helper + agy nits; AC9 grep clears after T1 deletes gemini
 T3 review approve a0104bd sdd-reviewer-lite nit: dropped_test compares got[0] only
 T4 done 258071d sdd-implementer-lite docs+site; open: web/lib/seo.ts, opengraph-image.tsx, demo/schema.ts, architecture SVGs still Gemini
+T4 review approve 258071d sdd-reviewer-lite should: apply-error sample hint must match T1 (contract fixes it, check at merge); nit removing.md Gemini paths kept
+T5 done 2915fca sdd-implementer-lite web meta, OG, schema, SVGs; email.test.ts updated; web/content handled by T4
+T1 done 4db3165 sdd-implementer gemini removed; extra files drift tests, awd validator, examples/org-policy.yaml (also T4: merge conflict likely); launch msg '<hint>; run it with aw agy'
+T5 review approve 2915fca sdd-reviewer-lite should: docs/assets/architecture.json source still says Gemini CLI (coord fix after merge)
+T1 review approve 4db3165 sdd-reviewer nits: revision.go:8 long line; .agents/product-marketing.md still lists Gemini
+MERGE group A 02c767d T1,T3,T4,T5 clean; go vet+test green; AC1 AC9 pass
+T5 coord 37b5c0f architecture.json label Codex, agy; revision.go comment reflow
