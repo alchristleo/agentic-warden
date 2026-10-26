@@ -6,7 +6,7 @@ test("home tells the story in order", async ({ page }) => {
   for (const name of ["What the vendor consoles leave uncovered", "How it works", "Governs the agents your developers use"]) {
     await expect(page.getByRole("heading", { level: 2, name })).toBeVisible();
   }
-  for (const agent of ["Claude Code", "Codex", "Gemini CLI"]) {
+  for (const agent of ["Claude Code", "Codex"]) {
     await expect(page.getByRole("heading", { level: 3, name: agent })).toBeVisible();
   }
 });

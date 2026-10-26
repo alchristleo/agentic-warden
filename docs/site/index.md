@@ -2,7 +2,7 @@
 title: Agentic Warden docs
 section: get-started
 order: 1
-description: Write one policy, deliver it to Claude Code, Codex, Gemini CLI and Antigravity CLI, and watch it stop your own agent. Seven steps, no root.
+description: Write one policy, deliver it to Claude Code, Codex and Antigravity CLI, and watch it stop your own agent. Seven steps, no root.
 ---
 
 # Agentic Warden docs
