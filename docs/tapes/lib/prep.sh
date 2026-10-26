@@ -83,6 +83,10 @@ unset _aw_n
 if [ -n "${BLE_DIR:-}" ]; then
   source "$BLE_DIR/ble.sh" --attach=prompt --norc
   bleopt prompt_eol_mark=''
+  # After each Enter ble.sh moves right by COLUMNS-2, writes two spaces and returns, to detect output
+  # that has no final newline. In the recording that left a blank or stray-character line and a
+  # one-space indent. The probe is only cosmetic, so skip it.
+  ble-edit/exec/.adjust-eol() { :; }
   for _aw_f in syntax_varname varname_array varname_empty varname_export varname_expr varname_hash varname_number varname_readonly varname_transform varname_unset; do ble-face "$_aw_f=fg=blue"; done
   unset _aw_f
   # An unclosed "$(" and the word typed after it are a syntax error until ")" arrives. Paint them plain, not red.
